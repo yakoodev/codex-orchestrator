@@ -1,0 +1,246 @@
+import { Prisma, PrismaClient, ProfileStatus, TaskStatus as PrismaTaskStatus } from "@prisma/client";
+import type {
+  AuthProfileEntity,
+  AuthSwitchEventEntity,
+  CreateAuthProfileInput,
+  CreateTaskInput,
+  CustomModuleConfigEntity,
+  Persistence,
+  TaskEntity
+} from "./contracts";
+import type { TaskStatus } from "../types";
+
+function toTaskEntity(task: {
+  id: string;
+  title: string;
+  description: string;
+  status: PrismaTaskStatus;
+  priority: number;
+  project_id: string;
+  repo_id: string;
+  branch: string | null;
+}): TaskEntity {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status as TaskStatus,
+    priority: task.priority,
+    project_id: task.project_id,
+    repo_id: task.repo_id,
+    branch: task.branch
+  };
+}
+
+function toAuthProfileEntity(entity: {
+  id: string;
+  label: string;
+  status: ProfileStatus;
+  checksum: string;
+  created_at: Date;
+}): AuthProfileEntity {
+  return {
+    id: entity.id,
+    label: entity.label,
+    status: entity.status,
+    checksum: entity.checksum,
+    created_at: entity.created_at
+  };
+}
+
+function toAuthSwitchEventEntity(entity: {
+  id: string;
+  module_key: string;
+  from_auth_profile_id: string | null;
+  to_auth_profile_id: string | null;
+  reason: string;
+  status: "started" | "completed" | "failed" | "skipped";
+  started_at: Date;
+  ended_at: Date | null;
+}): AuthSwitchEventEntity {
+  return {
+    id: entity.id,
+    module_key: entity.module_key,
+    from_auth_profile_id: entity.from_auth_profile_id,
+    to_auth_profile_id: entity.to_auth_profile_id,
+    reason: entity.reason,
+    status: entity.status,
+    started_at: entity.started_at,
+    ended_at: entity.ended_at
+  };
+}
+
+function toModuleConfigEntity(entity: {
+  id: string;
+  module_key: string;
+  is_enabled: boolean;
+  scope: string;
+  config_json: Prisma.JsonValue;
+}): CustomModuleConfigEntity {
+  return {
+    id: entity.id,
+    module_key: entity.module_key,
+    is_enabled: entity.is_enabled,
+    scope: entity.scope,
+    config_json: entity.config_json as Record<string, unknown>
+  };
+}
+
+export class PrismaPersistence implements Persistence {
+  public constructor(private readonly prisma: PrismaClient) {}
+
+  public async pingDb(): Promise<void> {
+    await this.prisma.$queryRawUnsafe("SELECT 1");
+  }
+
+  public async createTask(input: CreateTaskInput): Promise<TaskEntity> {
+    const created = await this.prisma.task.create({
+      data: {
+        title: input.title,
+        description: input.description,
+        status: input.status as PrismaTaskStatus,
+        priority: input.priority,
+        project_id: input.project_id,
+        repo_id: input.repo_id,
+        branch: input.branch,
+        source: input.source,
+        created_by: input.created_by
+      }
+    });
+
+    return toTaskEntity(created);
+  }
+
+  public async listTasks(status?: TaskStatus): Promise<TaskEntity[]> {
+    const tasks = await this.prisma.task.findMany({
+      where: status ? { status: status as PrismaTaskStatus } : undefined,
+      orderBy: { created_at: "desc" }
+    });
+
+    return tasks.map((task) => toTaskEntity(task));
+  }
+
+  public async createAuthProfile(input: CreateAuthProfileInput): Promise<AuthProfileEntity> {
+    const created = await this.prisma.chatGptAuthProfile.create({
+      data: {
+        label: input.label,
+        status: input.status,
+        checksum: input.checksum,
+        storage_path: input.storage_path,
+        meta_json: input.meta_json as Prisma.InputJsonValue,
+        uploaded_by: input.uploaded_by
+      }
+    });
+
+    return toAuthProfileEntity(created);
+  }
+
+  public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.chatGptAuthProfile.findUnique({ where: { id } });
+      if (!target) {
+        return null;
+      }
+
+      await tx.chatGptAuthProfile.updateMany({
+        where: { status: "active", id: { not: id } },
+        data: { status: "inactive" }
+      });
+
+      const activated = await tx.chatGptAuthProfile.update({
+        where: { id },
+        data: {
+          status: "active",
+          activated_by: activatedBy
+        }
+      });
+
+      return toAuthProfileEntity(activated);
+    });
+  }
+
+  public async listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]> {
+    const events = await this.prisma.authSwitchEvent.findMany({
+      orderBy: { started_at: "desc" }
+    });
+
+    return events.map((event) =>
+      toAuthSwitchEventEntity({
+        id: event.id,
+        module_key: event.module_key,
+        from_auth_profile_id: event.from_auth_profile_id,
+        to_auth_profile_id: event.to_auth_profile_id,
+        reason: event.reason,
+        status: event.status,
+        started_at: event.started_at,
+        ended_at: event.ended_at
+      })
+    );
+  }
+
+  public async listHeldTasks(): Promise<TaskEntity[]> {
+    const tasks = await this.prisma.task.findMany({
+      where: { status: "WAITING_LIMIT" },
+      orderBy: { created_at: "desc" }
+    });
+
+    return tasks.map((task) => toTaskEntity(task));
+  }
+
+  public async getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null> {
+    const moduleConfig = await this.prisma.customModuleConfig.findUnique({
+      where: { module_key: key }
+    });
+
+    if (!moduleConfig) {
+      return null;
+    }
+
+    return toModuleConfigEntity(moduleConfig);
+  }
+
+  public async createCustomModuleConfig(input: {
+    module_key: string;
+    is_enabled: boolean;
+    scope: string;
+    config_json: Record<string, unknown>;
+    updated_by: string;
+  }): Promise<CustomModuleConfigEntity> {
+    const created = await this.prisma.customModuleConfig.create({
+      data: {
+        module_key: input.module_key,
+        is_enabled: input.is_enabled,
+        scope: input.scope,
+        config_json: input.config_json as Prisma.InputJsonValue,
+        updated_by: input.updated_by
+      }
+    });
+
+    return toModuleConfigEntity(created);
+  }
+
+  public async updateCustomModuleConfig(
+    key: string,
+    patch: {
+      is_enabled?: boolean;
+      config_json?: Record<string, unknown>;
+      updated_by: string;
+    }
+  ): Promise<CustomModuleConfigEntity | null> {
+    const existing = await this.prisma.customModuleConfig.findUnique({ where: { module_key: key } });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.customModuleConfig.update({
+      where: { module_key: key },
+      data: {
+        is_enabled: patch.is_enabled,
+        config_json: patch.config_json as Prisma.InputJsonValue | undefined,
+        updated_by: patch.updated_by
+      }
+    });
+
+    return toModuleConfigEntity(updated);
+  }
+}
