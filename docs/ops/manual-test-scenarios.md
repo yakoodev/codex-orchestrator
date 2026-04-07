@@ -164,8 +164,92 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 - `PATCH` возвращает обновлённый модуль;
 - в executions появляется новый `module.execution.completed`.
 
-## 8. Очистка артефакта теста
+## 8. Сценарий F: Реальный codex execution с auth ZIP
+
+```powershell
+# 8.1 Включи strict real runtime и перезапусти bus
+(Get-Content .env) `
+  -replace "^DELEGATION_EXECUTOR_MODE=.*$", "DELEGATION_EXECUTOR_MODE=codex_exec" `
+  | Set-Content .env
+
+docker compose up -d --build bus
+```
+
+Создай ZIP c `auth.json` из локального профиля codex:
+
+```powershell
+New-Item -ItemType Directory -Path "$PWD\.tmp-auth" -Force | Out-Null
+Copy-Item "$HOME\.codex\auth.json" "$PWD\.tmp-auth\auth.json" -Force
+Compress-Archive -Path "$PWD\.tmp-auth\auth.json" -DestinationPath "$PWD\manual-runtime-auth.zip" -Force
+```
+
+Загрузи и активируй профиль:
+
+```powershell
+$uploadRaw = curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/upload" `
+  -H "X-Admin-Token: $ADMIN_TOKEN" `
+  -F "label=manual-runtime-auth" `
+  -F "file=@manual-runtime-auth.zip;type=application/zip"
+$upload = $uploadRaw | ConvertFrom-Json
+$runtimeProfileId = $upload.id
+
+curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/$runtimeProfileId/activate" `
+  -H "X-Admin-Token: $ADMIN_TOKEN"
+```
+
+Создай task + template и отправь delegation с `payload.prompt`:
+
+```powershell
+$taskBody = @{
+  title = "manual-runtime-task-$(Get-Date -Format HHmmss)"
+  description = "runtime delegation test"
+  project_id = "manual-runtime"
+  repo_id = "manual-runtime"
+} | ConvertTo-Json
+$task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
+
+$templateBody = @{
+  name = "manual-runtime-reviewer"
+  role = "reviewer"
+  model = "gpt-5.4-mini"
+  system_prompt = "You are runtime reviewer"
+  sandbox_policy = "workspace-write"
+  approval_policy = "never"
+} | ConvertTo-Json
+$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+
+$dispatchBody = @{
+  requester_task_id = $task.id
+  requester_task_run_id = $null
+  capability = "reviewer"
+  target_selector = @{
+    role = "reviewer"
+    agent_template_id = $template.id
+  }
+  payload = @{
+    execution_mode = "codex_exec"
+    prompt = "Reply exactly READY and nothing else."
+    cwd = "/app"
+  }
+  priority = 100
+} | ConvertTo-Json -Depth 8
+
+$dispatch = Invoke-RestMethod -Uri "$BASE/api/delegation/dispatch" `
+  -Method POST `
+  -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN; "Content-Type" = "application/json"; "X-Trace-Id" = "manual-runtime-codex-1" } `
+  -Body $dispatchBody
+
+$dispatch | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- `status = completed`;
+- `result_summary` содержит ответ модели (например `READY`), а не mock-строку вида `Delegation completed by template ...`.
+
+## 9. Очистка артефактов теста
 
 ```powershell
 Remove-Item -LiteralPath "$PWD\manual-profile.zip" -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath "$PWD\manual-runtime-auth.zip" -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath "$PWD\.tmp-auth" -Recurse -Force -ErrorAction SilentlyContinue
 ```

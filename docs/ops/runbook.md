@@ -10,6 +10,17 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Delegation runtime modes
+- `DELEGATION_EXECUTOR_MODE=auto` (default): tries real `codex exec` if active auth profile exists, otherwise falls back to mock executor.
+- `DELEGATION_EXECUTOR_MODE=codex_exec`: strict real mode (terminal `failed` if active auth profile is missing or codex command is unavailable).
+- `DELEGATION_EXECUTOR_MODE=mock`: force deterministic mock execution.
+- `CODEX_COMMAND` defaults to `codex`.
+- `WORKER_RUNTIME_DIR` defines where per-delegation runtime artifacts are stored inside container (`/tmp/orchestrator-workers` by default).
+- `DELEGATION_EXECUTION_TIMEOUT_MS` controls timeout for one codex attempt (default `180000` ms).
+- Per-request override in `POST /api/delegation/dispatch` payload:
+  - `payload.execution_mode = "mock"` forces mock executor.
+  - `payload.execution_mode = "codex_exec"` forces real executor for this call.
+
 ## Port conflicts (Windows/common local stacks)
 - Default MinIO host ports in this repo are `19000` (API) and `19001` (console) to reduce conflicts.
 - If these ports are also occupied on your host, update `MINIO_API_PORT` and `MINIO_CONSOLE_PORT` in root `.env`, then restart compose:
@@ -53,6 +64,13 @@ docker compose exec bus printenv TG_PROXY_URL
 
 Notes:
 - `GET /api/auth-profiles/chatgpt/active` may return `404` when no active profile is selected; panel treats it as normal "no active profile" state.
+
+## Real codex execution quick check
+1. Ensure `DELEGATION_EXECUTOR_MODE` is `auto` or `codex_exec`.
+2. Upload and activate auth ZIP (`auth.json` from `.codex` must be inside archive).
+3. Create task and reviewer template.
+4. Call `POST /api/delegation/dispatch` with `payload.prompt`.
+5. Expected: delegation `status=completed`, `result_summary` contains model answer (real mode) instead of mock text.
 
 ## Backup
 - Postgres: `pg_dump` of `orchestrator` database.

@@ -28,6 +28,10 @@ Detailed manual QA scenarios for user acceptance:
 - Pack register/materialize.
 - Queue held list/release.
 
+Notes:
+- With default `DELEGATION_EXECUTOR_MODE=auto`, smoke delegation may use mock fallback when no active auth profile is selected.
+- Real codex execution path is validated separately by Scenario F in [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md).
+
 ## Pass criteria
 - `npm run smoke:local` exits with code `0`.
 - No unauthorized admin action is accepted without `X-Admin-Token`.

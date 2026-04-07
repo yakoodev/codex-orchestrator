@@ -31,6 +31,15 @@ npm run smoke:local
 The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles, custom modules, packs, and queue endpoints.
 For exact manual QA scenarios (UI + API), use [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md).
 
+Real Codex delegation runtime:
+- `bus` image includes `@openai/codex` CLI.
+- Runtime mode is controlled by `.env`:
+  - `DELEGATION_EXECUTOR_MODE=auto` (default): use real `codex exec` when command + active auth profile are available; otherwise fallback to deterministic mock.
+  - `DELEGATION_EXECUTOR_MODE=codex_exec`: strict real mode (fails without active auth profile or codex command).
+  - `DELEGATION_EXECUTOR_MODE=mock`: force mock mode.
+- For real execution path, upload and activate ChatGPT auth ZIP, then call `POST /api/delegation/dispatch` with `payload.prompt`.
+- You can override mode per request with `payload.execution_mode` (`mock` or `codex_exec`).
+
 Built-in web control panel:
 - Open `http://localhost:8080/ui/`
 - Save `X-Admin-Token` from your `.env`
