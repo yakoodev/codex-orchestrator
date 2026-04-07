@@ -204,6 +204,7 @@ const AUTH_CONTEXT_TYPES = new Set<AuthContextType>(["apikey", "chatgpt", "chatg
 const SCHEDULE_SCOPES = new Set<ScheduleScope>(["global", "project"]);
 const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_skip"]);
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
+const DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT = 3;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -326,6 +327,15 @@ function asFiniteNumber(value: unknown): number | null {
 
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asNonNegativeInteger(value: unknown): number | null {
+  const parsed = asFiniteNumber(value);
+  if (parsed === null || !Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed;
 }
 
 function parseScheduleEvaluationContext(
@@ -1761,13 +1771,15 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     const priority = typeof body.priority === "number" ? body.priority : 100;
+    const targetSelector = body.target_selector;
+    const payload = body.payload;
 
     const delegation = await persistence.createDelegationRequest({
       requester_task_id: requesterTaskId,
       requester_task_run_id: requesterTaskRunId,
       capability,
-      target_selector: body.target_selector,
-      payload: body.payload,
+      target_selector: targetSelector,
+      payload,
       priority,
       trace_id: traceId
     });
@@ -1787,7 +1799,144 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
     });
 
-    return reply.code(202).send(delegationToResponse(delegation));
+    const selectorTemplateId = asNonEmptyString(targetSelector["agent_template_id"]);
+    const templates = await persistence.listAgentTemplates();
+    const eligibleTemplates = templates.filter(
+      (template) => template.is_enabled && template.role === capability
+    );
+
+    let targetTemplate =
+      selectorTemplateId == null
+        ? null
+        : eligibleTemplates.find((template) => template.id === selectorTemplateId) ?? null;
+    if (!targetTemplate) {
+      targetTemplate = eligibleTemplates[0] ?? null;
+    }
+
+    if (!targetTemplate) {
+      const failedSummary = "No enabled template found for capability";
+      const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
+        status: "failed",
+        result_summary: failedSummary,
+        ended_at: new Date()
+      });
+      if (!failedDelegation) {
+        return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+      }
+
+      await publisher.publish({
+        eventType: "agent.delegation.failed",
+        traceId,
+        idempotencyKey: `${delegation.id}:failed:no_target`,
+        payload: {
+          delegation_id: failedDelegation.id,
+          requester_task_id: failedDelegation.requester_task_id,
+          capability: failedDelegation.capability,
+          status: failedDelegation.status,
+          target_agent_template_id: failedDelegation.target_agent_template_id,
+          target_worker_instance_id: failedDelegation.target_worker_instance_id,
+          reason: "no_capability_target"
+        }
+      });
+
+      return reply.code(202).send(delegationToResponse(failedDelegation));
+    }
+
+    const acceptedAt = new Date();
+    const acceptedDelegation = await persistence.updateDelegationRequest(delegation.id, {
+      status: "accepted",
+      target_agent_template_id: targetTemplate.id,
+      started_at: acceptedAt,
+      ended_at: null
+    });
+    if (!acceptedDelegation) {
+      return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+    }
+
+    await publisher.publish({
+      eventType: "agent.delegation.accepted",
+      traceId,
+      idempotencyKey: `${delegation.id}:accepted:${traceId}`,
+      payload: {
+        delegation_id: acceptedDelegation.id,
+        requester_task_id: acceptedDelegation.requester_task_id,
+        capability: acceptedDelegation.capability,
+        status: acceptedDelegation.status,
+        target_agent_template_id: acceptedDelegation.target_agent_template_id,
+        target_worker_instance_id: acceptedDelegation.target_worker_instance_id,
+        reason: null
+      }
+    });
+
+    let timeoutAttemptsRemaining =
+      asNonNegativeInteger(payload["simulate_timeout_attempts"]) ?? 0;
+
+    for (let attempt = 1; attempt <= DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT; attempt += 1) {
+      if (timeoutAttemptsRemaining > 0) {
+        timeoutAttemptsRemaining -= 1;
+        const isTerminalAttempt = attempt === DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT;
+        const timeoutReason = isTerminalAttempt ? "timeout_exhausted" : "timeout_attempt";
+
+        await publisher.publish({
+          eventType: "agent.delegation.failed",
+          traceId,
+          idempotencyKey: `${delegation.id}:failed:${traceId}:${attempt}`,
+          payload: {
+            delegation_id: acceptedDelegation.id,
+            requester_task_id: acceptedDelegation.requester_task_id,
+            capability: acceptedDelegation.capability,
+            status: isTerminalAttempt ? "failed" : "running",
+            target_agent_template_id: acceptedDelegation.target_agent_template_id,
+            target_worker_instance_id: acceptedDelegation.target_worker_instance_id,
+            reason: timeoutReason,
+            retry_attempt: attempt
+          }
+        });
+
+        if (isTerminalAttempt) {
+          const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
+            status: "failed",
+            result_summary: `Delegation timed out after ${DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT} attempts`,
+            ended_at: new Date()
+          });
+          if (!failedDelegation) {
+            return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+          }
+
+          return reply.code(202).send(delegationToResponse(failedDelegation));
+        }
+
+        continue;
+      }
+
+      const completedDelegation = await persistence.updateDelegationRequest(delegation.id, {
+        status: "completed",
+        result_summary: `Delegation completed by template ${targetTemplate.id}`,
+        ended_at: new Date()
+      });
+      if (!completedDelegation) {
+        return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+      }
+
+      await publisher.publish({
+        eventType: "agent.delegation.completed",
+        traceId,
+        idempotencyKey: `${delegation.id}:completed:${traceId}`,
+        payload: {
+          delegation_id: completedDelegation.id,
+          requester_task_id: completedDelegation.requester_task_id,
+          capability: completedDelegation.capability,
+          status: completedDelegation.status,
+          target_agent_template_id: completedDelegation.target_agent_template_id,
+          target_worker_instance_id: completedDelegation.target_worker_instance_id,
+          reason: null
+        }
+      });
+
+      return reply.code(202).send(delegationToResponse(completedDelegation));
+    }
+
+    return sendError(reply, 500, "Delegation execution failed", "DELEGATION_EXECUTION_FAILED");
   });
 
   app.get("/api/delegation/:id", async (request, reply) => {

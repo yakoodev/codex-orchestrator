@@ -303,6 +303,17 @@ export interface Persistence {
   materializePack(id: string): Promise<boolean>;
   createDelegationRequest(input: CreateDelegationRequestInput): Promise<DelegationRequestEntity>;
   getDelegationRequest(id: string): Promise<DelegationRequestEntity | null>;
+  updateDelegationRequest(
+    id: string,
+    patch: {
+      status?: DelegationRequestEntity["status"];
+      target_agent_template_id?: string | null;
+      target_worker_instance_id?: string | null;
+      result_summary?: string | null;
+      started_at?: Date | null;
+      ended_at?: Date | null;
+    }
+  ): Promise<DelegationRequestEntity | null>;
   createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity>;
   listScheduledRules(): Promise<ScheduledRuleEntity[]>;
   getScheduledRuleById(id: string): Promise<ScheduledRuleEntity | null>;

@@ -598,6 +598,39 @@ export class PrismaPersistence implements Persistence {
     return toDelegationRequestEntity(delegation);
   }
 
+  public async updateDelegationRequest(
+    id: string,
+    patch: {
+      status?: DelegationRequestEntity["status"];
+      target_agent_template_id?: string | null;
+      target_worker_instance_id?: string | null;
+      result_summary?: string | null;
+      started_at?: Date | null;
+      ended_at?: Date | null;
+    }
+  ): Promise<DelegationRequestEntity | null> {
+    const existing = await this.prisma.delegationRequest.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.delegationRequest.update({
+      where: { id },
+      data: {
+        status: patch.status,
+        target_agent_template_id: patch.target_agent_template_id,
+        target_worker_instance_id: patch.target_worker_instance_id,
+        result_summary: patch.result_summary,
+        started_at: patch.started_at,
+        ended_at: patch.ended_at
+      }
+    });
+
+    return toDelegationRequestEntity(updated);
+  }
+
   public async createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity> {
     const created = await this.prisma.scheduledRule.create({
       data: {

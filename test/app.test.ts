@@ -345,6 +345,44 @@ class FakePersistence implements Persistence {
     return this.delegations.find((delegation) => delegation.id === id) ?? null;
   }
 
+  public async updateDelegationRequest(
+    id: string,
+    patch: {
+      status?: DelegationRequestEntity["status"];
+      target_agent_template_id?: string | null;
+      target_worker_instance_id?: string | null;
+      result_summary?: string | null;
+      started_at?: Date | null;
+      ended_at?: Date | null;
+    }
+  ): Promise<DelegationRequestEntity | null> {
+    const delegation = this.delegations.find((item) => item.id === id);
+    if (!delegation) {
+      return null;
+    }
+
+    if (patch.status) {
+      delegation.status = patch.status;
+    }
+    if (patch.target_agent_template_id !== undefined) {
+      delegation.target_agent_template_id = patch.target_agent_template_id;
+    }
+    if (patch.target_worker_instance_id !== undefined) {
+      delegation.target_worker_instance_id = patch.target_worker_instance_id;
+    }
+    if (patch.result_summary !== undefined) {
+      delegation.result_summary = patch.result_summary;
+    }
+    if (patch.started_at !== undefined) {
+      delegation.started_at = patch.started_at;
+    }
+    if (patch.ended_at !== undefined) {
+      delegation.ended_at = patch.ended_at;
+    }
+
+    return delegation;
+  }
+
   public async createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity> {
     const now = new Date();
     const rule: ScheduledRuleEntity = {
@@ -1310,8 +1348,9 @@ describe("smoke-core API", () => {
       }
     });
     expect(dispatchResponse.statusCode).toBe(202);
-    expect(dispatchResponse.json().status).toBe("requested");
+    expect(dispatchResponse.json().status).toBe("completed");
     expect(dispatchResponse.json().trace_id).toBe("trace-delegation-1");
+    expect(dispatchResponse.json().target_agent_template_id).toBe("agent-template-1");
     const delegationId = dispatchResponse.json().id as string;
 
     const getResponse = await app.inject({
@@ -1322,6 +1361,7 @@ describe("smoke-core API", () => {
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json().id).toBe(delegationId);
     expect(getResponse.json().capability).toBe("reviewer");
+    expect(getResponse.json().status).toBe("completed");
 
     const resultResponse = await app.inject({
       method: "GET",
@@ -1331,12 +1371,59 @@ describe("smoke-core API", () => {
     expect(resultResponse.statusCode).toBe(200);
     expect(resultResponse.json()).toEqual({
       id: delegationId,
-      status: "requested",
-      result_summary: null,
+      status: "completed",
+      result_summary: "Delegation completed by template agent-template-1",
       artifacts: []
     });
     expect(
       publisher.events.some((event) => event.eventType === "agent.delegation.requested")
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "agent.delegation.accepted")
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "agent.delegation.completed")
+    ).toBe(true);
+  });
+
+  it("marks delegation failed after timeout retries are exhausted", async () => {
+    await persistence.createAgentTemplate({
+      name: "helper-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-delegation-timeout-1" },
+      payload: {
+        requester_task_id: "task-1",
+        requester_task_run_id: "run-1",
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { task: "slow operation", simulate_timeout_attempts: 5 },
+        priority: 77
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("failed");
+    expect(dispatchResponse.json().result_summary).toContain("timed out");
+
+    const failedEvents = publisher.events.filter(
+      (event) => event.eventType === "agent.delegation.failed"
+    );
+    expect(failedEvents.length).toBe(3);
+    expect(
+      failedEvents.some(
+        (event) =>
+          event.payload["reason"] === "timeout_exhausted" &&
+          event.payload["retry_attempt"] === 3
+      )
     ).toBe(true);
   });
 
