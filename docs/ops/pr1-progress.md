@@ -43,7 +43,7 @@
 - [x] Реализован Redis Streams publisher с envelope (`event_id`, `event_type`, `timestamp`, `trace_id`, `payload`, `version`, `idempotency_key`).
 - [x] Публикуются обязательные события для реализованных действий, включая:
   - `auth_profile.uploaded`, `auth_profile.activated`
-  - `auth_profile.switch.completed` (manual activate/deactivate)
+  - `auth_profile.switch.started/completed/skipped` (manual activate/deactivate + no-op)
   - `module.execution.started/completed/failed`
   - `agent.delegation.requested/accepted/completed/failed`
   - `schedule.rule.*`, `schedule.run.*`
@@ -71,7 +71,7 @@
 - [x] Delegation lifecycle и timeout-retry semantics (до 3 попыток с terminal `failed`).
 - [x] Покрыт тестом terminal failed path для делегации при отсутствии подходящего capability target.
 - [x] Retry/backoff и идемпотентность для `PATCH /api/custom-modules/{key}`.
-- [x] `POST /api/auth-profiles/chatgpt/{id}/activate|deactivate` формируют `AuthSwitchEvent` записи и публикуют `auth_profile.switch.completed`.
+- [x] `POST /api/auth-profiles/chatgpt/{id}/activate|deactivate` формируют `AuthSwitchEvent` записи и публикуют lifecycle события (`started/completed/skipped`).
 
 ## Что намеренно вне PR1
 - [ ] Web UI.

@@ -1663,8 +1663,57 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 404, "Profile not found", "NOT_FOUND");
     }
 
-    if (previousActive?.id !== activated.id) {
-      const switchEvent = await persistence.createAuthSwitchEvent({
+    if (previousActive?.id === activated.id) {
+      const skippedSwitchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: activated.id,
+        to_auth_profile_id: activated.id,
+        reason: "manual_activate_noop",
+        status: "skipped",
+        switch_scope: "global",
+        details_json: { source: "api", reason: "already_active" },
+        started_at: new Date(),
+        ended_at: new Date()
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.skipped",
+        traceId,
+        idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: activated.id,
+          from_profile_id: activated.id,
+          to_profile_id: activated.id,
+          reason: "manual_activate_noop"
+        }
+      });
+    } else {
+      const startedAt = new Date();
+      const startedSwitchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: previousActive?.id ?? null,
+        to_auth_profile_id: activated.id,
+        reason: "manual_activate",
+        status: "started",
+        switch_scope: "global",
+        details_json: { source: "api" },
+        started_at: startedAt,
+        ended_at: null
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.started",
+        traceId,
+        idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: activated.id,
+          from_profile_id: previousActive?.id ?? null,
+          to_profile_id: activated.id,
+          reason: "manual_activate"
+        }
+      });
+
+      const completedSwitchEvent = await persistence.createAuthSwitchEvent({
         module_key: SWITCH_MODULE_KEY,
         from_auth_profile_id: previousActive?.id ?? null,
         to_auth_profile_id: activated.id,
@@ -1672,14 +1721,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         status: "completed",
         switch_scope: "global",
         details_json: { source: "api" },
-        started_at: new Date(),
+        started_at: startedAt,
         ended_at: new Date()
       });
 
       await publisher.publish({
         eventType: "auth_profile.switch.completed",
         traceId,
-        idempotencyKey: `${switchEvent.id}:${traceId}`,
+        idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
         payload: {
           profile_id: activated.id,
           from_profile_id: previousActive?.id ?? null,
@@ -1713,7 +1762,32 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     if (activeBeforeDeactivate?.id === id) {
-      const switchEvent = await persistence.createAuthSwitchEvent({
+      const startedAt = new Date();
+      const startedSwitchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: id,
+        to_auth_profile_id: null,
+        reason: "manual_deactivate",
+        status: "started",
+        switch_scope: "global",
+        details_json: { source: "api" },
+        started_at: startedAt,
+        ended_at: null
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.started",
+        traceId,
+        idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: null,
+          from_profile_id: id,
+          to_profile_id: null,
+          reason: "manual_deactivate"
+        }
+      });
+
+      const completedSwitchEvent = await persistence.createAuthSwitchEvent({
         module_key: SWITCH_MODULE_KEY,
         from_auth_profile_id: id,
         to_auth_profile_id: null,
@@ -1721,19 +1795,43 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         status: "completed",
         switch_scope: "global",
         details_json: { source: "api" },
-        started_at: new Date(),
+        started_at: startedAt,
         ended_at: new Date()
       });
 
       await publisher.publish({
         eventType: "auth_profile.switch.completed",
         traceId,
-        idempotencyKey: `${switchEvent.id}:${traceId}`,
+        idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
         payload: {
           profile_id: null,
           from_profile_id: id,
           to_profile_id: null,
           reason: "manual_deactivate"
+        }
+      });
+    } else {
+      const skippedSwitchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: id,
+        to_auth_profile_id: null,
+        reason: "manual_deactivate_noop",
+        status: "skipped",
+        switch_scope: "global",
+        details_json: { source: "api", reason: "profile_not_active" },
+        started_at: new Date(),
+        ended_at: new Date()
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.skipped",
+        traceId,
+        idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: null,
+          from_profile_id: id,
+          to_profile_id: null,
+          reason: "manual_deactivate_noop"
         }
       });
     }

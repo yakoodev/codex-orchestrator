@@ -16,7 +16,7 @@ Verify that runtime deployment and critical control plane endpoints work from do
 - Delegation timeout/retry path with terminal `failed` status.
 - Schedules create/trigger/runs.
 - Schedule trigger idempotency (same `X-Trace-Id` returns existing run).
-- ChatGPT auth profile upload/activate/deactivate + switch-events consistency (`manual_activate`/`manual_deactivate`).
+- ChatGPT auth profile upload/activate/deactivate + switch-events consistency (`manual_activate`/`manual_deactivate`, `started` + `completed`).
 - Custom module config patch + execution history.
 - Pack register/materialize.
 - Queue held list/release.

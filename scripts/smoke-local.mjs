@@ -243,8 +243,16 @@ async function main() {
           item.status === "completed"
       )
     : null;
-  if (!activateSwitchEvent) {
-    fail("switch-events should contain manual_activate completion for uploaded profile", {
+  const activateSwitchStartedEvent = Array.isArray(switchEventsAfterActivate.data.items)
+    ? switchEventsAfterActivate.data.items.find(
+        (item) =>
+          item.reason === "manual_activate" &&
+          item.to_auth_profile_id === profileId &&
+          item.status === "started"
+      )
+    : null;
+  if (!activateSwitchEvent || !activateSwitchStartedEvent) {
+    fail("switch-events should contain manual_activate started/completed for uploaded profile", {
       profileId,
       response: switchEventsAfterActivate.data
     });
@@ -271,8 +279,17 @@ async function main() {
           item.status === "completed"
       )
     : null;
-  if (!deactivateSwitchEvent) {
-    fail("switch-events should contain manual_deactivate completion for uploaded profile", {
+  const deactivateSwitchStartedEvent = Array.isArray(switchEventsAfterDeactivate.data.items)
+    ? switchEventsAfterDeactivate.data.items.find(
+        (item) =>
+          item.reason === "manual_deactivate" &&
+          item.from_auth_profile_id === profileId &&
+          item.to_auth_profile_id === null &&
+          item.status === "started"
+      )
+    : null;
+  if (!deactivateSwitchEvent || !deactivateSwitchStartedEvent) {
+    fail("switch-events should contain manual_deactivate started/completed for uploaded profile", {
       profileId,
       response: switchEventsAfterDeactivate.data
     });

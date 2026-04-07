@@ -1266,15 +1266,31 @@ describe("smoke-core API", () => {
     expect(response.json()).toEqual({ accepted: true });
     expect(publisher.events.some((event) => event.eventType === "auth_profile.activated")).toBe(true);
     expect(
+      publisher.events.some((event) => event.eventType === "auth_profile.switch.started")
+    ).toBe(true);
+    expect(
       publisher.events.some((event) => event.eventType === "auth_profile.switch.completed")
     ).toBe(true);
-    expect(persistence.switchEvents).toHaveLength(1);
-    const activationSwitchEvent = persistence.switchEvents[0];
-    expect(activationSwitchEvent).toBeDefined();
-    if (!activationSwitchEvent) {
-      throw new Error("Expected manual activate switch event");
+    expect(persistence.switchEvents).toHaveLength(2);
+    const activationStartedEvent = persistence.switchEvents.find(
+      (event) => event.reason === "manual_activate" && event.status === "started"
+    );
+    const activationCompletedEvent = persistence.switchEvents.find(
+      (event) => event.reason === "manual_activate" && event.status === "completed"
+    );
+    expect(activationStartedEvent).toBeDefined();
+    expect(activationCompletedEvent).toBeDefined();
+    if (!activationStartedEvent || !activationCompletedEvent) {
+      throw new Error("Expected manual activate started/completed switch events");
     }
-    expect(activationSwitchEvent).toMatchObject({
+    expect(activationStartedEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: null,
+      to_auth_profile_id: profile.id,
+      reason: "manual_activate",
+      status: "started"
+    });
+    expect(activationCompletedEvent).toMatchObject({
       module_key: SWITCH_MODULE_KEY,
       from_auth_profile_id: null,
       to_auth_profile_id: profile.id,
@@ -1318,13 +1334,26 @@ describe("smoke-core API", () => {
     });
     expect(deactivateResponse.statusCode).toBe(202);
     expect(deactivateResponse.json()).toEqual({ accepted: true });
-    expect(persistence.switchEvents).toHaveLength(1);
-    const deactivationSwitchEvent = persistence.switchEvents[0];
-    expect(deactivationSwitchEvent).toBeDefined();
-    if (!deactivationSwitchEvent) {
-      throw new Error("Expected manual deactivate switch event");
+    expect(persistence.switchEvents).toHaveLength(2);
+    const deactivationStartedEvent = persistence.switchEvents.find(
+      (event) => event.reason === "manual_deactivate" && event.status === "started"
+    );
+    const deactivationCompletedEvent = persistence.switchEvents.find(
+      (event) => event.reason === "manual_deactivate" && event.status === "completed"
+    );
+    expect(deactivationStartedEvent).toBeDefined();
+    expect(deactivationCompletedEvent).toBeDefined();
+    if (!deactivationStartedEvent || !deactivationCompletedEvent) {
+      throw new Error("Expected manual deactivate started/completed switch events");
     }
-    expect(deactivationSwitchEvent).toMatchObject({
+    expect(deactivationStartedEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: profile.id,
+      to_auth_profile_id: null,
+      reason: "manual_deactivate",
+      status: "started"
+    });
+    expect(deactivationCompletedEvent).toMatchObject({
       module_key: SWITCH_MODULE_KEY,
       from_auth_profile_id: profile.id,
       to_auth_profile_id: null,
@@ -1334,8 +1363,96 @@ describe("smoke-core API", () => {
     expect(
       publisher.events.some(
         (event) =>
+          event.eventType === "auth_profile.switch.started" &&
+          event.payload["reason"] === "manual_deactivate"
+      )
+    ).toBe(true);
+    expect(
+      publisher.events.some(
+        (event) =>
           event.eventType === "auth_profile.switch.completed" &&
           event.payload["reason"] === "manual_deactivate"
+      )
+    ).toBe(true);
+  });
+
+  it("emits skipped switch event for activate noop when profile is already active", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "already-active",
+      status: "active",
+      checksum: "checksum-active-noop",
+      storage_path: "auth-profiles/already-active.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-noop" }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(persistence.switchEvents).toHaveLength(1);
+    const activateNoopEvent = persistence.switchEvents[0];
+    expect(activateNoopEvent).toBeDefined();
+    if (!activateNoopEvent) {
+      throw new Error("Expected activate noop switch event");
+    }
+    expect(activateNoopEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: profile.id,
+      to_auth_profile_id: profile.id,
+      reason: "manual_activate_noop",
+      status: "skipped"
+    });
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.skipped" &&
+          event.payload["reason"] === "manual_activate_noop"
+      )
+    ).toBe(true);
+  });
+
+  it("emits skipped switch event for deactivate noop when profile is not active", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "inactive-profile",
+      status: "inactive",
+      checksum: "checksum-inactive-noop",
+      storage_path: "auth-profiles/inactive-noop.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/deactivate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-deactivate-noop" },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(persistence.switchEvents).toHaveLength(1);
+    const deactivateNoopEvent = persistence.switchEvents[0];
+    expect(deactivateNoopEvent).toBeDefined();
+    if (!deactivateNoopEvent) {
+      throw new Error("Expected deactivate noop switch event");
+    }
+    expect(deactivateNoopEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: profile.id,
+      to_auth_profile_id: null,
+      reason: "manual_deactivate_noop",
+      status: "skipped"
+    });
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.skipped" &&
+          event.payload["reason"] === "manual_deactivate_noop"
       )
     ).toBe(true);
   });
