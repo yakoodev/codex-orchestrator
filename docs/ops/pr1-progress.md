@@ -43,6 +43,7 @@
 - [x] Реализован Redis Streams publisher с envelope (`event_id`, `event_type`, `timestamp`, `trace_id`, `payload`, `version`, `idempotency_key`).
 - [x] Публикуются обязательные события для реализованных действий, включая:
   - `auth_profile.uploaded`, `auth_profile.activated`
+  - `auth_profile.switch.completed` (manual activate/deactivate)
   - `module.execution.started/completed/failed`
   - `agent.delegation.requested/accepted/completed/failed`
   - `schedule.rule.*`, `schedule.run.*`
@@ -57,7 +58,7 @@
   - `contract-prisma`
 - [x] E2E smoke не включен в CI (только локальный compose smoke-path).
 - [x] Локальный smoke-path документирован (`docs/ops/smoke-test.md`, `npm run smoke:local`).
-- [x] Локальный smoke-path покрывает ветки timeout/retry делегации и идемпотентный trigger расписаний.
+- [x] Локальный smoke-path покрывает ветки timeout/retry делегации, идемпотентный trigger расписаний и manual activate/deactivate switch-events.
 - [x] Добавлен этот прогресс-трекер для прозрачной фиксации статуса реализации.
 
 ## Что уже дополнительно реализовано сверх базового smoke-core
@@ -70,6 +71,7 @@
 - [x] Delegation lifecycle и timeout-retry semantics (до 3 попыток с terminal `failed`).
 - [x] Покрыт тестом terminal failed path для делегации при отсутствии подходящего capability target.
 - [x] Retry/backoff и идемпотентность для `PATCH /api/custom-modules/{key}`.
+- [x] `POST /api/auth-profiles/chatgpt/{id}/activate|deactivate` формируют `AuthSwitchEvent` записи и публикуют `auth_profile.switch.completed`.
 
 ## Что намеренно вне PR1
 - [ ] Web UI.

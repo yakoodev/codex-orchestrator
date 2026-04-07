@@ -227,8 +227,57 @@ async function main() {
     expected: [202],
     headers: { "X-Trace-Id": "smoke-trace-profile-activate" }
   });
-  await requestJson(baseUrl, adminToken, "GET", "/api/auth-profiles/chatgpt/switch-events", { expected: [200] });
-  ok("activate profile and read switch-events");
+
+  const switchEventsAfterActivate = await requestJson(
+    baseUrl,
+    adminToken,
+    "GET",
+    "/api/auth-profiles/chatgpt/switch-events",
+    { expected: [200] }
+  );
+  const activateSwitchEvent = Array.isArray(switchEventsAfterActivate.data.items)
+    ? switchEventsAfterActivate.data.items.find(
+        (item) =>
+          item.reason === "manual_activate" &&
+          item.to_auth_profile_id === profileId &&
+          item.status === "completed"
+      )
+    : null;
+  if (!activateSwitchEvent) {
+    fail("switch-events should contain manual_activate completion for uploaded profile", {
+      profileId,
+      response: switchEventsAfterActivate.data
+    });
+  }
+
+  await requestJson(baseUrl, adminToken, "POST", `/api/auth-profiles/chatgpt/${profileId}/deactivate`, {
+    expected: [202],
+    headers: { "X-Trace-Id": "smoke-trace-profile-deactivate" }
+  });
+
+  const switchEventsAfterDeactivate = await requestJson(
+    baseUrl,
+    adminToken,
+    "GET",
+    "/api/auth-profiles/chatgpt/switch-events",
+    { expected: [200] }
+  );
+  const deactivateSwitchEvent = Array.isArray(switchEventsAfterDeactivate.data.items)
+    ? switchEventsAfterDeactivate.data.items.find(
+        (item) =>
+          item.reason === "manual_deactivate" &&
+          item.from_auth_profile_id === profileId &&
+          item.to_auth_profile_id === null &&
+          item.status === "completed"
+      )
+    : null;
+  if (!deactivateSwitchEvent) {
+    fail("switch-events should contain manual_deactivate completion for uploaded profile", {
+      profileId,
+      response: switchEventsAfterDeactivate.data
+    });
+  }
+  ok("activate/deactivate profile and validate switch-events");
 
   await requestJson(baseUrl, adminToken, "GET", "/api/custom-modules/switch_chatgpt_auth_on_limit", { expected: [200] });
   await requestJson(baseUrl, adminToken, "PATCH", "/api/custom-modules/switch_chatgpt_auth_on_limit", {

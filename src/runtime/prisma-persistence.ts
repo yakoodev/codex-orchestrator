@@ -9,6 +9,7 @@ import {
   ScheduleOverlapPolicy as PrismaScheduleOverlapPolicy,
   ScheduleScope as PrismaScheduleScope,
   ScheduledRunStatus as PrismaScheduledRunStatus,
+  SwitchEventStatus as PrismaSwitchEventStatus,
   TaskStatus as PrismaTaskStatus,
   WorkerRuntimeMode as PrismaWorkerRuntimeMode
 } from "@prisma/client";
@@ -20,6 +21,7 @@ import type {
   AuthProfileEntity,
   AuthSwitchEventEntity,
   CreateAuthProfileInput,
+  CreateAuthSwitchEventInput,
   CreateAgentTemplateInput,
   CreateAuthContextInput,
   CreateDelegationRequestInput,
@@ -967,6 +969,35 @@ export class PrismaPersistence implements Persistence {
     });
 
     return result.count > 0;
+  }
+
+  public async createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity> {
+    const created = await this.prisma.authSwitchEvent.create({
+      data: {
+        module_key: input.module_key,
+        from_auth_profile_id: input.from_auth_profile_id ?? null,
+        to_auth_profile_id: input.to_auth_profile_id ?? null,
+        reason: input.reason,
+        switch_scope: input.switch_scope ?? "global",
+        status: input.status as PrismaSwitchEventStatus,
+        details_json: (input.details_json ?? null) as
+          | Prisma.InputJsonValue
+          | Prisma.NullableJsonNullValueInput,
+        started_at: input.started_at ?? new Date(),
+        ended_at: input.ended_at ?? null
+      }
+    });
+
+    return toAuthSwitchEventEntity({
+      id: created.id,
+      module_key: created.module_key,
+      from_auth_profile_id: created.from_auth_profile_id,
+      to_auth_profile_id: created.to_auth_profile_id,
+      reason: created.reason,
+      status: created.status,
+      started_at: created.started_at,
+      ended_at: created.ended_at
+    });
   }
 
   public async listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]> {

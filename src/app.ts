@@ -1656,10 +1656,37 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   app.post("/api/auth-profiles/chatgpt/:id/activate", async (request, reply) => {
     const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
+    const previousActive = await persistence.getActiveAuthProfile();
 
     const activated = await persistence.activateAuthProfile(id, "admin");
     if (!activated) {
       return sendError(reply, 404, "Profile not found", "NOT_FOUND");
+    }
+
+    if (previousActive?.id !== activated.id) {
+      const switchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: previousActive?.id ?? null,
+        to_auth_profile_id: activated.id,
+        reason: "manual_activate",
+        status: "completed",
+        switch_scope: "global",
+        details_json: { source: "api" },
+        started_at: new Date(),
+        ended_at: new Date()
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.completed",
+        traceId,
+        idempotencyKey: `${switchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: activated.id,
+          from_profile_id: previousActive?.id ?? null,
+          to_profile_id: activated.id,
+          reason: "manual_activate"
+        }
+      });
     }
 
     await publisher.publish({
@@ -1677,10 +1704,38 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   });
 
   app.post("/api/auth-profiles/chatgpt/:id/deactivate", async (request, reply) => {
+    const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
+    const activeBeforeDeactivate = await persistence.getActiveAuthProfile();
     const deactivated = await persistence.deactivateAuthProfile(id);
     if (!deactivated) {
       return sendError(reply, 404, "Profile not found", "NOT_FOUND");
+    }
+
+    if (activeBeforeDeactivate?.id === id) {
+      const switchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: id,
+        to_auth_profile_id: null,
+        reason: "manual_deactivate",
+        status: "completed",
+        switch_scope: "global",
+        details_json: { source: "api" },
+        started_at: new Date(),
+        ended_at: new Date()
+      });
+
+      await publisher.publish({
+        eventType: "auth_profile.switch.completed",
+        traceId,
+        idempotencyKey: `${switchEvent.id}:${traceId}`,
+        payload: {
+          profile_id: null,
+          from_profile_id: id,
+          to_profile_id: null,
+          reason: "manual_deactivate"
+        }
+      });
     }
 
     return reply.code(202).send({ accepted: true });

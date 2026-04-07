@@ -63,6 +63,7 @@ class FakePersistence implements Persistence {
   private authContextCounter = 1;
   private artifactCounter = 1;
   private profileCounter = 1;
+  private switchEventCounter = 1;
   private moduleCounter = 1;
   private moduleExecutionCounter = 1;
   private delegationCounter = 1;
@@ -723,6 +724,35 @@ class FakePersistence implements Persistence {
     return true;
   }
 
+  public async createAuthSwitchEvent(input: {
+    module_key: string;
+    from_auth_profile_id?: string | null;
+    to_auth_profile_id?: string | null;
+    reason: string;
+    status: AuthSwitchEventEntity["status"];
+    switch_scope?: string;
+    details_json?: Record<string, unknown> | null;
+    started_at?: Date;
+    ended_at?: Date | null;
+  }): Promise<AuthSwitchEventEntity> {
+    void input.switch_scope;
+    void input.details_json;
+
+    const event: AuthSwitchEventEntity = {
+      id: `switch-${this.switchEventCounter++}`,
+      module_key: input.module_key,
+      from_auth_profile_id: input.from_auth_profile_id ?? null,
+      to_auth_profile_id: input.to_auth_profile_id ?? null,
+      reason: input.reason,
+      status: input.status,
+      started_at: input.started_at ?? new Date(),
+      ended_at: input.ended_at ?? null
+    };
+
+    this.switchEvents.push(event);
+    return event;
+  }
+
   public async listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]> {
     return [...this.switchEvents];
   }
@@ -1235,6 +1265,22 @@ describe("smoke-core API", () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toEqual({ accepted: true });
     expect(publisher.events.some((event) => event.eventType === "auth_profile.activated")).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "auth_profile.switch.completed")
+    ).toBe(true);
+    expect(persistence.switchEvents).toHaveLength(1);
+    const activationSwitchEvent = persistence.switchEvents[0];
+    expect(activationSwitchEvent).toBeDefined();
+    if (!activationSwitchEvent) {
+      throw new Error("Expected manual activate switch event");
+    }
+    expect(activationSwitchEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: null,
+      to_auth_profile_id: profile.id,
+      reason: "manual_activate",
+      status: "completed"
+    });
   });
 
   it("lists auth profiles and resolves active profile", async () => {
@@ -1272,6 +1318,26 @@ describe("smoke-core API", () => {
     });
     expect(deactivateResponse.statusCode).toBe(202);
     expect(deactivateResponse.json()).toEqual({ accepted: true });
+    expect(persistence.switchEvents).toHaveLength(1);
+    const deactivationSwitchEvent = persistence.switchEvents[0];
+    expect(deactivationSwitchEvent).toBeDefined();
+    if (!deactivationSwitchEvent) {
+      throw new Error("Expected manual deactivate switch event");
+    }
+    expect(deactivationSwitchEvent).toMatchObject({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: profile.id,
+      to_auth_profile_id: null,
+      reason: "manual_deactivate",
+      status: "completed"
+    });
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.completed" &&
+          event.payload["reason"] === "manual_deactivate"
+      )
+    ).toBe(true);
   });
 
   it("manages packs endpoints", async () => {
