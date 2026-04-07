@@ -1304,6 +1304,9 @@ describe("smoke-core API", () => {
       result_summary: null,
       artifacts: []
     });
+    expect(
+      publisher.events.some((event) => event.eventType === "agent.delegation.requested")
+    ).toBe(true);
   });
 
   it("manages schedules endpoints", async () => {

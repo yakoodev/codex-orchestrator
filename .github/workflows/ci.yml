@@ -40,6 +40,9 @@ jobs:
       - name: Validate OpenAPI contract
         run: npm run contract-openapi
 
+      - name: Validate API route coverage
+        run: npm run contract-routes
+
       - name: Validate event schemas
         run: npm run contract-events
 

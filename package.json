@@ -20,9 +20,10 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:validate": "prisma validate",
     "contract-openapi": "node scripts/validate-openapi.mjs",
+    "contract-routes": "node scripts/validate-route-coverage.mjs",
     "contract-events": "node scripts/validate-events.mjs",
     "contract-prisma": "node scripts/validate-prisma.mjs",
-    "contracts:check": "npm run contract-openapi && npm run contract-events && npm run contract-prisma",
+    "contracts:check": "npm run contract-openapi && npm run contract-routes && npm run contract-events && npm run contract-prisma",
     "smoke:local": "node scripts/smoke-local.mjs",
     "ci:checks": "npm run lint && npm run typecheck && npm run contracts:check",
     "postinstall": "npm run prisma:generate"

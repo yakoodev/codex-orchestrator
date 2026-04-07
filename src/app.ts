@@ -1262,6 +1262,21 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       trace_id: traceId
     });
 
+    await publisher.publish({
+      eventType: "agent.delegation.requested",
+      traceId,
+      idempotencyKey: `${delegation.id}:requested`,
+      payload: {
+        delegation_id: delegation.id,
+        requester_task_id: delegation.requester_task_id,
+        capability: delegation.capability,
+        status: delegation.status,
+        target_agent_template_id: delegation.target_agent_template_id,
+        target_worker_instance_id: delegation.target_worker_instance_id,
+        reason: null
+      }
+    });
+
     return reply.code(202).send(delegationToResponse(delegation));
   });
 
