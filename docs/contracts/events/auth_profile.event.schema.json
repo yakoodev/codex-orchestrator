@@ -14,6 +14,7 @@
             "auth_profile.activated",
             "auth_profile.switch.started",
             "auth_profile.switch.retried",
+            "auth_profile.switch.failed",
             "auth_profile.switch.completed",
             "auth_profile.switch.skipped"
           ]

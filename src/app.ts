@@ -1745,6 +1745,18 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         started_at: now,
         ended_at: now
       });
+      await publisher.publish({
+        eventType: "auth_profile.switch.failed",
+        traceId,
+        idempotencyKey: `${id}:activate_failed:${traceId}`,
+        payload: {
+          profile_id: id,
+          from_profile_id: previousActive?.id ?? null,
+          to_profile_id: id,
+          reason: "manual_activate_failed",
+          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
+        }
+      });
       app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile activate failed");
       return sendError(reply, 500, "Auth profile activate failed", "AUTH_SWITCH_FAILED");
     }
@@ -1916,6 +1928,18 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         },
         started_at: now,
         ended_at: now
+      });
+      await publisher.publish({
+        eventType: "auth_profile.switch.failed",
+        traceId,
+        idempotencyKey: `${id}:deactivate_failed:${traceId}`,
+        payload: {
+          profile_id: null,
+          from_profile_id: id,
+          to_profile_id: null,
+          reason: "manual_deactivate_failed",
+          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
+        }
       });
       app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile deactivate failed");
       return sendError(reply, 500, "Auth profile deactivate failed", "AUTH_SWITCH_FAILED");

@@ -43,7 +43,7 @@
 - [x] Реализован Redis Streams publisher с envelope (`event_id`, `event_type`, `timestamp`, `trace_id`, `payload`, `version`, `idempotency_key`).
 - [x] Публикуются обязательные события для реализованных действий, включая:
   - `auth_profile.uploaded`, `auth_profile.activated`
-  - `auth_profile.switch.started/retried/completed/skipped` (manual activate/deactivate + retry/no-op)
+  - `auth_profile.switch.started/retried/failed/completed/skipped` (manual activate/deactivate + retry/no-op/failure)
   - `queue.hold_released` (manual queue release endpoint)
   - `module.execution.started/completed/failed`
   - `agent.delegation.requested/accepted/completed/failed`
@@ -75,6 +75,7 @@
 - [x] `POST /api/auth-profiles/chatgpt/{id}/activate|deactivate` формируют `AuthSwitchEvent` записи и публикуют lifecycle события (`started/completed/skipped`).
 - [x] Manual auth switch (`activate|deactivate`) использует retry/backoff при transient errors и публикует `auth_profile.switch.retried`; terminal ошибка отдает `AUTH_SWITCH_FAILED`.
 - [x] Retry и terminal failure manual switch также пишутся в `AuthSwitchEvent` (`manual_*_retry` / `manual_*_failed`, status `failed`) для полной DB-backed истории switch-events.
+- [x] Terminal failure manual switch публикует отдельное событие `auth_profile.switch.failed` (помимо DB-backed `AuthSwitchEvent`).
 
 ## Что намеренно вне PR1
 - [ ] Web UI.

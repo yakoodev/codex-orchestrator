@@ -607,7 +607,7 @@ paths:
   /api/auth-profiles/chatgpt/switch-events:
     get:
       tags: [ChatGPT Auth Profiles]
-      summary: Get auth switch history (automatic flow in MVP)
+      summary: Get auth switch history (manual + automatic flows in MVP bootstrap)
       responses:
         "200":
           description: Switch events
@@ -1241,8 +1241,18 @@ components:
           type: [string, "null"]
         reason:
           type: string
-          description: "MVP emits automatic switch reasons; `manual` is reserved for future operator-triggered flows."
-          enum: [limit_pressure, manual]
+          description: "Switch reason (automatic and manual flows)."
+          enum:
+            - limit_pressure
+            - manual
+            - manual_activate
+            - manual_activate_noop
+            - manual_activate_retry
+            - manual_activate_failed
+            - manual_deactivate
+            - manual_deactivate_noop
+            - manual_deactivate_retry
+            - manual_deactivate_failed
         status:
           type: string
           enum: [started, completed, failed, skipped]

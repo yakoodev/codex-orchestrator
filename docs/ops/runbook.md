@@ -10,6 +10,13 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Port conflicts (Windows/common local stacks)
+- Default MinIO host ports in this repo are `19000` (API) and `19001` (console) to reduce conflicts.
+- If these ports are also occupied on your host, update `MINIO_API_PORT` and `MINIO_CONSOLE_PORT` in root `.env`, then restart compose:
+```bash
+docker compose up -d
+```
+
 ## Startup with observability profile
 ```bash
 docker compose --profile observability up -d

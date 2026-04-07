@@ -59,6 +59,27 @@
 }
 ```
 
+## auth_profile.switch.failed
+```json
+{
+  "event_id": "evt-02c",
+  "event_type": "auth_profile.switch.failed",
+  "timestamp": "2026-04-06T12:05:45Z",
+  "trace_id": "trace-switch-01",
+  "task_id": null,
+  "worker_id": null,
+  "idempotency_key": "profile-3:activate_failed:trace-switch-01",
+  "version": "1.0",
+  "payload": {
+    "profile_id": "chatgpt-profile-03",
+    "from_profile_id": "chatgpt-profile-01",
+    "to_profile_id": "chatgpt-profile-03",
+    "reason": "manual_activate_failed",
+    "attempts": 3
+  }
+}
+```
+
 ## schedule.run.skipped_due_to_overlap
 ```json
 {

@@ -1512,6 +1512,63 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("returns 500 when activate keeps failing after retries", async () => {
+    const currentActive = await persistence.createAuthProfile({
+      label: "current-active",
+      status: "active",
+      checksum: "checksum-current-active",
+      storage_path: "auth-profiles/current-active.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    const targetProfile = await persistence.createAuthProfile({
+      label: "retry-activate-fail",
+      status: "inactive",
+      checksum: "checksum-retry-activate-fail",
+      storage_path: "auth-profiles/retry-activate-fail.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    persistence.activateFailuresRemaining = 5;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${targetProfile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-retry-fail" }
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json().code).toBe("AUTH_SWITCH_FAILED");
+    expect(persistence.activateAttempts).toBe(3);
+
+    const retriedEvents = publisher.events.filter(
+      (event) =>
+        event.eventType === "auth_profile.switch.retried" &&
+        event.payload["reason"] === "manual_activate_retry"
+    );
+    expect(retriedEvents).toHaveLength(2);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.failed" &&
+          event.payload["reason"] === "manual_activate_failed" &&
+          event.payload["from_profile_id"] === currentActive.id &&
+          event.payload["to_profile_id"] === targetProfile.id
+      )
+    ).toBe(true);
+    expect(persistence.switchEvents).toHaveLength(3);
+    expect(
+      persistence.switchEvents.filter(
+        (event) => event.reason === "manual_activate_retry" && event.status === "failed"
+      )
+    ).toHaveLength(2);
+    expect(
+      persistence.switchEvents.some(
+        (event) => event.reason === "manual_activate_failed" && event.status === "failed"
+      )
+    ).toBe(true);
+  });
+
   it("returns 500 when deactivate keeps failing after retries", async () => {
     const profile = await persistence.createAuthProfile({
       label: "retry-deactivate",
@@ -1541,6 +1598,14 @@ describe("smoke-core API", () => {
         event.payload["reason"] === "manual_deactivate_retry"
     );
     expect(retriedEvents).toHaveLength(2);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.failed" &&
+          event.payload["reason"] === "manual_deactivate_failed" &&
+          event.payload["from_profile_id"] === profile.id
+      )
+    ).toBe(true);
     expect(persistence.switchEvents).toHaveLength(3);
     expect(
       persistence.switchEvents.filter(
