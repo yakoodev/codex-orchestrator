@@ -1,8 +1,179 @@
 const TOKEN_KEY = "codex_orchestrator_admin_token";
+const LANG_KEY = "codex_orchestrator_lang";
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit";
 const MAX_LOG_LINES = 150;
 
+const I18N = {
+  ru: {
+    title_doc: "Codex Orchestrator Admin UI",
+    eyebrow: "Control Plane",
+    title: "Панель управления Codex Orchestrator",
+    subtitle:
+      "Операционный интерфейс: health, задачи, переключение auth-профилей, удержанная очередь и конфиг модуля.",
+    language_label: "Язык",
+    connection_title: "Подключение",
+    token_placeholder: "вставь токен",
+    save_token: "Сохранить токен",
+    clear_token: "Очистить",
+    token_hint: "Токен хранится в localStorage браузера и отправляется только для /api/* запросов.",
+    stats_tasks: "Задачи",
+    stats_held: "Удержанные",
+    stats_profiles: "Профили",
+    stats_events: "Switch events",
+    health_title: "Health",
+    refresh: "Обновить",
+    tasks_title: "Задачи",
+    task_title_label: "Заголовок",
+    task_description_label: "Описание",
+    task_project_label: "Project ID",
+    task_repo_label: "Repo ID",
+    create_task: "Создать задачу",
+    table_title: "Заголовок",
+    table_status: "Статус",
+    table_priority: "Приоритет",
+    held_title: "Удержанная очередь",
+    release: "Освободить",
+    profiles_title: "Auth-профили",
+    profile_label_label: "Метка",
+    profile_zip_label: "ZIP файл",
+    upload_profile: "Загрузить профиль",
+    table_label: "Метка",
+    table_state: "Состояние",
+    table_actions: "Действия",
+    events_title: "История переключений",
+    module_title: "Кастомный модуль",
+    executions: "Исполнения",
+    module_enabled_label: "switch_chatgpt_auth_on_limit включен",
+    patch_module: "Обновить модуль",
+    activity_title: "Журнал действий",
+    refresh_all: "Обновить всё",
+    status_unknown: "неизвестно",
+    status_failed: "ошибка",
+    status_not_ready: "не готов",
+    status_ok: "200 OK",
+    no_tasks: "Задач пока нет.",
+    no_held: "Нет задач в WAITING_LIMIT.",
+    no_profiles: "Профили ещё не загружены.",
+    no_switch_events: "Событий переключения пока нет.",
+    no_executions: "Исполнений модуля пока нет.",
+    held_summary_count: "{count} задач(а/и) удержано guard-политикой.",
+    active_profile_none: "Активный профиль: не выбран",
+    active_profile_value: "Активный профиль: {label} ({id})",
+    profile_state_active: "активен",
+    profile_state_inactive: "неактивен",
+    action_activate: "Активировать",
+    action_deactivate: "Деактивировать",
+    last_refresh_prefix: "Последнее обновление",
+    log_protected_skipped: "Пропущены защищенные панели: сначала укажи X-Admin-Token.",
+    log_refresh_complete: "Обновление завершено.",
+    log_token_empty: "Токен пустой. Сохранение пропущено.",
+    log_token_saved: "Админ-токен сохранен.",
+    log_token_cleared: "Админ-токен удален.",
+    log_health_refreshed: "Health обновлен.",
+    log_tasks_refreshed: "Задачи обновлены.",
+    log_task_created: "Задача создана",
+    log_held_refreshed: "Удержанная очередь обновлена.",
+    log_held_released: "Удержанная очередь освобождена.",
+    log_profiles_refreshed: "Профили обновлены.",
+    log_upload_requirements: "Для upload нужны label и ZIP файл.",
+    log_profile_uploaded: "Профиль загружен",
+    log_profile_action_accepted: "Операция по профилю принята",
+    log_events_refreshed: "Switch events обновлены.",
+    log_module_refreshed: "Конфиг модуля обновлен.",
+    log_module_json_invalid: "Не удалось применить модуль: config_json должен быть валидным JSON.",
+    log_module_patched: "Конфиг модуля обновлен",
+    log_executions_refreshed: "История исполнений обновлена.",
+    log_initial_refresh_failed: "Начальная загрузка UI завершилась ошибкой",
+    error_failed: "ошибка",
+    error_request_failed: "Ошибка запроса"
+  },
+  en: {
+    title_doc: "Codex Orchestrator Admin UI",
+    eyebrow: "Control Plane",
+    title: "Codex Orchestrator Control Panel",
+    subtitle:
+      "Operational interface for health, tasks, auth-profile switching, held queue, and custom module settings.",
+    language_label: "Language",
+    connection_title: "Connection",
+    token_placeholder: "paste token",
+    save_token: "Save token",
+    clear_token: "Clear",
+    token_hint: "Token is stored in browser localStorage and sent only for /api/* requests.",
+    stats_tasks: "Tasks",
+    stats_held: "Held Queue",
+    stats_profiles: "Profiles",
+    stats_events: "Switch Events",
+    health_title: "Health",
+    refresh: "Refresh",
+    tasks_title: "Tasks",
+    task_title_label: "Title",
+    task_description_label: "Description",
+    task_project_label: "Project ID",
+    task_repo_label: "Repo ID",
+    create_task: "Create task",
+    table_title: "Title",
+    table_status: "Status",
+    table_priority: "Priority",
+    held_title: "Held Queue",
+    release: "Release",
+    profiles_title: "Auth Profiles",
+    profile_label_label: "Label",
+    profile_zip_label: "ZIP file",
+    upload_profile: "Upload profile",
+    table_label: "Label",
+    table_state: "State",
+    table_actions: "Actions",
+    events_title: "Switch Events",
+    module_title: "Custom Module",
+    executions: "Executions",
+    module_enabled_label: "switch_chatgpt_auth_on_limit enabled",
+    patch_module: "Patch module",
+    activity_title: "Activity Log",
+    refresh_all: "Refresh all",
+    status_unknown: "unknown",
+    status_failed: "failed",
+    status_not_ready: "not ready",
+    status_ok: "200 OK",
+    no_tasks: "No tasks yet.",
+    no_held: "No tasks in WAITING_LIMIT.",
+    no_profiles: "No profiles uploaded yet.",
+    no_switch_events: "No switch events yet.",
+    no_executions: "No module executions yet.",
+    held_summary_count: "{count} task(s) are currently held by guard policy.",
+    active_profile_none: "Active profile: none",
+    active_profile_value: "Active profile: {label} ({id})",
+    profile_state_active: "active",
+    profile_state_inactive: "inactive",
+    action_activate: "Activate",
+    action_deactivate: "Deactivate",
+    last_refresh_prefix: "Last refresh",
+    log_protected_skipped: "Protected panels skipped: set X-Admin-Token first.",
+    log_refresh_complete: "Refresh complete.",
+    log_token_empty: "Token is empty. Nothing saved.",
+    log_token_saved: "Admin token saved.",
+    log_token_cleared: "Admin token cleared.",
+    log_health_refreshed: "Health refreshed.",
+    log_tasks_refreshed: "Tasks refreshed.",
+    log_task_created: "Task created",
+    log_held_refreshed: "Held queue refreshed.",
+    log_held_released: "Held queue released.",
+    log_profiles_refreshed: "Profiles refreshed.",
+    log_upload_requirements: "Upload requires label and ZIP file.",
+    log_profile_uploaded: "Profile uploaded",
+    log_profile_action_accepted: "Profile action accepted",
+    log_events_refreshed: "Switch events refreshed.",
+    log_module_refreshed: "Module config refreshed.",
+    log_module_json_invalid: "Module patch failed: config_json must be valid JSON.",
+    log_module_patched: "Module config patched",
+    log_executions_refreshed: "Module executions refreshed.",
+    log_initial_refresh_failed: "Initial UI refresh failed",
+    error_failed: "failed",
+    error_request_failed: "Request failed"
+  }
+};
+
 const ui = {
+  langSelect: document.getElementById("lang-select"),
   tokenForm: document.getElementById("token-form"),
   tokenInput: document.getElementById("admin-token"),
   tokenClear: document.getElementById("token-clear"),
@@ -29,8 +200,37 @@ const ui = {
   refreshModule: document.getElementById("refresh-module"),
   refreshExecutions: document.getElementById("refresh-executions"),
   executionsList: document.getElementById("executions-list"),
+  statTasks: document.getElementById("stat-tasks"),
+  statHeld: document.getElementById("stat-held"),
+  statProfiles: document.getElementById("stat-profiles"),
+  statEvents: document.getElementById("stat-events"),
+  lastRefresh: document.getElementById("last-refresh"),
   log: document.getElementById("activity-log")
 };
+
+const appState = {
+  lang: "ru",
+  tasks: [],
+  held: [],
+  profiles: [],
+  activeProfile: null,
+  switchEvents: [],
+  executions: [],
+  healthLive: { ok: null, textKey: "status_unknown" },
+  healthReady: { ok: null, textKey: "status_unknown" }
+};
+
+function t(key, vars) {
+  const dict = I18N[appState.lang] ?? I18N.ru;
+  const template = dict[key] ?? I18N.ru[key] ?? key;
+  if (!vars) {
+    return template;
+  }
+
+  return Object.entries(vars).reduce((acc, [name, value]) => {
+    return acc.replaceAll(`{${name}}`, String(value));
+  }, template);
+}
 
 function nowTime() {
   return new Date().toISOString().slice(11, 19);
@@ -66,6 +266,19 @@ function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+function getLang() {
+  const saved = localStorage.getItem(LANG_KEY);
+  return saved === "en" ? "en" : "ru";
+}
+
+function setLang(lang) {
+  const normalized = lang === "en" ? "en" : "ru";
+  appState.lang = normalized;
+  localStorage.setItem(LANG_KEY, normalized);
+  document.documentElement.lang = normalized;
+  ui.langSelect.value = normalized;
+}
+
 function markStatus(node, ok, text) {
   node.textContent = text;
   node.classList.remove("status-ok", "status-error", "status-unknown");
@@ -80,7 +293,49 @@ function markStatus(node, ok, text) {
   node.classList.add("status-unknown");
 }
 
-async function requestJson(route, options = {}) {
+function applyHealthState() {
+  markStatus(ui.liveStatus, appState.healthLive.ok, t(appState.healthLive.textKey));
+  markStatus(ui.readyStatus, appState.healthReady.ok, t(appState.healthReady.textKey));
+}
+
+function updateLastRefresh() {
+  ui.lastRefresh.textContent = `${t("last_refresh_prefix")}: ${new Date().toLocaleTimeString()}`;
+}
+
+function updateStats() {
+  ui.statTasks.textContent = String(appState.tasks.length);
+  ui.statHeld.textContent = String(appState.held.length);
+  ui.statProfiles.textContent = String(appState.profiles.length);
+  ui.statEvents.textContent = String(appState.switchEvents.length);
+}
+
+function applyI18n() {
+  document.title = t("title_doc");
+
+  document.querySelectorAll("[data-i18n]").forEach((element) => {
+    const key = element.getAttribute("data-i18n");
+    if (key) {
+      element.textContent = t(key);
+    }
+  });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+    const key = element.getAttribute("data-i18n-placeholder");
+    if (key) {
+      element.setAttribute("placeholder", t(key));
+    }
+  });
+
+  renderTasks(appState.tasks);
+  renderHeld(appState.held);
+  renderProfiles(appState.profiles);
+  renderSwitchEvents(appState.switchEvents);
+  renderExecutions(appState.executions);
+  applyHealthState();
+  updateStats();
+}
+
+async function requestRaw(route, options = {}) {
   const method = options.method ?? "GET";
   const headers = new Headers(options.headers ?? {});
   const token = getToken();
@@ -104,27 +359,40 @@ async function requestJson(route, options = {}) {
     ? await response.json()
     : await response.text();
 
+  return {
+    status: response.status,
+    ok: response.ok,
+    payload
+  };
+}
+
+async function requestJson(route, options = {}) {
+  const response = await requestRaw(route, options);
   if (!response.ok) {
+    const payload = response.payload;
     const message =
       payload && typeof payload === "object" && "error" in payload
         ? payload.error
-        : `HTTP ${response.status}`;
+        : `${t("error_request_failed")} (${response.status})`;
     const error = new Error(String(message));
     error.status = response.status;
     error.payload = payload;
     throw error;
   }
 
-  return payload;
+  return response.payload;
 }
 
 function renderTasks(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    ui.tasksBody.innerHTML = '<tr><td colspan="4" class="muted">No tasks yet.</td></tr>';
+  appState.tasks = Array.isArray(items) ? items : [];
+
+  if (appState.tasks.length === 0) {
+    ui.tasksBody.innerHTML = `<tr><td colspan="4" class="muted">${escapeHtml(t("no_tasks"))}</td></tr>`;
+    updateStats();
     return;
   }
 
-  ui.tasksBody.innerHTML = items
+  ui.tasksBody.innerHTML = appState.tasks
     .map(
       (item) => `
       <tr>
@@ -136,55 +404,78 @@ function renderTasks(items) {
     `
     )
     .join("");
+  updateStats();
 }
 
 function renderHeld(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    ui.heldSummary.textContent = "No tasks in WAITING_LIMIT.";
+  appState.held = Array.isArray(items) ? items : [];
+
+  if (appState.held.length === 0) {
+    ui.heldSummary.textContent = t("no_held");
     ui.heldList.innerHTML = "";
+    updateStats();
     return;
   }
 
-  ui.heldSummary.textContent = `${items.length} task(s) are currently held by guard policy.`;
-  ui.heldList.innerHTML = items
+  ui.heldSummary.textContent = t("held_summary_count", { count: appState.held.length });
+  ui.heldList.innerHTML = appState.held
     .map(
       (item) =>
         `<li><code>${escapeHtml(item.id)}</code> ${escapeHtml(item.title)} <span class="pill">${escapeHtml(item.status)}</span></li>`
     )
     .join("");
+  updateStats();
 }
 
 function renderProfiles(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    ui.profilesBody.innerHTML = '<tr><td colspan="4" class="muted">No profiles uploaded.</td></tr>';
+  appState.profiles = Array.isArray(items) ? items : [];
+
+  if (appState.activeProfile) {
+    ui.activeProfile.textContent = t("active_profile_value", {
+      label: appState.activeProfile.label,
+      id: appState.activeProfile.id
+    });
+  } else {
+    ui.activeProfile.textContent = t("active_profile_none");
+  }
+
+  if (appState.profiles.length === 0) {
+    ui.profilesBody.innerHTML = `<tr><td colspan="4" class="muted">${escapeHtml(t("no_profiles"))}</td></tr>`;
+    updateStats();
     return;
   }
 
-  ui.profilesBody.innerHTML = items
+  ui.profilesBody.innerHTML = appState.profiles
     .map((item) => {
-      const state = item.is_active ? '<span class="pill pill-active">active</span>' : '<span class="pill">inactive</span>';
+      const state = item.is_active
+        ? `<span class="pill pill-active">${escapeHtml(t("profile_state_active"))}</span>`
+        : `<span class="pill">${escapeHtml(t("profile_state_inactive"))}</span>`;
       return `
         <tr>
           <td><code>${escapeHtml(item.id)}</code></td>
           <td>${escapeHtml(item.label)}</td>
           <td>${state}</td>
           <td class="actions">
-            <button type="button" data-action="activate" data-id="${escapeHtml(item.id)}">Activate</button>
-            <button type="button" data-action="deactivate" data-id="${escapeHtml(item.id)}" class="ghost">Deactivate</button>
+            <button type="button" data-action="activate" data-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button>
+            <button type="button" data-action="deactivate" data-id="${escapeHtml(item.id)}" class="ghost">${escapeHtml(t("action_deactivate"))}</button>
           </td>
         </tr>
       `;
     })
     .join("");
+  updateStats();
 }
 
 function renderSwitchEvents(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    ui.switchEvents.innerHTML = "<li class='muted'>No switch events yet.</li>";
+  appState.switchEvents = Array.isArray(items) ? items : [];
+
+  if (appState.switchEvents.length === 0) {
+    ui.switchEvents.innerHTML = `<li class="muted">${escapeHtml(t("no_switch_events"))}</li>`;
+    updateStats();
     return;
   }
 
-  ui.switchEvents.innerHTML = items
+  ui.switchEvents.innerHTML = appState.switchEvents
     .slice(0, 20)
     .map((eventItem) => {
       const from = eventItem.from_auth_profile_id ?? "none";
@@ -194,15 +485,18 @@ function renderSwitchEvents(items) {
       )} (${escapeHtml(from)} -> ${escapeHtml(to)})</li>`;
     })
     .join("");
+  updateStats();
 }
 
 function renderExecutions(items) {
-  if (!Array.isArray(items) || items.length === 0) {
-    ui.executionsList.innerHTML = "<li class='muted'>No module executions yet.</li>";
+  appState.executions = Array.isArray(items) ? items : [];
+
+  if (appState.executions.length === 0) {
+    ui.executionsList.innerHTML = `<li class="muted">${escapeHtml(t("no_executions"))}</li>`;
     return;
   }
 
-  ui.executionsList.innerHTML = items
+  ui.executionsList.innerHTML = appState.executions
     .slice(0, 10)
     .map(
       (item) =>
@@ -216,19 +510,21 @@ function renderExecutions(items) {
 async function refreshHealth() {
   try {
     await requestJson("/health/live");
-    markStatus(ui.liveStatus, true, "200 OK");
+    appState.healthLive = { ok: true, textKey: "status_ok" };
   } catch (error) {
-    markStatus(ui.liveStatus, false, "failed");
+    appState.healthLive = { ok: false, textKey: "status_failed" };
     log("health/live failed", { message: error.message });
   }
 
   try {
     await requestJson("/health/ready");
-    markStatus(ui.readyStatus, true, "200 OK");
+    appState.healthReady = { ok: true, textKey: "status_ok" };
   } catch (error) {
-    markStatus(ui.readyStatus, false, "not ready");
+    appState.healthReady = { ok: false, textKey: "status_not_ready" };
     log("health/ready failed", { message: error.message });
   }
+
+  applyHealthState();
 }
 
 async function refreshTasks() {
@@ -242,13 +538,21 @@ async function refreshHeld() {
 }
 
 async function refreshProfiles() {
-  const [profiles, active] = await Promise.all([
-    requestJson("/api/auth-profiles/chatgpt"),
-    requestJson("/api/auth-profiles/chatgpt/active")
-  ]);
-  renderProfiles(profiles.items);
-  const label = active.profile ? `${active.profile.label} (${active.profile.id})` : "none";
-  ui.activeProfile.textContent = `Active profile: ${label}`;
+  const profilesResponse = await requestJson("/api/auth-profiles/chatgpt");
+
+  const activeResponse = await requestRaw("/api/auth-profiles/chatgpt/active");
+  if (activeResponse.ok) {
+    appState.activeProfile = activeResponse.payload.profile ?? null;
+  } else if (activeResponse.status === 404) {
+    appState.activeProfile = null;
+  } else {
+    const error = new Error(t("error_request_failed"));
+    error.status = activeResponse.status;
+    error.payload = activeResponse.payload;
+    throw error;
+  }
+
+  renderProfiles(profilesResponse.items);
 }
 
 async function refreshSwitchEvents() {
@@ -268,47 +572,64 @@ async function refreshExecutions() {
 }
 
 async function refreshProtectedPanels() {
-  const token = getToken();
-  if (!token) {
-    log("Protected panels skipped: set X-Admin-Token to continue.");
+  if (!getToken()) {
+    log(t("log_protected_skipped"));
     return;
   }
 
-  await Promise.all([
-    refreshTasks(),
-    refreshHeld(),
-    refreshProfiles(),
-    refreshSwitchEvents(),
-    refreshModule(),
-    refreshExecutions()
-  ]);
+  const jobs = [
+    ["tasks", refreshTasks],
+    ["held", refreshHeld],
+    ["profiles", refreshProfiles],
+    ["switch-events", refreshSwitchEvents],
+    ["module", refreshModule],
+    ["executions", refreshExecutions]
+  ];
+
+  for (const [name, run] of jobs) {
+    try {
+      await run();
+    } catch (error) {
+      log(`${name} ${t("error_failed")}`, { message: error.message, payload: error.payload });
+    }
+  }
 }
 
 async function refreshAll() {
   await refreshHealth();
   await refreshProtectedPanels();
-  log("Refresh complete.");
+  updateLastRefresh();
+  log(t("log_refresh_complete"));
 }
 
 function installHandlers() {
+  setLang(getLang());
   ui.tokenInput.value = getToken();
+  applyI18n();
+
+  ui.langSelect.addEventListener("change", (event) => {
+    const nextLang = event.target.value;
+    setLang(nextLang);
+    applyI18n();
+    log(`language set to ${nextLang}`);
+  });
 
   ui.tokenForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const token = ui.tokenInput.value.trim();
     if (!token) {
-      log("Token is empty. Nothing saved.");
+      log(t("log_token_empty"));
       return;
     }
     setToken(token);
-    log("Admin token saved.");
+    log(t("log_token_saved"));
     await refreshAll();
   });
 
   ui.tokenClear.addEventListener("click", () => {
     clearToken();
     ui.tokenInput.value = "";
-    log("Admin token cleared.");
+    log(t("log_token_cleared"));
   });
 
   ui.refreshAll.addEventListener("click", async () => {
@@ -321,13 +642,15 @@ function installHandlers() {
 
   ui.refreshHealth.addEventListener("click", async () => {
     await refreshHealth();
-    log("Health refreshed.");
+    updateLastRefresh();
+    log(t("log_health_refreshed"));
   });
 
   ui.refreshTasks.addEventListener("click", async () => {
     try {
       await refreshTasks();
-      log("Tasks refreshed.");
+      updateLastRefresh();
+      log(t("log_tasks_refreshed"));
     } catch (error) {
       log("tasks refresh failed", { message: error.message, payload: error.payload });
     }
@@ -346,9 +669,10 @@ function installHandlers() {
 
     try {
       const created = await requestJson("/api/tasks", { method: "POST", json: payload });
-      log("Task created", { id: created.id, status: created.status });
+      log(t("log_task_created"), { id: created.id, status: created.status });
       ui.taskForm.reset();
       await Promise.all([refreshTasks(), refreshHeld()]);
+      updateLastRefresh();
     } catch (error) {
       log("task create failed", { message: error.message, payload: error.payload });
     }
@@ -357,7 +681,8 @@ function installHandlers() {
   ui.refreshHeld.addEventListener("click", async () => {
     try {
       await refreshHeld();
-      log("Held queue refreshed.");
+      updateLastRefresh();
+      log(t("log_held_refreshed"));
     } catch (error) {
       log("held queue refresh failed", { message: error.message, payload: error.payload });
     }
@@ -366,8 +691,9 @@ function installHandlers() {
   ui.releaseHeld.addEventListener("click", async () => {
     try {
       await requestJson("/api/queue/held/release", { method: "POST" });
-      log("Held queue released.");
+      log(t("log_held_released"));
       await Promise.all([refreshHeld(), refreshTasks(), refreshSwitchEvents()]);
+      updateLastRefresh();
     } catch (error) {
       log("held queue release failed", { message: error.message, payload: error.payload });
     }
@@ -376,7 +702,8 @@ function installHandlers() {
   ui.refreshProfiles.addEventListener("click", async () => {
     try {
       await Promise.all([refreshProfiles(), refreshSwitchEvents()]);
-      log("Profiles refreshed.");
+      updateLastRefresh();
+      log(t("log_profiles_refreshed"));
     } catch (error) {
       log("profiles refresh failed", { message: error.message, payload: error.payload });
     }
@@ -390,7 +717,7 @@ function installHandlers() {
     const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
 
     if (!label || !file) {
-      log("Upload requires label and ZIP file.");
+      log(t("log_upload_requirements"));
       return;
     }
 
@@ -403,9 +730,10 @@ function installHandlers() {
         method: "POST",
         body
       });
-      log("Profile uploaded", { id: response.id, checksum_sha256: response.checksum_sha256 });
+      log(t("log_profile_uploaded"), { id: response.id, checksum_sha256: response.checksum_sha256 });
       ui.uploadForm.reset();
       await refreshProfiles();
+      updateLastRefresh();
     } catch (error) {
       log("profile upload failed", { message: error.message, payload: error.payload });
     }
@@ -430,8 +758,9 @@ function installHandlers() {
 
     try {
       const response = await requestJson(route, { method: "POST" });
-      log(`Profile ${action} accepted`, { id, accepted: response.accepted });
+      log(t("log_profile_action_accepted"), { action, id, accepted: response.accepted });
       await Promise.all([refreshProfiles(), refreshHeld(), refreshSwitchEvents(), refreshTasks()]);
+      updateLastRefresh();
     } catch (error) {
       log(`profile ${action} failed`, { message: error.message, payload: error.payload });
     }
@@ -440,7 +769,8 @@ function installHandlers() {
   ui.refreshSwitchEvents.addEventListener("click", async () => {
     try {
       await refreshSwitchEvents();
-      log("Switch events refreshed.");
+      updateLastRefresh();
+      log(t("log_events_refreshed"));
     } catch (error) {
       log("switch-events refresh failed", { message: error.message, payload: error.payload });
     }
@@ -449,7 +779,8 @@ function installHandlers() {
   ui.refreshModule.addEventListener("click", async () => {
     try {
       await refreshModule();
-      log("Module config refreshed.");
+      updateLastRefresh();
+      log(t("log_module_refreshed"));
     } catch (error) {
       log("module refresh failed", { message: error.message, payload: error.payload });
     }
@@ -461,7 +792,7 @@ function installHandlers() {
     try {
       configJson = JSON.parse(ui.moduleConfig.value || "{}");
     } catch {
-      log("module patch failed: config_json must be valid JSON.");
+      log(t("log_module_json_invalid"));
       return;
     }
 
@@ -473,11 +804,12 @@ function installHandlers() {
           config_json: configJson
         }
       });
-      log("Module config patched", {
+      log(t("log_module_patched"), {
         module_key: response.module_key,
         is_enabled: response.is_enabled
       });
       await Promise.all([refreshModule(), refreshExecutions()]);
+      updateLastRefresh();
     } catch (error) {
       log("module patch failed", { message: error.message, payload: error.payload });
     }
@@ -486,7 +818,8 @@ function installHandlers() {
   ui.refreshExecutions.addEventListener("click", async () => {
     try {
       await refreshExecutions();
-      log("Module executions refreshed.");
+      updateLastRefresh();
+      log(t("log_executions_refreshed"));
     } catch (error) {
       log("module executions refresh failed", { message: error.message, payload: error.payload });
     }
@@ -495,5 +828,5 @@ function installHandlers() {
 
 installHandlers();
 void refreshAll().catch((error) => {
-  log("initial refresh failed", { message: error.message, payload: error.payload });
+  log(t("log_initial_refresh_failed"), { message: error.message, payload: error.payload });
 });

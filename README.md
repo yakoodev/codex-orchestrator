@@ -32,6 +32,7 @@ The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles,
 Built-in web control panel:
 - Open `http://localhost:8080/ui/`
 - Save `X-Admin-Token` from your `.env`
+- Select language (`RU/EN`) in header if needed
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 
 Optional observability profile:

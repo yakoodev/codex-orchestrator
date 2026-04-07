@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codex Orchestrator Control</title>
+    <title>Codex Orchestrator Admin UI</title>
     <link rel="stylesheet" href="/ui/styles.css" />
   </head>
   <body>
@@ -11,26 +11,64 @@
     <div class="bg-shape bg-shape-b"></div>
     <main class="layout">
       <header class="card reveal">
-        <p class="eyebrow">Control Plane</p>
-        <h1>Codex Orchestrator Control Panel</h1>
-        <p class="muted">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow" data-i18n="eyebrow">Control Plane</p>
+            <h1 data-i18n="title">Codex Orchestrator Control Panel</h1>
+          </div>
+          <div class="lang-control">
+            <label for="lang-select" data-i18n="language_label">Язык</label>
+            <select id="lang-select">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted" data-i18n="subtitle">
           Web interface for day-to-day operations: health, tasks, auth switch flow, held queue, and module config.
         </p>
       </header>
 
+      <section class="stats-grid reveal">
+        <article class="stat-card">
+          <p class="tiny-label" data-i18n="stats_tasks">Tasks</p>
+          <p id="stat-tasks" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="tiny-label" data-i18n="stats_held">Held Queue</p>
+          <p id="stat-held" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="tiny-label" data-i18n="stats_profiles">Auth Profiles</p>
+          <p id="stat-profiles" class="stat-value">0</p>
+        </article>
+        <article class="stat-card">
+          <p class="tiny-label" data-i18n="stats_events">Switch Events</p>
+          <p id="stat-events" class="stat-value">0</p>
+        </article>
+      </section>
+
       <section class="card reveal">
         <div class="section-head">
-          <h2>Connection</h2>
+          <h2 data-i18n="connection_title">Connection</h2>
+          <p id="last-refresh" class="tiny-meta"></p>
         </div>
         <form id="token-form" class="row-form">
           <label for="admin-token">X-Admin-Token</label>
-          <input id="admin-token" name="admin-token" type="password" autocomplete="off" placeholder="paste token" />
+          <input
+            id="admin-token"
+            name="admin-token"
+            type="password"
+            autocomplete="off"
+            data-i18n-placeholder="token_placeholder"
+            placeholder="вставь токен"
+          />
           <div class="actions">
-            <button type="submit">Save token</button>
-            <button type="button" id="token-clear" class="ghost">Clear</button>
+            <button type="submit" data-i18n="save_token">Сохранить токен</button>
+            <button type="button" id="token-clear" class="ghost" data-i18n="clear_token">Очистить</button>
           </div>
-          <p class="hint">
-            Token is stored in browser localStorage and sent only for <code>/api/*</code> requests.
+          <p class="hint" data-i18n="token_hint">
+            Токен хранится в localStorage браузера и отправляется только для <code>/api/*</code> запросов.
           </p>
         </form>
       </section>
@@ -38,8 +76,8 @@
       <section class="grid">
         <article class="card reveal">
           <div class="section-head">
-            <h2>Health</h2>
-            <button id="refresh-health" class="ghost">Refresh</button>
+            <h2 data-i18n="health_title">Health</h2>
+            <button id="refresh-health" class="ghost" data-i18n="refresh">Обновить</button>
           </div>
           <div class="status-grid">
             <div>
@@ -55,34 +93,34 @@
 
         <article class="card reveal">
           <div class="section-head">
-            <h2>Tasks</h2>
-            <button id="refresh-tasks" class="ghost">Refresh</button>
+            <h2 data-i18n="tasks_title">Tasks</h2>
+            <button id="refresh-tasks" class="ghost" data-i18n="refresh">Обновить</button>
           </div>
           <form id="task-form" class="row-form compact">
-            <label for="task-title">Title</label>
+            <label for="task-title" data-i18n="task_title_label">Title</label>
             <input id="task-title" name="title" required />
-            <label for="task-description">Description</label>
+            <label for="task-description" data-i18n="task_description_label">Description</label>
             <textarea id="task-description" name="description" rows="2" required></textarea>
             <div class="split">
               <div>
-                <label for="task-project">Project ID</label>
+                <label for="task-project" data-i18n="task_project_label">Project ID</label>
                 <input id="task-project" name="project_id" value="web-ui" required />
               </div>
               <div>
-                <label for="task-repo">Repo ID</label>
+                <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
                 <input id="task-repo" name="repo_id" value="web-ui" required />
               </div>
             </div>
-            <button type="submit">Create task</button>
+            <button type="submit" data-i18n="create_task">Create task</button>
           </form>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Priority</th>
+                  <th data-i18n="table_title">Title</th>
+                  <th data-i18n="table_status">Status</th>
+                  <th data-i18n="table_priority">Priority</th>
                 </tr>
               </thead>
               <tbody id="tasks-body"></tbody>
@@ -92,10 +130,10 @@
 
         <article class="card reveal">
           <div class="section-head">
-            <h2>Held Queue</h2>
+            <h2 data-i18n="held_title">Held Queue</h2>
             <div class="actions">
-              <button id="refresh-held" class="ghost">Refresh</button>
-              <button id="release-held" class="warn">Release</button>
+              <button id="refresh-held" class="ghost" data-i18n="refresh">Обновить</button>
+              <button id="release-held" class="warn" data-i18n="release">Release</button>
             </div>
           </div>
           <p class="muted" id="held-summary">No data yet.</p>
@@ -104,15 +142,15 @@
 
         <article class="card reveal">
           <div class="section-head">
-            <h2>Auth Profiles</h2>
-            <button id="refresh-profiles" class="ghost">Refresh</button>
+            <h2 data-i18n="profiles_title">Auth Profiles</h2>
+            <button id="refresh-profiles" class="ghost" data-i18n="refresh">Обновить</button>
           </div>
           <form id="upload-form" class="row-form compact">
-            <label for="profile-label">Label</label>
+            <label for="profile-label" data-i18n="profile_label_label">Label</label>
             <input id="profile-label" name="label" required />
-            <label for="profile-file">ZIP file</label>
+            <label for="profile-file" data-i18n="profile_zip_label">ZIP file</label>
             <input id="profile-file" name="file" type="file" accept=".zip,application/zip" required />
-            <button type="submit">Upload profile</button>
+            <button type="submit" data-i18n="upload_profile">Upload profile</button>
           </form>
           <p class="muted" id="active-profile">Active profile: unknown</p>
           <div class="table-wrap">
@@ -120,9 +158,9 @@
               <thead>
                 <tr>
                   <th>ID</th>
-                  <th>Label</th>
-                  <th>State</th>
-                  <th>Actions</th>
+                  <th data-i18n="table_label">Label</th>
+                  <th data-i18n="table_state">State</th>
+                  <th data-i18n="table_actions">Actions</th>
                 </tr>
               </thead>
               <tbody id="profiles-body"></tbody>
@@ -132,28 +170,28 @@
 
         <article class="card reveal">
           <div class="section-head">
-            <h2>Switch Events</h2>
-            <button id="refresh-switch-events" class="ghost">Refresh</button>
+            <h2 data-i18n="events_title">Switch Events</h2>
+            <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
           </div>
           <ul id="switch-events" class="line-list"></ul>
         </article>
 
         <article class="card reveal">
           <div class="section-head">
-            <h2>Custom Module</h2>
+            <h2 data-i18n="module_title">Custom Module</h2>
             <div class="actions">
-              <button id="refresh-module" class="ghost">Refresh</button>
-              <button id="refresh-executions" class="ghost">Executions</button>
+              <button id="refresh-module" class="ghost" data-i18n="refresh">Обновить</button>
+              <button id="refresh-executions" class="ghost" data-i18n="executions">Executions</button>
             </div>
           </div>
           <form id="module-form" class="row-form compact">
             <label class="checkbox">
               <input id="module-enabled" type="checkbox" />
-              <span>switch_chatgpt_auth_on_limit enabled</span>
+              <span data-i18n="module_enabled_label">switch_chatgpt_auth_on_limit enabled</span>
             </label>
             <label for="module-config">config_json</label>
             <textarea id="module-config" rows="6"></textarea>
-            <button type="submit">Patch module</button>
+            <button type="submit" data-i18n="patch_module">Patch module</button>
           </form>
           <ul id="executions-list" class="line-list"></ul>
         </article>
@@ -161,8 +199,8 @@
 
       <section class="card reveal">
         <div class="section-head">
-          <h2>Activity Log</h2>
-          <button id="refresh-all" class="ghost">Refresh all</button>
+          <h2 data-i18n="activity_title">Activity Log</h2>
+          <button id="refresh-all" class="ghost" data-i18n="refresh_all">Refresh all</button>
         </div>
         <pre id="activity-log" class="log"></pre>
       </section>

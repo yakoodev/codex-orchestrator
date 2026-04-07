@@ -44,11 +44,15 @@ docker compose exec bus printenv TG_PROXY_URL
 ## Web operator panel
 - Open `http://localhost:8080/ui/`.
 - Save `X-Admin-Token` from root `.env` in the Connection section.
+- Optional: switch UI locale (`RU/EN`) in panel header.
 - Validate primary workflow from UI:
   - create task;
   - upload ChatGPT profile ZIP;
   - activate/deactivate profile (triggers hold -> switch -> release flow);
   - inspect switch-events and held queue.
+
+Notes:
+- `GET /api/auth-profiles/chatgpt/active` may return `404` when no active profile is selected; panel treats it as normal "no active profile" state.
 
 ## Backup
 - Postgres: `pg_dump` of `orchestrator` database.

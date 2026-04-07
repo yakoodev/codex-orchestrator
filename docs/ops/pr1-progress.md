@@ -83,6 +83,8 @@
 - [x] Manual auth switch теперь проходит через queue workflow `hold -> switch -> release` для `NEW/QUEUED` задач с публикацией `queue.hold_started/queue.hold_released` и `task.auth_switching`.
 - [x] Pack lifecycle endpoints публикуют `pack.registered`, `pack.validated`, `pack.rotated`, `pack.materialized`.
 - [x] Добавлен встроенный Web operator panel (`/ui/`) в root-сервис для ручного управления workflow: health, tasks, held queue, auth profiles, switch-events, module config.
+- [x] Web panel улучшен: добавлены RU/EN локализация, переключатель языка, KPI-статистика по ключевым сущностям и fail-soft refresh панелей.
+- [x] Для UI backlog заведена отдельная задача в шине: `cmnonv80f0001mp2uw9zjyt4y` (UI/UX + localization enhancement).
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
