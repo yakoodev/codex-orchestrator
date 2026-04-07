@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import path from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import type { AppConfig } from "./config";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import type {
@@ -1224,11 +1226,24 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   const app = Fastify({ logger: true });
 
+  await app.register(fastifyStatic, {
+    root: path.resolve(process.cwd(), "public"),
+    prefix: "/ui/"
+  });
+
   await app.register(multipart, {
     limits: {
       fileSize: config.maxZipBytes,
       files: 1
     }
+  });
+
+  app.get("/", async (_request, reply) => {
+    return reply.redirect("/ui/");
+  });
+
+  app.get("/ui", async (_request, reply) => {
+    return reply.redirect("/ui/");
   });
 
   app.addHook("onRequest", async (request, reply) => {

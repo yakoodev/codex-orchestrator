@@ -985,6 +985,22 @@ describe("smoke-core API", () => {
     expect(response.json().code).toBe("DEPENDENCIES_NOT_READY");
   });
 
+  it("serves built-in web UI", async () => {
+    const rootResponse = await app.inject({ method: "GET", url: "/" });
+    expect(rootResponse.statusCode).toBe(302);
+    expect(rootResponse.headers.location).toBe("/ui/");
+
+    const uiResponse = await app.inject({ method: "GET", url: "/ui/" });
+    expect(uiResponse.statusCode).toBe(200);
+    expect(uiResponse.headers["content-type"]).toContain("text/html");
+    expect(uiResponse.body).toContain("Codex Orchestrator Control Panel");
+
+    const scriptResponse = await app.inject({ method: "GET", url: "/ui/app.js" });
+    expect(scriptResponse.statusCode).toBe(200);
+    expect(scriptResponse.headers["content-type"]).toContain("javascript");
+    expect(scriptResponse.body).toContain("SWITCH_MODULE_KEY");
+  });
+
   it("enforces X-Admin-Token for /api routes", async () => {
     const response = await app.inject({ method: "GET", url: "/api/tasks" });
 

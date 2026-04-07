@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Orchestrator Control</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <div class="bg-shape bg-shape-a"></div>
+    <div class="bg-shape bg-shape-b"></div>
+    <main class="layout">
+      <header class="card reveal">
+        <p class="eyebrow">Control Plane</p>
+        <h1>Codex Orchestrator Control Panel</h1>
+        <p class="muted">
+          Web interface for day-to-day operations: health, tasks, auth switch flow, held queue, and module config.
+        </p>
+      </header>
+
+      <section class="card reveal">
+        <div class="section-head">
+          <h2>Connection</h2>
+        </div>
+        <form id="token-form" class="row-form">
+          <label for="admin-token">X-Admin-Token</label>
+          <input id="admin-token" name="admin-token" type="password" autocomplete="off" placeholder="paste token" />
+          <div class="actions">
+            <button type="submit">Save token</button>
+            <button type="button" id="token-clear" class="ghost">Clear</button>
+          </div>
+          <p class="hint">
+            Token is stored in browser localStorage and sent only for <code>/api/*</code> requests.
+          </p>
+        </form>
+      </section>
+
+      <section class="grid">
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Health</h2>
+            <button id="refresh-health" class="ghost">Refresh</button>
+          </div>
+          <div class="status-grid">
+            <div>
+              <p class="tiny-label">/health/live</p>
+              <p id="live-status" class="status-badge">unknown</p>
+            </div>
+            <div>
+              <p class="tiny-label">/health/ready</p>
+              <p id="ready-status" class="status-badge">unknown</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Tasks</h2>
+            <button id="refresh-tasks" class="ghost">Refresh</button>
+          </div>
+          <form id="task-form" class="row-form compact">
+            <label for="task-title">Title</label>
+            <input id="task-title" name="title" required />
+            <label for="task-description">Description</label>
+            <textarea id="task-description" name="description" rows="2" required></textarea>
+            <div class="split">
+              <div>
+                <label for="task-project">Project ID</label>
+                <input id="task-project" name="project_id" value="web-ui" required />
+              </div>
+              <div>
+                <label for="task-repo">Repo ID</label>
+                <input id="task-repo" name="repo_id" value="web-ui" required />
+              </div>
+            </div>
+            <button type="submit">Create task</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Title</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                </tr>
+              </thead>
+              <tbody id="tasks-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Held Queue</h2>
+            <div class="actions">
+              <button id="refresh-held" class="ghost">Refresh</button>
+              <button id="release-held" class="warn">Release</button>
+            </div>
+          </div>
+          <p class="muted" id="held-summary">No data yet.</p>
+          <ul id="held-list" class="line-list"></ul>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Auth Profiles</h2>
+            <button id="refresh-profiles" class="ghost">Refresh</button>
+          </div>
+          <form id="upload-form" class="row-form compact">
+            <label for="profile-label">Label</label>
+            <input id="profile-label" name="label" required />
+            <label for="profile-file">ZIP file</label>
+            <input id="profile-file" name="file" type="file" accept=".zip,application/zip" required />
+            <button type="submit">Upload profile</button>
+          </form>
+          <p class="muted" id="active-profile">Active profile: unknown</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Label</th>
+                  <th>State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="profiles-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Switch Events</h2>
+            <button id="refresh-switch-events" class="ghost">Refresh</button>
+          </div>
+          <ul id="switch-events" class="line-list"></ul>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2>Custom Module</h2>
+            <div class="actions">
+              <button id="refresh-module" class="ghost">Refresh</button>
+              <button id="refresh-executions" class="ghost">Executions</button>
+            </div>
+          </div>
+          <form id="module-form" class="row-form compact">
+            <label class="checkbox">
+              <input id="module-enabled" type="checkbox" />
+              <span>switch_chatgpt_auth_on_limit enabled</span>
+            </label>
+            <label for="module-config">config_json</label>
+            <textarea id="module-config" rows="6"></textarea>
+            <button type="submit">Patch module</button>
+          </form>
+          <ul id="executions-list" class="line-list"></ul>
+        </article>
+      </section>
+
+      <section class="card reveal">
+        <div class="section-head">
+          <h2>Activity Log</h2>
+          <button id="refresh-all" class="ghost">Refresh all</button>
+        </div>
+        <pre id="activity-log" class="log"></pre>
+      </section>
+    </main>
+    <script src="/ui/app.js" defer></script>
+  </body>
+</html>

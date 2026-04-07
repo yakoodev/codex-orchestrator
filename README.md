@@ -20,6 +20,7 @@ docker compose up -d
 Health endpoints:
 - `GET http://localhost:8080/health/live`
 - `GET http://localhost:8080/health/ready`
+- Web control panel: `http://localhost:8080/ui/`
 
 Local smoke path (after `docker compose up -d`):
 ```bash
@@ -27,6 +28,11 @@ npm ci
 npm run smoke:local
 ```
 The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles, custom modules, packs, and queue endpoints.
+
+Built-in web control panel:
+- Open `http://localhost:8080/ui/`
+- Save `X-Admin-Token` from your `.env`
+- Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 
 Optional observability profile:
 ```bash

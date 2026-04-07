@@ -36,9 +36,19 @@ docker compose exec bus printenv TG_PROXY_URL
 ## Health checks
 - Bus liveness: `GET /health/live`
 - Bus readiness: `GET /health/ready`
+- Web control panel: `GET /ui/`
 - Postgres: `pg_isready`
 - Redis: `redis-cli ping`
 - MinIO: `/minio/health/live`
+
+## Web operator panel
+- Open `http://localhost:8080/ui/`.
+- Save `X-Admin-Token` from root `.env` in the Connection section.
+- Validate primary workflow from UI:
+  - create task;
+  - upload ChatGPT profile ZIP;
+  - activate/deactivate profile (triggers hold -> switch -> release flow);
+  - inspect switch-events and held queue.
 
 ## Backup
 - Postgres: `pg_dump` of `orchestrator` database.

@@ -7,7 +7,9 @@ Verify that runtime deployment and critical control plane endpoints work from do
 1. Start compose stack from repository root (`cp .env.example .env && docker compose up -d`).
 2. Install dependencies (`npm ci`).
 3. Run automated smoke scenario (`npm run smoke:local`).
-4. Optional manual spot-check: verify `GET /health/live` and `GET /health/ready`.
+4. Optional manual spot-check:
+   - verify `GET /health/live` and `GET /health/ready`;
+   - open `http://localhost:8080/ui/` and run one operator cycle (`create task -> activate profile -> release held queue`).
 
 ## Automated smoke coverage
 - Admin guard (`401` without `X-Admin-Token` for `/api/*`).
