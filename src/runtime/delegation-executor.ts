@@ -1,8 +1,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import JSZip from "jszip";
 import type { AppConfig } from "../config";
+import {
+  extractAuthJsonFromZipBuffer,
+  looksLikeZipBuffer,
+  parseAuthJsonBuffer
+} from "../lib/auth-profile-archive";
 import type {
   ActiveAuthProfileRuntimeEntity,
   DelegationExecutionError,
@@ -59,47 +63,23 @@ function getPayloadPrompt(payload: Record<string, unknown>): string {
   return "Выполни делегацию и верни краткий итог.";
 }
 
-async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function extractZipToDirectory(zipBuffer: Buffer, targetDirectory: string): Promise<number> {
-  const zip = await JSZip.loadAsync(zipBuffer);
-  const resolvedTarget = path.resolve(targetDirectory);
-  let extractedFiles = 0;
-
-  for (const entry of Object.values(zip.files)) {
-    if (entry.dir) {
-      continue;
-    }
-
-    const normalized = path.posix.normalize(entry.name).replace(/^(\.\/)+/, "");
-    if (!normalized || normalized.startsWith("../") || path.posix.isAbsolute(normalized)) {
-      throw new Error(`Unsafe ZIP entry path: ${entry.name}`);
-    }
-
-    const segments = normalized.split("/").filter((segment) => segment.length > 0 && segment !== ".");
-    if (segments.some((segment) => segment === "..")) {
-      throw new Error(`Unsafe ZIP entry path: ${entry.name}`);
-    }
-
-    const destination = path.resolve(resolvedTarget, ...segments);
-    if (destination !== resolvedTarget && !destination.startsWith(`${resolvedTarget}${path.sep}`)) {
-      throw new Error(`Unsafe ZIP entry path: ${entry.name}`);
-    }
-
-    await fs.mkdir(path.dirname(destination), { recursive: true });
-    const content = await entry.async("nodebuffer");
-    await fs.writeFile(destination, content);
-    extractedFiles += 1;
+async function resolveAuthJsonBuffer(rawProfilePayload: Buffer): Promise<{
+  authJsonBuffer: Buffer;
+  source: "auth_json" | "zip_legacy";
+}> {
+  if (looksLikeZipBuffer(rawProfilePayload)) {
+    const extracted = await extractAuthJsonFromZipBuffer(rawProfilePayload);
+    return {
+      authJsonBuffer: extracted.authJsonBuffer,
+      source: "zip_legacy"
+    };
   }
 
-  return extractedFiles;
+  parseAuthJsonBuffer(rawProfilePayload);
+  return {
+    authJsonBuffer: rawProfilePayload,
+    source: "auth_json"
+  };
 }
 
 class DelegationExecutionFailure extends Error implements DelegationExecutionError {
@@ -224,24 +204,22 @@ class CodexDelegationExecutor implements DelegationExecutor {
     activeProfile: ActiveAuthProfileRuntimeEntity
   ): Promise<DelegationExecutionResult> {
     const runtimeRoot = path.resolve(this.options.config.workerRuntimeDir, input.delegation_id);
-    const authExtractRoot = path.resolve(runtimeRoot, "auth");
+    const codexHome = path.resolve(runtimeRoot, "auth");
     const runRoot = path.resolve(runtimeRoot, "run");
 
     await fs.rm(runtimeRoot, { recursive: true, force: true });
-    await fs.mkdir(authExtractRoot, { recursive: true });
+    await fs.mkdir(codexHome, { recursive: true });
     await fs.mkdir(runRoot, { recursive: true });
 
-    const zipBuffer = await this.options.storage.getObject(activeProfile.storage_path);
-    const zipPath = path.resolve(runtimeRoot, "auth-profile.zip");
-    await fs.writeFile(zipPath, zipBuffer);
-
-    const extractedFiles = await extractZipToDirectory(zipBuffer, authExtractRoot);
-    if (extractedFiles === 0) {
-      throw new DelegationExecutionFailure("EXECUTION_FAILED", "Auth profile ZIP has no files");
-    }
-
-    const nestedCodexHome = path.resolve(authExtractRoot, ".codex");
-    const codexHome = (await pathExists(nestedCodexHome)) ? nestedCodexHome : authExtractRoot;
+    const rawProfilePayload = await this.options.storage.getObject(activeProfile.storage_path);
+    const { authJsonBuffer, source } = await resolveAuthJsonBuffer(rawProfilePayload).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "Unknown auth payload validation error";
+      throw new DelegationExecutionFailure(
+        "EXECUTION_FAILED",
+        `Invalid active auth profile payload: ${message}`
+      );
+    });
+    await fs.writeFile(path.resolve(codexHome, "auth.json"), authJsonBuffer);
 
     const payloadCwd = asNonEmptyString(input.payload["cwd"]);
     const executionCwd = payloadCwd ? path.resolve(payloadCwd) : process.cwd();
@@ -301,7 +279,8 @@ class CodexDelegationExecutor implements DelegationExecutor {
       output_text: outputText,
       metadata: {
         active_profile_id: activeProfile.id,
-        extracted_files: extractedFiles
+        auth_payload_source: source,
+        auth_json_bytes: authJsonBuffer.length
       }
     };
   }

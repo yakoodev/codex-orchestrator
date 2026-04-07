@@ -21,8 +21,8 @@
 
 ### 3. Данные и storage
 - [x] Подключена полная Prisma-схема по канону + миграции в репозитории.
-- [x] Для ChatGPT profile upload реализована базовая валидация (size, zip signature/mime, checksum).
-- [x] Бинарник профиля сохраняется в MinIO, метаданные в Postgres.
+- [x] Для ChatGPT profile upload реализована базовая валидация (size, zip signature/mime, обязательный `auth.json`, checksum).
+- [x] В MinIO сохраняется только извлеченный `auth.json` (не весь ZIP), метаданные в Postgres.
 - [x] `GET /api/queue/held` строится из задач со статусом `WAITING_LIMIT`.
 - [x] `GET /api/auth-profiles/chatgpt/switch-events` читает из persistence (`AuthSwitchEvent`).
 
@@ -90,7 +90,7 @@
 - [x] `smoke:local` делегации сделаны детерминированными через `payload.execution_mode=mock`, чтобы smoke не зависел от внешней модели.
 - [x] Добавлен пошаговый manual QA guide с точными PowerShell-сценариями: `docs/ops/manual-test-scenarios.md`.
 - [x] Добавлен runtime `DelegationExecutor` с режимами `mock|auto|codex_exec` и timeout policy для реального запуска `codex exec` в `POST /api/delegation/dispatch`.
-- [x] В строгом real режиме делегация использует активный ChatGPT auth ZIP: профиль читается из MinIO, архив безопасно распаковывается в `CODEX_HOME`, затем запускается `codex`.
+- [x] В строгом real режиме делегация использует активный ChatGPT auth профиль из MinIO: runtime читает сохраненный `auth.json`, пишет его в `CODEX_HOME/auth.json` и запускает `codex`.
 - [x] В Docker-образ `bus` добавлен `@openai/codex`, чтобы реальный executor работал в compose-окружении без ручной установки CLI.
 - [x] Добавлены unit/API тесты на injected executor path (`completed`) и terminal fail-path (`AUTH_PROFILE_REQUIRED`) для защиты новой runtime-ветки.
 

@@ -1,17 +1,19 @@
 # ChatGPT Auth Profile Lifecycle
 
 ## Flow
-1. Upload ZIP bundle via admin endpoint.
-2. Validate bundle structure and store checksum as technical fingerprint.
-3. Encrypt and persist bundle.
-4. Insert metadata row in `ChatGptAuthProfile`.
-5. Activate/deactivate via control API.
-6. Use active profile for new worker starts.
-7. Record switch events in `AuthSwitchEvent`.
-8. Revoke by setting status `blocked` and removing runtime eligibility.
+1. Upload ZIP archive via admin endpoint.
+2. Validate archive structure (`auth.json` is mandatory and must be the only file).
+3. Extract and validate `auth.json`, store checksum as technical fingerprint.
+4. Persist only extracted `auth.json` object in storage.
+5. Insert metadata row in `ChatGptAuthProfile`.
+6. Activate/deactivate via control API.
+7. Use active profile for new worker starts (runtime writes `auth.json` to isolated `CODEX_HOME`).
+8. Record switch events in `AuthSwitchEvent`.
+9. Revoke by setting status `blocked` and removing runtime eligibility.
 
 ## Validation requirements
-- ZIP must contain expected auth files for Codex runtime.
+- ZIP must contain exactly one `auth.json` file.
+- `auth.json` must be valid JSON object.
 - Invalid archive is rejected with explicit error.
 - No extracted plaintext auth files in logs.
 - MVP trust policy is admin-only upload/register; checksum is not a mandatory signature gate.

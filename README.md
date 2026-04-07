@@ -37,7 +37,8 @@ Real Codex delegation runtime:
   - `DELEGATION_EXECUTOR_MODE=auto` (default): use real `codex exec` when command + active auth profile are available; otherwise fallback to deterministic mock.
   - `DELEGATION_EXECUTOR_MODE=codex_exec`: strict real mode (fails without active auth profile or codex command).
   - `DELEGATION_EXECUTOR_MODE=mock`: force mock mode.
-- For real execution path, upload and activate ChatGPT auth ZIP, then call `POST /api/delegation/dispatch` with `payload.prompt`.
+- For real execution path, upload and activate ChatGPT auth archive (ZIP with exactly one `auth.json`), then call `POST /api/delegation/dispatch` with `payload.prompt`.
+- Storage/runtime behavior: service persists only extracted `auth.json` in MinIO and writes it to per-run `CODEX_HOME/auth.json` before `codex exec`.
 - You can override mode per request with `payload.execution_mode` (`mock` or `codex_exec`).
 
 Built-in web control panel:

@@ -4,6 +4,12 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import type { AppConfig } from "./config";
+import {
+  extractAuthJsonFromZipBuffer,
+  hasZipMime,
+  looksLikeZipBuffer,
+  parseAuthJsonBuffer
+} from "./lib/auth-profile-archive";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import type {
   AgentTemplateEntity,
@@ -1251,14 +1257,7 @@ function adminGuard(config: AppConfig, request: FastifyRequest, reply: FastifyRe
 }
 
 function isZipFile(mimeType: string, buffer: Buffer): boolean {
-  const knownMime = new Set([
-    "application/zip",
-    "application/x-zip-compressed",
-    "application/octet-stream"
-  ]);
-  const hasZipMime = knownMime.has(mimeType);
-  const hasZipMagic = buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b;
-  return hasZipMime && hasZipMagic;
+  return hasZipMime(mimeType) && looksLikeZipBuffer(buffer);
 }
 
 export async function createApp(deps: AppDependencies): Promise<FastifyInstance> {
@@ -1786,10 +1785,37 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "File must be a ZIP archive", "VALIDATION_ERROR");
     }
 
-    const checksum = createHash("sha256").update(fileBuffer).digest("hex");
-    const objectKey = `auth-profiles/${Date.now()}-${checksum}.zip`;
+    let extracted: Awaited<ReturnType<typeof extractAuthJsonFromZipBuffer>>;
+    try {
+      extracted = await extractAuthJsonFromZipBuffer(fileBuffer);
+    } catch (error) {
+      request.log.warn(
+        { err: error, filename: multipartFile.filename, trace_id: traceId },
+        "Invalid auth profile archive"
+      );
+      return sendError(
+        reply,
+        400,
+        "ZIP must contain exactly one auth.json file with valid JSON content",
+        "VALIDATION_ERROR"
+      );
+    }
 
-    await storage.putObject(objectKey, fileBuffer, multipartFile.mimetype);
+    const extraFiles = extracted.fileEntries.filter((entry) => entry !== extracted.authJsonEntryPath);
+    if (extraFiles.length > 0) {
+      return sendError(
+        reply,
+        400,
+        "ZIP must contain only auth.json without additional files",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const authJson = parseAuthJsonBuffer(extracted.authJsonBuffer);
+    const checksum = createHash("sha256").update(extracted.authJsonBuffer).digest("hex");
+    const objectKey = `auth-profiles/${Date.now()}-${checksum}.auth.json`;
+
+    await storage.putObject(objectKey, extracted.authJsonBuffer, "application/json");
 
     const createdProfile = await persistence.createAuthProfile({
       label,
@@ -1799,8 +1825,12 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       uploaded_by: "admin",
       meta_json: {
         filename: multipartFile.filename,
-        content_type: multipartFile.mimetype,
-        size_bytes: fileBuffer.length
+        upload_content_type: multipartFile.mimetype,
+        upload_zip_size_bytes: fileBuffer.length,
+        auth_json_size_bytes: extracted.authJsonBuffer.length,
+        auth_json_entry_path: extracted.authJsonEntryPath,
+        auth_mode: typeof authJson["auth_mode"] === "string" ? authJson["auth_mode"] : null,
+        stored_object_type: "auth.json"
       }
     });
 

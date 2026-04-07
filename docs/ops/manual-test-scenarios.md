@@ -87,10 +87,24 @@ $tasks.items | Select-Object -First 5 | ConvertTo-Json -Depth 5
 
 ## 6. Сценарий D: Auth profile lifecycle + switch-events
 
-Создай минимальный ZIP для upload:
+Создай ZIP с единственным `auth.json`:
 
 ```powershell
-[System.IO.File]::WriteAllBytes("$PWD\manual-profile.zip", [byte[]](0x50,0x4B,0x03,0x04))
+$authJson = @'
+{
+  "auth_mode": "chatgpt",
+  "access_token": "manual-access-token",
+  "refresh_token": "manual-refresh-token"
+}
+'@
+
+[System.IO.File]::WriteAllText(
+  "$PWD\auth.json",
+  $authJson,
+  (New-Object System.Text.UTF8Encoding($false))
+)
+
+Compress-Archive -Path "$PWD\auth.json" -DestinationPath "$PWD\manual-profile.zip" -Force
 ```
 
 Загрузи профиль:
@@ -136,6 +150,7 @@ $events.items | Select-Object -First 10 | ConvertTo-Json -Depth 6
 Ожидаемо:
 - есть `manual_activate` (`started` + `completed`);
 - есть `manual_deactivate` (`started` + `completed`).
+- upload проходит только если внутри ZIP нет ничего кроме `auth.json`.
 
 ## 7. Сценарий E: Held queue + module patch
 
@@ -164,7 +179,7 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 - `PATCH` возвращает обновлённый модуль;
 - в executions появляется новый `module.execution.completed`.
 
-## 8. Сценарий F: Реальный codex execution с auth ZIP
+## 8. Сценарий F: Реальный codex execution с auth archive
 
 ```powershell
 # 8.1 Включи strict real runtime и перезапусти bus
@@ -175,7 +190,7 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 docker compose up -d --build bus
 ```
 
-Создай ZIP c `auth.json` из локального профиля codex:
+Создай ZIP c единственным `auth.json` из локального профиля codex:
 
 ```powershell
 New-Item -ItemType Directory -Path "$PWD\.tmp-auth" -Force | Out-Null
@@ -250,6 +265,7 @@ $dispatch | ConvertTo-Json -Depth 8
 
 ```powershell
 Remove-Item -LiteralPath "$PWD\manual-profile.zip" -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath "$PWD\auth.json" -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$PWD\manual-runtime-auth.zip" -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$PWD\.tmp-auth" -Recurse -Force -ErrorAction SilentlyContinue
 ```

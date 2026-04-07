@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import JSZip from "jszip";
 
 function parseDotEnv(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -246,8 +247,18 @@ async function main() {
   }
   ok("trigger and list schedule runs (idempotent)");
 
+  const authZip = new JSZip();
+  authZip.file(
+    "auth.json",
+    JSON.stringify({
+      auth_mode: "chatgpt",
+      access_token: `smoke-token-${runId}`
+    })
+  );
+  const zipBuffer = await authZip.generateAsync({ type: "nodebuffer" });
+
   const form = new FormData();
-  const zipBlob = new Blob([Buffer.from([0x50, 0x4b, 0x03, 0x04])], { type: "application/zip" });
+  const zipBlob = new Blob([zipBuffer], { type: "application/zip" });
   form.append("label", "smoke-profile");
   form.append("file", zipBlob, "smoke-profile.zip");
 

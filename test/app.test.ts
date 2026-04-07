@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
+import JSZip from "jszip";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, SWITCH_MODULE_KEY } from "../src/app";
@@ -32,6 +34,15 @@ import type {
   WorkerEntity
 } from "../src/runtime/contracts";
 import type { TaskStatus } from "../src/types";
+
+async function buildZip(entries: Record<string, string | Buffer>): Promise<Buffer> {
+  const zip = new JSZip();
+  for (const [entryPath, payload] of Object.entries(entries)) {
+    zip.file(entryPath, payload);
+  }
+
+  return zip.generateAsync({ type: "nodebuffer" });
+}
 
 class FakePersistence implements Persistence {
   public readonly tasks: TaskEntity[] = [];
@@ -894,11 +905,12 @@ class FakePersistence implements Persistence {
 
 class FakeStorage implements StorageService {
   public readonly objects = new Map<string, Buffer>();
+  public readonly contentTypes = new Map<string, string>();
   public ready = true;
 
-  public async putObject(key: string, body: Buffer, _contentType: string): Promise<void> {
-    void _contentType;
+  public async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
     this.objects.set(key, body);
+    this.contentTypes.set(key, contentType);
   }
 
   public async getObject(key: string): Promise<Buffer> {
@@ -1301,8 +1313,16 @@ describe("smoke-core API", () => {
     expect(getResponse.json().id).toBe(artifact.id);
   });
 
-  it("uploads ZIP auth profile to storage and emits event", async () => {
-    const zipBuffer = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]);
+  it("uploads auth.json from ZIP to storage and emits event", async () => {
+    const authJsonObject = {
+      auth_mode: "chatgpt",
+      access_token: "token-value",
+      refresh_token: "refresh-value"
+    };
+    const authJsonText = JSON.stringify(authJsonObject);
+    const zipBuffer = await buildZip({
+      "auth.json": authJsonText
+    });
 
     const response = await request(app.server)
       .post("/api/auth-profiles/chatgpt/upload")
@@ -1315,8 +1335,58 @@ describe("smoke-core API", () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.body.label).toBe("profile-a");
+    const persistedProfile = persistence.profiles[0];
+    expect(persistedProfile).toBeDefined();
+    if (!persistedProfile) {
+      throw new Error("Expected persisted auth profile");
+    }
+
+    const expectedChecksum = createHash("sha256")
+      .update(Buffer.from(authJsonText, "utf8"))
+      .digest("hex");
+    expect(persistedProfile.checksum).toBe(expectedChecksum);
+    expect(persistedProfile.storage_path.endsWith(".auth.json")).toBe(true);
+    expect(storage.contentTypes.get(persistedProfile.storage_path)).toBe("application/json");
+    expect(storage.objects.get(persistedProfile.storage_path)?.toString("utf8")).toBe(authJsonText);
     expect(storage.objects.size).toBe(1);
     expect(publisher.events.some((event) => event.eventType === "auth_profile.uploaded")).toBe(true);
+  });
+
+  it("rejects auth profile ZIP without auth.json", async () => {
+    const zipBuffer = await buildZip({
+      "notes.txt": "no auth here"
+    });
+
+    const response = await request(app.server)
+      .post("/api/auth-profiles/chatgpt/upload")
+      .set("x-admin-token", config.adminToken)
+      .field("label", "profile-without-auth-json")
+      .attach("file", zipBuffer, {
+        filename: "profile.zip",
+        contentType: "application/zip"
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects auth profile ZIP with extra files", async () => {
+    const zipBuffer = await buildZip({
+      "auth.json": JSON.stringify({ auth_mode: "chatgpt" }),
+      "extra.txt": "should not be here"
+    });
+
+    const response = await request(app.server)
+      .post("/api/auth-profiles/chatgpt/upload")
+      .set("x-admin-token", config.adminToken)
+      .field("label", "profile-with-extra-files")
+      .attach("file", zipBuffer, {
+        filename: "profile.zip",
+        contentType: "application/zip"
+      });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body.code).toBe("VALIDATION_ERROR");
   });
 
   it("activates auth profile and emits activation event", async () => {
