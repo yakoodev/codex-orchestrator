@@ -76,6 +76,7 @@
 - [x] Manual auth switch (`activate|deactivate`) использует retry/backoff при transient errors и публикует `auth_profile.switch.retried`; terminal ошибка отдает `AUTH_SWITCH_FAILED`.
 - [x] Retry и terminal failure manual switch также пишутся в `AuthSwitchEvent` (`manual_*_retry` / `manual_*_failed`, status `failed`) для полной DB-backed истории switch-events.
 - [x] Terminal failure manual switch публикует отдельное событие `auth_profile.switch.failed` (помимо DB-backed `AuthSwitchEvent`).
+- [x] Side-effects для manual switch (`AuthSwitchEvent`/event publish на retry+failed) работают fail-safe: при их локальной ошибке основной activate/deactivate flow не прерывается.
 
 ## Что намеренно вне PR1
 - [ ] Web UI.

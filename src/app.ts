@@ -1684,6 +1684,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         onRetry: async ({ attempt, error, nextDelayMs }) => {
           const nextAttempt = attempt + 1;
           const now = new Date();
+          const errorMessage = getErrorMessage(error);
           app.log.warn(
             {
               operation: "auth_profile_activate",
@@ -1695,68 +1696,97 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             },
             "Retrying auth profile activate"
           );
-          await persistence.createAuthSwitchEvent({
-            module_key: SWITCH_MODULE_KEY,
-            from_auth_profile_id: previousActive?.id ?? null,
-            to_auth_profile_id: id,
-            reason: "manual_activate_retry",
-            status: "failed",
-            switch_scope: "global",
-            details_json: {
-              source: "api",
-              failed_attempt: attempt,
-              next_attempt: nextAttempt,
-              next_delay_ms: nextDelayMs,
-              error: getErrorMessage(error)
-            },
-            started_at: now,
-            ended_at: now
-          });
-          await publisher.publish({
-            eventType: "auth_profile.switch.retried",
-            traceId,
-            idempotencyKey: `${id}:activate_retry:${nextAttempt}:${traceId}`,
-            payload: {
-              profile_id: id,
-              from_profile_id: previousActive?.id ?? null,
-              to_profile_id: id,
+          try {
+            await persistence.createAuthSwitchEvent({
+              module_key: SWITCH_MODULE_KEY,
+              from_auth_profile_id: previousActive?.id ?? null,
+              to_auth_profile_id: id,
               reason: "manual_activate_retry",
-              failed_attempt: attempt,
-              next_attempt: nextAttempt,
-              next_delay_ms: nextDelayMs
-            }
-          });
+              status: "failed",
+              switch_scope: "global",
+              details_json: {
+                source: "api",
+                failed_attempt: attempt,
+                next_attempt: nextAttempt,
+                next_delay_ms: nextDelayMs,
+                error: errorMessage
+              },
+              started_at: now,
+              ended_at: now
+            });
+          } catch (persistError) {
+            app.log.error(
+              { err: persistError, profile_id: id, trace_id: traceId },
+              "Failed to persist auth_profile.switch.retried"
+            );
+          }
+          try {
+            await publisher.publish({
+              eventType: "auth_profile.switch.retried",
+              traceId,
+              idempotencyKey: `${id}:activate_retry:${nextAttempt}:${traceId}`,
+              payload: {
+                profile_id: id,
+                from_profile_id: previousActive?.id ?? null,
+                to_profile_id: id,
+                reason: "manual_activate_retry",
+                failed_attempt: attempt,
+                next_attempt: nextAttempt,
+                next_delay_ms: nextDelayMs
+              }
+            });
+          } catch (publishError) {
+            app.log.error(
+              { err: publishError, profile_id: id, trace_id: traceId },
+              "Failed to publish auth_profile.switch.retried"
+            );
+          }
         }
       });
     } catch (error) {
       const now = new Date();
-      await persistence.createAuthSwitchEvent({
-        module_key: SWITCH_MODULE_KEY,
-        from_auth_profile_id: previousActive?.id ?? null,
-        to_auth_profile_id: id,
-        reason: "manual_activate_failed",
-        status: "failed",
-        switch_scope: "global",
-        details_json: {
-          source: "api",
-          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
-          error: getErrorMessage(error)
-        },
-        started_at: now,
-        ended_at: now
-      });
-      await publisher.publish({
-        eventType: "auth_profile.switch.failed",
-        traceId,
-        idempotencyKey: `${id}:activate_failed:${traceId}`,
-        payload: {
-          profile_id: id,
-          from_profile_id: previousActive?.id ?? null,
-          to_profile_id: id,
+      const errorMessage = getErrorMessage(error);
+      try {
+        await persistence.createAuthSwitchEvent({
+          module_key: SWITCH_MODULE_KEY,
+          from_auth_profile_id: previousActive?.id ?? null,
+          to_auth_profile_id: id,
           reason: "manual_activate_failed",
-          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
-        }
-      });
+          status: "failed",
+          switch_scope: "global",
+          details_json: {
+            source: "api",
+            attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
+            error: errorMessage
+          },
+          started_at: now,
+          ended_at: now
+        });
+      } catch (persistError) {
+        app.log.error(
+          { err: persistError, profile_id: id, trace_id: traceId },
+          "Failed to persist auth_profile.switch.failed"
+        );
+      }
+      try {
+        await publisher.publish({
+          eventType: "auth_profile.switch.failed",
+          traceId,
+          idempotencyKey: `${id}:activate_failed:${traceId}`,
+          payload: {
+            profile_id: id,
+            from_profile_id: previousActive?.id ?? null,
+            to_profile_id: id,
+            reason: "manual_activate_failed",
+            attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
+          }
+        });
+      } catch (publishError) {
+        app.log.error(
+          { err: publishError, profile_id: id, trace_id: traceId },
+          "Failed to publish auth_profile.switch.failed"
+        );
+      }
       app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile activate failed");
       return sendError(reply, 500, "Auth profile activate failed", "AUTH_SWITCH_FAILED");
     }
@@ -1868,6 +1898,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         onRetry: async ({ attempt, error, nextDelayMs }) => {
           const nextAttempt = attempt + 1;
           const now = new Date();
+          const errorMessage = getErrorMessage(error);
           app.log.warn(
             {
               operation: "auth_profile_deactivate",
@@ -1879,68 +1910,97 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             },
             "Retrying auth profile deactivate"
           );
-          await persistence.createAuthSwitchEvent({
-            module_key: SWITCH_MODULE_KEY,
-            from_auth_profile_id: id,
-            to_auth_profile_id: null,
-            reason: "manual_deactivate_retry",
-            status: "failed",
-            switch_scope: "global",
-            details_json: {
-              source: "api",
-              failed_attempt: attempt,
-              next_attempt: nextAttempt,
-              next_delay_ms: nextDelayMs,
-              error: getErrorMessage(error)
-            },
-            started_at: now,
-            ended_at: now
-          });
-          await publisher.publish({
-            eventType: "auth_profile.switch.retried",
-            traceId,
-            idempotencyKey: `${id}:deactivate_retry:${nextAttempt}:${traceId}`,
-            payload: {
-              profile_id: null,
-              from_profile_id: id,
-              to_profile_id: null,
+          try {
+            await persistence.createAuthSwitchEvent({
+              module_key: SWITCH_MODULE_KEY,
+              from_auth_profile_id: id,
+              to_auth_profile_id: null,
               reason: "manual_deactivate_retry",
-              failed_attempt: attempt,
-              next_attempt: nextAttempt,
-              next_delay_ms: nextDelayMs
-            }
-          });
+              status: "failed",
+              switch_scope: "global",
+              details_json: {
+                source: "api",
+                failed_attempt: attempt,
+                next_attempt: nextAttempt,
+                next_delay_ms: nextDelayMs,
+                error: errorMessage
+              },
+              started_at: now,
+              ended_at: now
+            });
+          } catch (persistError) {
+            app.log.error(
+              { err: persistError, profile_id: id, trace_id: traceId },
+              "Failed to persist auth_profile.switch.retried"
+            );
+          }
+          try {
+            await publisher.publish({
+              eventType: "auth_profile.switch.retried",
+              traceId,
+              idempotencyKey: `${id}:deactivate_retry:${nextAttempt}:${traceId}`,
+              payload: {
+                profile_id: null,
+                from_profile_id: id,
+                to_profile_id: null,
+                reason: "manual_deactivate_retry",
+                failed_attempt: attempt,
+                next_attempt: nextAttempt,
+                next_delay_ms: nextDelayMs
+              }
+            });
+          } catch (publishError) {
+            app.log.error(
+              { err: publishError, profile_id: id, trace_id: traceId },
+              "Failed to publish auth_profile.switch.retried"
+            );
+          }
         }
       });
     } catch (error) {
       const now = new Date();
-      await persistence.createAuthSwitchEvent({
-        module_key: SWITCH_MODULE_KEY,
-        from_auth_profile_id: id,
-        to_auth_profile_id: null,
-        reason: "manual_deactivate_failed",
-        status: "failed",
-        switch_scope: "global",
-        details_json: {
-          source: "api",
-          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
-          error: getErrorMessage(error)
-        },
-        started_at: now,
-        ended_at: now
-      });
-      await publisher.publish({
-        eventType: "auth_profile.switch.failed",
-        traceId,
-        idempotencyKey: `${id}:deactivate_failed:${traceId}`,
-        payload: {
-          profile_id: null,
-          from_profile_id: id,
-          to_profile_id: null,
+      const errorMessage = getErrorMessage(error);
+      try {
+        await persistence.createAuthSwitchEvent({
+          module_key: SWITCH_MODULE_KEY,
+          from_auth_profile_id: id,
+          to_auth_profile_id: null,
           reason: "manual_deactivate_failed",
-          attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
-        }
-      });
+          status: "failed",
+          switch_scope: "global",
+          details_json: {
+            source: "api",
+            attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
+            error: errorMessage
+          },
+          started_at: now,
+          ended_at: now
+        });
+      } catch (persistError) {
+        app.log.error(
+          { err: persistError, profile_id: id, trace_id: traceId },
+          "Failed to persist auth_profile.switch.failed"
+        );
+      }
+      try {
+        await publisher.publish({
+          eventType: "auth_profile.switch.failed",
+          traceId,
+          idempotencyKey: `${id}:deactivate_failed:${traceId}`,
+          payload: {
+            profile_id: null,
+            from_profile_id: id,
+            to_profile_id: null,
+            reason: "manual_deactivate_failed",
+            attempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT
+          }
+        });
+      } catch (publishError) {
+        app.log.error(
+          { err: publishError, profile_id: id, trace_id: traceId },
+          "Failed to publish auth_profile.switch.failed"
+        );
+      }
       app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile deactivate failed");
       return sendError(reply, 500, "Auth profile deactivate failed", "AUTH_SWITCH_FAILED");
     }

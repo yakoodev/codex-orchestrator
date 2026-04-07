@@ -78,6 +78,7 @@ class FakePersistence implements Persistence {
   public deactivateFailuresRemaining = 0;
   public activateAttempts = 0;
   public deactivateAttempts = 0;
+  public switchEventFailuresRemaining = 0;
 
   public async pingDb(): Promise<void> {
     if (!this.dbReady) {
@@ -753,6 +754,10 @@ class FakePersistence implements Persistence {
   }): Promise<AuthSwitchEventEntity> {
     void input.switch_scope;
     void input.details_json;
+    if (this.switchEventFailuresRemaining > 0) {
+      this.switchEventFailuresRemaining -= 1;
+      throw new Error("switch event persistence failure");
+    }
 
     const event: AuthSwitchEventEntity = {
       id: `switch-${this.switchEventCounter++}`,
@@ -893,6 +898,7 @@ class FakeStorage implements StorageService {
 class FakePublisher implements EventPublisher {
   public readonly events: EventPublishInput[] = [];
   public ready = true;
+  public readonly publishFailuresByEventType = new Map<string, number>();
 
   public async ping(): Promise<void> {
     if (!this.ready) {
@@ -901,6 +907,11 @@ class FakePublisher implements EventPublisher {
   }
 
   public async publish(event: EventPublishInput): Promise<void> {
+    const failuresRemaining = this.publishFailuresByEventType.get(event.eventType) ?? 0;
+    if (failuresRemaining > 0) {
+      this.publishFailuresByEventType.set(event.eventType, failuresRemaining - 1);
+      throw new Error(`publish failure for ${event.eventType}`);
+    }
     this.events.push(event);
   }
 }
@@ -1512,6 +1523,34 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("keeps activate retry flow healthy when retried side-effects fail", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "retry-side-effect-failure",
+      status: "inactive",
+      checksum: "checksum-retry-side-effect-failure",
+      storage_path: "auth-profiles/retry-side-effect-failure.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    persistence.activateFailuresRemaining = 1;
+    persistence.switchEventFailuresRemaining = 1;
+    publisher.publishFailuresByEventType.set("auth_profile.switch.retried", 1);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-side-effect-fail" }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(persistence.activateAttempts).toBe(2);
+    expect(persistence.switchEvents).toHaveLength(2);
+    expect(
+      publisher.events.some((event) => event.eventType === "auth_profile.activated")
+    ).toBe(true);
+  });
+
   it("returns 500 when activate keeps failing after retries", async () => {
     const currentActive = await persistence.createAuthProfile({
       label: "current-active",
@@ -1567,6 +1606,39 @@ describe("smoke-core API", () => {
         (event) => event.reason === "manual_activate_failed" && event.status === "failed"
       )
     ).toBe(true);
+  });
+
+  it("keeps AUTH_SWITCH_FAILED response when terminal failure side-effects fail", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "retry-deactivate-side-effect-failure",
+      status: "inactive",
+      checksum: "checksum-retry-deactivate-side-effect-failure",
+      storage_path: "auth-profiles/retry-deactivate-side-effect-failure.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    await persistence.activateAuthProfile(profile.id, "admin");
+    persistence.deactivateFailuresRemaining = 5;
+    persistence.switchEventFailuresRemaining = 3;
+    publisher.publishFailuresByEventType.set("auth_profile.switch.failed", 1);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/deactivate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-deactivate-side-effect-fail" },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json().code).toBe("AUTH_SWITCH_FAILED");
+    expect(persistence.deactivateAttempts).toBe(3);
+    expect(persistence.switchEvents).toHaveLength(0);
+    expect(
+      publisher.events.filter((event) => event.eventType === "auth_profile.switch.retried")
+    ).toHaveLength(2);
+    expect(
+      publisher.events.some((event) => event.eventType === "auth_profile.switch.failed")
+    ).toBe(false);
   });
 
   it("returns 500 when deactivate keeps failing after retries", async () => {
