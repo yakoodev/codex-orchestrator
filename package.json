@@ -24,6 +24,7 @@
     "contract-events": "node scripts/validate-events.mjs",
     "contract-prisma": "node scripts/validate-prisma.mjs",
     "contracts:check": "npm run contract-openapi && npm run contract-routes && npm run contract-events && npm run contract-prisma",
+    "logs:check": "node scripts/logs-check.mjs",
     "smoke:local": "node scripts/smoke-local.mjs",
     "ci:checks": "npm run lint && npm run typecheck && npm run contracts:check",
     "postinstall": "npm run prisma:generate"

@@ -52,6 +52,39 @@ docker compose exec bus printenv TG_PROXY_URL
 - Redis: `redis-cli ping`
 - MinIO: `/minio/health/live`
 
+## Log retrieval (multiple methods)
+Method 1, API-backed operational history:
+- `GET /api/auth-profiles/chatgpt/switch-events`
+- `GET /api/delegation/{id}`
+- `GET /api/delegation/{id}/result`
+
+Method 2, container runtime logs:
+```bash
+docker compose logs --tail=200 bus
+docker compose logs -f bus
+```
+
+Method 3, event stream log (Redis Streams):
+```bash
+docker compose exec -T redis redis-cli XLEN orchestrator.events
+docker compose exec -T redis redis-cli XREVRANGE orchestrator.events + - COUNT 20
+```
+
+Method 4, one-shot probe for all channels:
+```bash
+npm run logs:check
+```
+Optional params:
+```bash
+npm run logs:check -- --tail=300 --events=30 --switch=15
+```
+
+If observability profile is enabled, Loki readiness can be verified by:
+```bash
+curl http://localhost:${LOKI_PORT:-3100}/ready
+```
+If port `3100` is busy on host, change `LOKI_PORT` in root `.env` before starting `--profile observability`.
+
 ## Web operator panel
 - Open `http://localhost:8080/ui/`.
 - Save `X-Admin-Token` from root `.env` in the Connection section.

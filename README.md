@@ -31,6 +31,12 @@ npm run smoke:local
 The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles, custom modules, packs, and queue endpoints.
 For exact manual QA scenarios (UI + API), use [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md).
 
+Quick multi-channel logs probe:
+```bash
+npm run logs:check
+```
+The script verifies API health/events, `docker compose logs` for `bus`, Redis Streams (`orchestrator.events`), and optional Loki readiness.
+
 Real Codex delegation runtime:
 - `bus` image includes `@openai/codex` CLI.
 - Runtime mode is controlled by `.env`:
