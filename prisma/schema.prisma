@@ -395,10 +395,14 @@ model ModuleExecution {
   module_key String
   event_type String
   status     ModuleExecutionStatus
+  trace_id   String
+  idempotency_key String?
+  details_json Json?
   started_at DateTime              @default(now())
   ended_at   DateTime?
 
   @@index([module_key, started_at])
+  @@unique([module_key, idempotency_key])
   @@map("module_executions")
 }
 

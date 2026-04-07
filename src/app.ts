@@ -1764,6 +1764,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const { key } = request.params as { key: string };
     const body = request.body as ModulePatchRequest;
     const startedAt = new Date();
+    const startedIdempotencyKey = `${key}:${traceId}:started`;
+    const completedIdempotencyKey = `${key}:${traceId}:completed`;
 
     const moduleConfig = await ensureCustomModuleConfig(persistence, config, key);
     if (!moduleConfig) {
@@ -1778,10 +1780,23 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
     }
 
+    const existingCompletedExecution = await persistence.getModuleExecutionByIdempotency(
+      key,
+      completedIdempotencyKey
+    );
+    if (existingCompletedExecution) {
+      const currentConfig = await persistence.getCustomModuleConfig(key);
+      if (!currentConfig) {
+        return sendError(reply, 404, "Module config not found", "NOT_FOUND");
+      }
+
+      return reply.send(currentConfig);
+    }
+
     await publisher.publish({
       eventType: "module.execution.started",
       traceId,
-      idempotencyKey: `${key}:${traceId}:started`,
+      idempotencyKey: startedIdempotencyKey,
       payload: {
         module_key: key,
         status: "started",
@@ -1793,6 +1808,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       module_key: key,
       event_type: "module.execution.started",
       status: "started",
+      trace_id: traceId,
+      idempotency_key: startedIdempotencyKey,
+      details_json: {
+        reason: "config_update_started"
+      },
       started_at: startedAt,
       ended_at: null
     });
@@ -1810,7 +1830,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     await publisher.publish({
       eventType: "module.execution.completed",
       traceId,
-      idempotencyKey: `${key}:${traceId}:completed`,
+      idempotencyKey: completedIdempotencyKey,
       payload: {
         module_key: key,
         status: "completed",
@@ -1822,6 +1842,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       module_key: key,
       event_type: "module.execution.completed",
       status: "completed",
+      trace_id: traceId,
+      idempotency_key: completedIdempotencyKey,
+      details_json: {
+        reason: "config_update_completed"
+      },
       started_at: startedAt,
       ended_at: new Date()
     });

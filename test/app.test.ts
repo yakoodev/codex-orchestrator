@@ -690,12 +690,27 @@ class FakePersistence implements Persistence {
       .sort((left, right) => right.started_at.getTime() - left.started_at.getTime());
   }
 
+  public async getModuleExecutionByIdempotency(
+    moduleKey: string,
+    idempotencyKey: string
+  ): Promise<ModuleExecutionEntity | null> {
+    return (
+      this.moduleExecutions.find(
+        (execution) =>
+          execution.module_key === moduleKey && execution.idempotency_key === idempotencyKey
+      ) ?? null
+    );
+  }
+
   public async createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity> {
     const execution: ModuleExecutionEntity = {
       id: `module-execution-${this.moduleExecutionCounter++}`,
       module_key: input.module_key,
       event_type: input.event_type,
       status: input.status,
+      trace_id: input.trace_id,
+      idempotency_key: input.idempotency_key ?? null,
+      details_json: input.details_json ?? null,
       started_at: input.started_at ?? new Date(),
       ended_at: input.ended_at ?? null
     };
@@ -1537,7 +1552,7 @@ describe("smoke-core API", () => {
     const patchResponse = await app.inject({
       method: "PATCH",
       url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
-      headers: { "x-admin-token": config.adminToken },
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-1" },
       payload: {
         is_enabled: false,
         config_json: { threshold: 42 }
@@ -1551,6 +1566,17 @@ describe("smoke-core API", () => {
       publisher.events.some((event) => event.eventType === "module.execution.completed")
     ).toBe(true);
 
+    const secondPatchSameTraceResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-1" },
+      payload: {
+        is_enabled: false,
+        config_json: { threshold: 42 }
+      }
+    });
+    expect(secondPatchSameTraceResponse.statusCode).toBe(200);
+
     const executionsResponse = await app.inject({
       method: "GET",
       url: `/api/custom-modules/${SWITCH_MODULE_KEY}/executions`,
@@ -1560,6 +1586,9 @@ describe("smoke-core API", () => {
     expect(executionsResponse.statusCode).toBe(200);
     expect(executionsResponse.json().items).toHaveLength(2);
     expect(executionsResponse.json().items[0].module_key).toBe(SWITCH_MODULE_KEY);
+    expect(
+      publisher.events.filter((event) => event.eventType === "module.execution.completed")
+    ).toHaveLength(1);
   });
 
   it("lists custom modules", async () => {

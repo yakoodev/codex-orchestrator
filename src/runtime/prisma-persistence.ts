@@ -319,6 +319,9 @@ function toModuleExecutionEntity(entity: {
   module_key: string;
   event_type: string;
   status: PrismaModuleExecutionStatus;
+  trace_id: string;
+  idempotency_key: string | null;
+  details_json: Prisma.JsonValue | null;
   started_at: Date;
   ended_at: Date | null;
 }): ModuleExecutionEntity {
@@ -327,6 +330,9 @@ function toModuleExecutionEntity(entity: {
     module_key: entity.module_key,
     event_type: entity.event_type,
     status: entity.status,
+    trace_id: entity.trace_id,
+    idempotency_key: entity.idempotency_key,
+    details_json: entity.details_json as Record<string, unknown> | null,
     started_at: entity.started_at,
     ended_at: entity.ended_at
   };
@@ -971,12 +977,35 @@ export class PrismaPersistence implements Persistence {
     return executions.map((execution) => toModuleExecutionEntity(execution));
   }
 
+  public async getModuleExecutionByIdempotency(
+    moduleKey: string,
+    idempotencyKey: string
+  ): Promise<ModuleExecutionEntity | null> {
+    const execution = await this.prisma.moduleExecution.findFirst({
+      where: {
+        module_key: moduleKey,
+        idempotency_key: idempotencyKey
+      }
+    });
+
+    if (!execution) {
+      return null;
+    }
+
+    return toModuleExecutionEntity(execution);
+  }
+
   public async createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity> {
     const created = await this.prisma.moduleExecution.create({
       data: {
         module_key: input.module_key,
         event_type: input.event_type,
         status: input.status,
+        trace_id: input.trace_id,
+        idempotency_key: input.idempotency_key ?? null,
+        details_json: (input.details_json ?? null) as
+          | Prisma.InputJsonValue
+          | Prisma.NullableJsonNullValueInput,
         started_at: input.started_at ?? new Date(),
         ended_at: input.ended_at ?? null
       }

@@ -46,6 +46,9 @@ export interface ModuleExecutionEntity {
   module_key: string;
   event_type: string;
   status: "started" | "completed" | "failed";
+  trace_id: string;
+  idempotency_key: string | null;
+  details_json: Record<string, unknown> | null;
   started_at: Date;
   ended_at: Date | null;
 }
@@ -243,6 +246,9 @@ export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
   status: "started" | "completed" | "failed";
+  trace_id: string;
+  idempotency_key?: string | null;
+  details_json?: Record<string, unknown> | null;
   started_at?: Date;
   ended_at?: Date | null;
 }
@@ -348,6 +354,10 @@ export interface Persistence {
   listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]>;
   getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null>;
   listModuleExecutions(moduleKey: string): Promise<ModuleExecutionEntity[]>;
+  getModuleExecutionByIdempotency(
+    moduleKey: string,
+    idempotencyKey: string
+  ): Promise<ModuleExecutionEntity | null>;
   createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity>;
   createCustomModuleConfig(input: {
     module_key: string;
