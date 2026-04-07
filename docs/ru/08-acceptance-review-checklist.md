@@ -15,7 +15,7 @@
 - no eligible profile
 - reset-soon guard
 - restart recovery
-- invalid ZIP
+- invalid auth.json
 - audit completeness
 - hold release
 - pack lifecycle (register/materialize/rotate)

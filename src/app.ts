@@ -5,11 +5,10 @@ import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import type { AppConfig } from "./config";
 import {
-  extractAuthJsonFromZipBuffer,
-  hasZipMime,
-  looksLikeZipBuffer,
+  hasAuthJsonMime,
+  isAuthJsonFilename,
   parseAuthJsonBuffer
-} from "./lib/auth-profile-archive";
+} from "./lib/auth-profile-json";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import type {
   AgentTemplateEntity,
@@ -1256,8 +1255,11 @@ function adminGuard(config: AppConfig, request: FastifyRequest, reply: FastifyRe
   return null;
 }
 
-function isZipFile(mimeType: string, buffer: Buffer): boolean {
-  return hasZipMime(mimeType) && looksLikeZipBuffer(buffer);
+function isAuthJsonUpload(
+  filename: string,
+  mimeType: string
+): boolean {
+  return isAuthJsonFilename(filename) && hasAuthJsonMime(mimeType);
 }
 
 export async function createApp(deps: AppDependencies): Promise<FastifyInstance> {
@@ -1273,7 +1275,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   await app.register(multipart, {
     limits: {
-      fileSize: config.maxZipBytes,
+      fileSize: config.maxAuthJsonBytes,
       files: 1
     }
   });
@@ -1777,45 +1779,34 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     const fileBuffer = await multipartFile.toBuffer();
-    if (fileBuffer.length === 0 || fileBuffer.length > config.maxZipBytes) {
-      return sendError(reply, 400, "Invalid ZIP file size", "VALIDATION_ERROR");
+    if (fileBuffer.length === 0 || fileBuffer.length > config.maxAuthJsonBytes) {
+      return sendError(reply, 400, "Invalid auth.json file size", "VALIDATION_ERROR");
     }
 
-    if (!isZipFile(multipartFile.mimetype, fileBuffer)) {
-      return sendError(reply, 400, "File must be a ZIP archive", "VALIDATION_ERROR");
+    if (!isAuthJsonUpload(multipartFile.filename, multipartFile.mimetype)) {
+      return sendError(
+        reply,
+        400,
+        "File must be auth.json with JSON content type",
+        "VALIDATION_ERROR"
+      );
     }
 
-    let extracted: Awaited<ReturnType<typeof extractAuthJsonFromZipBuffer>>;
+    let authJson: Record<string, unknown>;
     try {
-      extracted = await extractAuthJsonFromZipBuffer(fileBuffer);
+      authJson = parseAuthJsonBuffer(fileBuffer);
     } catch (error) {
       request.log.warn(
         { err: error, filename: multipartFile.filename, trace_id: traceId },
-        "Invalid auth profile archive"
+        "Invalid auth.json payload"
       );
-      return sendError(
-        reply,
-        400,
-        "ZIP must contain exactly one auth.json file with valid JSON content",
-        "VALIDATION_ERROR"
-      );
+      return sendError(reply, 400, "auth.json must contain valid JSON object", "VALIDATION_ERROR");
     }
 
-    const extraFiles = extracted.fileEntries.filter((entry) => entry !== extracted.authJsonEntryPath);
-    if (extraFiles.length > 0) {
-      return sendError(
-        reply,
-        400,
-        "ZIP must contain only auth.json without additional files",
-        "VALIDATION_ERROR"
-      );
-    }
-
-    const authJson = parseAuthJsonBuffer(extracted.authJsonBuffer);
-    const checksum = createHash("sha256").update(extracted.authJsonBuffer).digest("hex");
+    const checksum = createHash("sha256").update(fileBuffer).digest("hex");
     const objectKey = `auth-profiles/${Date.now()}-${checksum}.auth.json`;
 
-    await storage.putObject(objectKey, extracted.authJsonBuffer, "application/json");
+    await storage.putObject(objectKey, fileBuffer, "application/json");
 
     const createdProfile = await persistence.createAuthProfile({
       label,
@@ -1826,9 +1817,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       meta_json: {
         filename: multipartFile.filename,
         upload_content_type: multipartFile.mimetype,
-        upload_zip_size_bytes: fileBuffer.length,
-        auth_json_size_bytes: extracted.authJsonBuffer.length,
-        auth_json_entry_path: extracted.authJsonEntryPath,
+        auth_json_size_bytes: fileBuffer.length,
         auth_mode: typeof authJson["auth_mode"] === "string" ? authJson["auth_mode"] : null,
         stored_object_type: "auth.json"
       }

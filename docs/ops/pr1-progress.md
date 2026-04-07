@@ -21,8 +21,8 @@
 
 ### 3. Данные и storage
 - [x] Подключена полная Prisma-схема по канону + миграции в репозитории.
-- [x] Для ChatGPT profile upload реализована базовая валидация (size, zip signature/mime, обязательный `auth.json`, checksum).
-- [x] В MinIO сохраняется только извлеченный `auth.json` (не весь ZIP), метаданные в Postgres.
+- [x] Для ChatGPT profile upload реализована базовая валидация (size, имя файла `auth.json`, JSON mime/payload, checksum).
+- [x] В MinIO сохраняется `auth.json`, метаданные в Postgres.
 - [x] `GET /api/queue/held` строится из задач со статусом `WAITING_LIMIT`.
 - [x] `GET /api/auth-profiles/chatgpt/switch-events` читает из persistence (`AuthSwitchEvent`).
 

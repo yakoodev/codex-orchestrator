@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import JSZip from "jszip";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, SWITCH_MODULE_KEY } from "../src/app";
@@ -34,15 +33,6 @@ import type {
   WorkerEntity
 } from "../src/runtime/contracts";
 import type { TaskStatus } from "../src/types";
-
-async function buildZip(entries: Record<string, string | Buffer>): Promise<Buffer> {
-  const zip = new JSZip();
-  for (const [entryPath, payload] of Object.entries(entries)) {
-    zip.file(entryPath, payload);
-  }
-
-  return zip.generateAsync({ type: "nodebuffer" });
-}
 
 class FakePersistence implements Persistence {
   public readonly tasks: TaskEntity[] = [];
@@ -973,7 +963,7 @@ describe("smoke-core API", () => {
     s3Bucket: "orchestrator-artifacts",
     s3AccessKey: "test",
     s3SecretKey: "test",
-    maxZipBytes: 2 * 1024 * 1024,
+    maxAuthJsonBytes: 2 * 1024 * 1024,
     switchModuleDefaultEnabled: true,
     switchWeeklyRemainingPercentLt: 5,
     switchFiveHourRemainingPercentLt: 10,
@@ -1313,24 +1303,22 @@ describe("smoke-core API", () => {
     expect(getResponse.json().id).toBe(artifact.id);
   });
 
-  it("uploads auth.json from ZIP to storage and emits event", async () => {
+  it("uploads auth.json to storage and emits event", async () => {
     const authJsonObject = {
       auth_mode: "chatgpt",
       access_token: "token-value",
       refresh_token: "refresh-value"
     };
     const authJsonText = JSON.stringify(authJsonObject);
-    const zipBuffer = await buildZip({
-      "auth.json": authJsonText
-    });
+    const authJsonBuffer = Buffer.from(authJsonText, "utf8");
 
     const response = await request(app.server)
       .post("/api/auth-profiles/chatgpt/upload")
       .set("x-admin-token", config.adminToken)
       .field("label", "profile-a")
-      .attach("file", zipBuffer, {
-        filename: "profile.zip",
-        contentType: "application/zip"
+      .attach("file", authJsonBuffer, {
+        filename: "auth.json",
+        contentType: "application/json"
       });
 
     expect(response.statusCode).toBe(201);
@@ -1352,37 +1340,32 @@ describe("smoke-core API", () => {
     expect(publisher.events.some((event) => event.eventType === "auth_profile.uploaded")).toBe(true);
   });
 
-  it("rejects auth profile ZIP without auth.json", async () => {
-    const zipBuffer = await buildZip({
-      "notes.txt": "no auth here"
-    });
+  it("rejects upload when filename is not auth.json", async () => {
+    const authJsonBuffer = Buffer.from(JSON.stringify({ auth_mode: "chatgpt" }), "utf8");
 
     const response = await request(app.server)
       .post("/api/auth-profiles/chatgpt/upload")
       .set("x-admin-token", config.adminToken)
-      .field("label", "profile-without-auth-json")
-      .attach("file", zipBuffer, {
-        filename: "profile.zip",
-        contentType: "application/zip"
+      .field("label", "profile-invalid-filename")
+      .attach("file", authJsonBuffer, {
+        filename: "profile.json",
+        contentType: "application/json"
       });
 
     expect(response.statusCode).toBe(400);
     expect(response.body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("rejects auth profile ZIP with extra files", async () => {
-    const zipBuffer = await buildZip({
-      "auth.json": JSON.stringify({ auth_mode: "chatgpt" }),
-      "extra.txt": "should not be here"
-    });
+  it("rejects upload with invalid auth.json payload", async () => {
+    const invalidBuffer = Buffer.from("not-json", "utf8");
 
     const response = await request(app.server)
       .post("/api/auth-profiles/chatgpt/upload")
       .set("x-admin-token", config.adminToken)
-      .field("label", "profile-with-extra-files")
-      .attach("file", zipBuffer, {
-        filename: "profile.zip",
-        contentType: "application/zip"
+      .field("label", "profile-invalid-json")
+      .attach("file", invalidBuffer, {
+        filename: "auth.json",
+        contentType: "application/json"
       });
 
     expect(response.statusCode).toBe(400);

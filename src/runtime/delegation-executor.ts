@@ -2,11 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "../config";
-import {
-  extractAuthJsonFromZipBuffer,
-  looksLikeZipBuffer,
-  parseAuthJsonBuffer
-} from "../lib/auth-profile-archive";
+import { parseAuthJsonBuffer } from "../lib/auth-profile-json";
 import type {
   ActiveAuthProfileRuntimeEntity,
   DelegationExecutionError,
@@ -65,16 +61,8 @@ function getPayloadPrompt(payload: Record<string, unknown>): string {
 
 async function resolveAuthJsonBuffer(rawProfilePayload: Buffer): Promise<{
   authJsonBuffer: Buffer;
-  source: "auth_json" | "zip_legacy";
+  source: "auth_json";
 }> {
-  if (looksLikeZipBuffer(rawProfilePayload)) {
-    const extracted = await extractAuthJsonFromZipBuffer(rawProfilePayload);
-    return {
-      authJsonBuffer: extracted.authJsonBuffer,
-      source: "zip_legacy"
-    };
-  }
-
   parseAuthJsonBuffer(rawProfilePayload);
   return {
     authJsonBuffer: rawProfilePayload,

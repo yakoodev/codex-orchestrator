@@ -13,7 +13,7 @@ export interface AppConfig {
   s3Bucket: string;
   s3AccessKey: string;
   s3SecretKey: string;
-  maxZipBytes: number;
+  maxAuthJsonBytes: number;
   switchModuleDefaultEnabled: boolean;
   switchWeeklyRemainingPercentLt: number;
   switchFiveHourRemainingPercentLt: number;
@@ -80,7 +80,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     s3Bucket: required(env["S3_BUCKET"], "S3_BUCKET"),
     s3AccessKey: required(env["S3_ACCESS_KEY"], "S3_ACCESS_KEY"),
     s3SecretKey: required(env["S3_SECRET_KEY"], "S3_SECRET_KEY"),
-    maxZipBytes: readInt(env["MAX_AUTH_PROFILE_ZIP_MB"], 25) * 1024 * 1024,
+    maxAuthJsonBytes: readInt(env["MAX_AUTH_PROFILE_JSON_MB"], 25) * 1024 * 1024,
     switchModuleDefaultEnabled: readBool(env["MODULE_SWITCH_ENABLED"], true),
     switchWeeklyRemainingPercentLt: readInt(env["SWITCH_WEEKLY_REMAINING_PERCENT_LT"], 5),
     switchFiveHourRemainingPercentLt: readInt(env["SWITCH_FIVE_HOUR_REMAINING_PERCENT_LT"], 10),

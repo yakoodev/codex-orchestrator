@@ -524,7 +524,7 @@ paths:
   /api/auth-profiles/chatgpt/upload:
     post:
       tags: [ChatGPT Auth Profiles]
-      summary: Upload ChatGPT auth profile ZIP
+      summary: Upload ChatGPT auth.json profile
       requestBody:
         required: true
         content:
@@ -537,7 +537,11 @@ paths:
                 file:
                   type: string
                   format: binary
+                  description: Must be file named `auth.json` with JSON object payload.
               required: [label, file]
+            encoding:
+              file:
+                contentType: application/json
       responses:
         "201":
           description: Profile uploaded

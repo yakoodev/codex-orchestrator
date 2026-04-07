@@ -58,7 +58,7 @@ docker compose exec bus printenv TG_PROXY_URL
 - Optional: switch UI locale (`RU/EN`) in panel header.
 - Validate primary workflow from UI:
   - create task;
-  - upload ChatGPT profile archive (`.zip` with only `auth.json`);
+  - upload ChatGPT `auth.json` profile;
   - activate/deactivate profile (triggers hold -> switch -> release flow);
   - inspect switch-events and held queue.
 
@@ -67,13 +67,13 @@ Notes:
 
 ## Real codex execution quick check
 1. Ensure `DELEGATION_EXECUTOR_MODE` is `auto` or `codex_exec`.
-2. Upload and activate auth archive (`.zip` with exactly one `auth.json` from `.codex`).
+2. Upload and activate `auth.json` from local `.codex`.
 3. Create task and reviewer template.
 4. Call `POST /api/delegation/dispatch` with `payload.prompt`.
 5. Expected: delegation `status=completed`, `result_summary` contains model answer (real mode) instead of mock text.
 
 Auth storage note:
-- Upload endpoint accepts ZIP, but runtime storage keeps only extracted `auth.json` object in MinIO.
+- Upload endpoint accepts only `auth.json` file (multipart upload).
 - During execution, worker writes that `auth.json` into isolated `CODEX_HOME` for current delegation.
 
 ## Backup

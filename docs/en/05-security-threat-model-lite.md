@@ -2,7 +2,7 @@
 
 ## Assets
 - Admin token
-- ChatGPT auth ZIP bundles
+- ChatGPT auth.json files
 - Active auth profile pointer
 - Task/artifact/event logs
 

@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import JSZip from "jszip";
 
 function parseDotEnv(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -247,20 +246,18 @@ async function main() {
   }
   ok("trigger and list schedule runs (idempotent)");
 
-  const authZip = new JSZip();
-  authZip.file(
-    "auth.json",
-    JSON.stringify({
-      auth_mode: "chatgpt",
-      access_token: `smoke-token-${runId}`
-    })
-  );
-  const zipBuffer = await authZip.generateAsync({ type: "nodebuffer" });
-
   const form = new FormData();
-  const zipBlob = new Blob([zipBuffer], { type: "application/zip" });
+  const authJsonBlob = new Blob(
+    [
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        access_token: `smoke-token-${runId}`
+      })
+    ],
+    { type: "application/json" }
+  );
   form.append("label", "smoke-profile");
-  form.append("file", zipBlob, "smoke-profile.zip");
+  form.append("file", authJsonBlob, "auth.json");
 
   const upload = await requestJson(baseUrl, adminToken, "POST", "/api/auth-profiles/chatgpt/upload", {
     expected: [201],

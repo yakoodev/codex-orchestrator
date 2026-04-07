@@ -87,7 +87,7 @@ $tasks.items | Select-Object -First 5 | ConvertTo-Json -Depth 5
 
 ## 6. Сценарий D: Auth profile lifecycle + switch-events
 
-Создай ZIP с единственным `auth.json`:
+Подготовь `auth.json`:
 
 ```powershell
 $authJson = @'
@@ -104,7 +104,6 @@ $authJson = @'
   (New-Object System.Text.UTF8Encoding($false))
 )
 
-Compress-Archive -Path "$PWD\auth.json" -DestinationPath "$PWD\manual-profile.zip" -Force
 ```
 
 Загрузи профиль:
@@ -113,7 +112,7 @@ Compress-Archive -Path "$PWD\auth.json" -DestinationPath "$PWD\manual-profile.zi
 $uploadRaw = curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/upload" `
   -H "X-Admin-Token: $ADMIN_TOKEN" `
   -F "label=manual-profile" `
-  -F "file=@manual-profile.zip;type=application/zip"
+  -F "file=@auth.json;type=application/json"
 $upload = $uploadRaw | ConvertFrom-Json
 $profileId = $upload.id
 $upload | ConvertTo-Json -Depth 5
@@ -150,7 +149,7 @@ $events.items | Select-Object -First 10 | ConvertTo-Json -Depth 6
 Ожидаемо:
 - есть `manual_activate` (`started` + `completed`);
 - есть `manual_deactivate` (`started` + `completed`).
-- upload проходит только если внутри ZIP нет ничего кроме `auth.json`.
+- upload проходит только если загружен файл с именем `auth.json` и валидным JSON-объектом.
 
 ## 7. Сценарий E: Held queue + module patch
 
@@ -179,7 +178,7 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 - `PATCH` возвращает обновлённый модуль;
 - в executions появляется новый `module.execution.completed`.
 
-## 8. Сценарий F: Реальный codex execution с auth archive
+## 8. Сценарий F: Реальный codex execution с auth.json
 
 ```powershell
 # 8.1 Включи strict real runtime и перезапусти bus
@@ -190,12 +189,10 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 docker compose up -d --build bus
 ```
 
-Создай ZIP c единственным `auth.json` из локального профиля codex:
+Подготовь `auth.json` из локального профиля codex:
 
 ```powershell
-New-Item -ItemType Directory -Path "$PWD\.tmp-auth" -Force | Out-Null
-Copy-Item "$HOME\.codex\auth.json" "$PWD\.tmp-auth\auth.json" -Force
-Compress-Archive -Path "$PWD\.tmp-auth\auth.json" -DestinationPath "$PWD\manual-runtime-auth.zip" -Force
+Copy-Item "$HOME\.codex\auth.json" "$PWD\manual-runtime-auth.json" -Force
 ```
 
 Загрузи и активируй профиль:
@@ -204,7 +201,7 @@ Compress-Archive -Path "$PWD\.tmp-auth\auth.json" -DestinationPath "$PWD\manual-
 $uploadRaw = curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/upload" `
   -H "X-Admin-Token: $ADMIN_TOKEN" `
   -F "label=manual-runtime-auth" `
-  -F "file=@manual-runtime-auth.zip;type=application/zip"
+  -F "file=@manual-runtime-auth.json;type=application/json"
 $upload = $uploadRaw | ConvertFrom-Json
 $runtimeProfileId = $upload.id
 
@@ -264,8 +261,6 @@ $dispatch | ConvertTo-Json -Depth 8
 ## 9. Очистка артефактов теста
 
 ```powershell
-Remove-Item -LiteralPath "$PWD\manual-profile.zip" -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$PWD\auth.json" -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath "$PWD\manual-runtime-auth.zip" -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath "$PWD\.tmp-auth" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath "$PWD\manual-runtime-auth.json" -ErrorAction SilentlyContinue
 ```

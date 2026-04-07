@@ -2,7 +2,7 @@
 
 ## Активы
 - Admin token
-- ChatGPT auth ZIP bundles
+- ChatGPT auth.json files
 - Active auth profile state
 - Task/artifact/event logs
 
