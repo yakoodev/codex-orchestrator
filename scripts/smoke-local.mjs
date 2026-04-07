@@ -113,17 +113,25 @@ async function main() {
   await requestJson(baseUrl, null, "GET", "/api/tasks", { expected: [401] });
   ok("admin token guard");
 
-  const noActiveProfile = await requestJson(
+  const initialActiveProfile = await requestJson(
     baseUrl,
     adminToken,
     "GET",
     "/api/auth-profiles/chatgpt/active",
-    { expected: [404] }
+    { expected: [200, 404] }
   );
-  if (!noActiveProfile.data || noActiveProfile.data.code !== "NOT_FOUND") {
-    fail("active profile empty state should return 404 NOT_FOUND", noActiveProfile.data);
+
+  if (initialActiveProfile.status === 404) {
+    if (!initialActiveProfile.data || initialActiveProfile.data.code !== "NOT_FOUND") {
+      fail("active profile empty state should return 404 NOT_FOUND", initialActiveProfile.data);
+    }
+    ok("active profile empty state (404)");
+  } else {
+    if (!initialActiveProfile.data || initialActiveProfile.data.status !== "active") {
+      fail("active profile pre-state should be active when status is 200", initialActiveProfile.data);
+    }
+    ok("active profile pre-selected (200)");
   }
-  ok("active profile empty state (404)");
 
   const task = await requestJson(baseUrl, adminToken, "POST", "/api/tasks", {
     expected: [201],
@@ -167,7 +175,7 @@ async function main() {
       requester_task_run_id: null,
       capability: "reviewer",
       target_selector: { role: "reviewer" },
-      payload: { from: "smoke-script" },
+      payload: { from: "smoke-script", execution_mode: "mock" },
       priority: 100
     })
   });
@@ -189,7 +197,7 @@ async function main() {
       requester_task_run_id: null,
       capability: "reviewer",
       target_selector: { role: "reviewer" },
-      payload: { from: "smoke-script", simulate_timeout_attempts: 5 },
+      payload: { from: "smoke-script", execution_mode: "mock", simulate_timeout_attempts: 5 },
       priority: 100
     })
   });

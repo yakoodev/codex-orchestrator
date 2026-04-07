@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, SWITCH_MODULE_KEY } from "../src/app";
 import type { AppConfig } from "../src/config";
 import type {
+  ActiveAuthProfileRuntimeEntity,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -11,6 +12,7 @@ import type {
   AuthContextType,
   AuthSwitchEventEntity,
   CreateDelegationRequestInput,
+  DelegationExecutor,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
@@ -701,6 +703,21 @@ class FakePersistence implements Persistence {
     return this.profiles.find((profile) => profile.status === "active") ?? null;
   }
 
+  public async getActiveAuthProfileRuntime(): Promise<ActiveAuthProfileRuntimeEntity | null> {
+    const profile = this.profiles.find((item) => item.status === "active") ?? null;
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      label: profile.label,
+      status: "active",
+      checksum: profile.checksum,
+      storage_path: profile.storage_path
+    };
+  }
+
   public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {
     this.activateAttempts += 1;
     if (this.activateFailuresRemaining > 0) {
@@ -884,6 +901,15 @@ class FakeStorage implements StorageService {
     this.objects.set(key, body);
   }
 
+  public async getObject(key: string): Promise<Buffer> {
+    const object = this.objects.get(key);
+    if (!object) {
+      throw new Error(`object not found: ${key}`);
+    }
+
+    return object;
+  }
+
   public async checkReady(): Promise<void> {
     if (!this.ready) {
       throw new Error("storage not ready");
@@ -940,7 +966,11 @@ describe("smoke-core API", () => {
     switchWeeklyRemainingPercentLt: 5,
     switchFiveHourRemainingPercentLt: 10,
     switchResetGuardHours: 3,
-    openApiPath: path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml")
+    openApiPath: path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml"),
+    delegationExecutorMode: "mock",
+    codexCommand: "codex",
+    workerRuntimeDir: path.resolve(process.cwd(), ".runtime", "workers-test"),
+    delegationExecutionTimeoutMs: 60_000
   };
 
   beforeEach(async () => {
@@ -1981,6 +2011,123 @@ describe("smoke-core API", () => {
     expect(
       publisher.events.some((event) => event.eventType === "agent.delegation.completed")
     ).toBe(true);
+  });
+
+  it("uses injected delegation executor and stores returned summary", async () => {
+    await app.close();
+
+    const executionCalls: unknown[] = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push(input);
+        return {
+          execution_mode: "codex_exec",
+          result_summary: "executor-result-summary",
+          output_text: "executor-output-text"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor
+    });
+    await app.ready();
+
+    await persistence.createAgentTemplate({
+      name: "executor-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-delegation-executor-1" },
+      payload: {
+        requester_task_id: "task-1",
+        requester_task_run_id: "run-1",
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Run executor path" },
+        priority: 77
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("completed");
+    expect(dispatchResponse.json().result_summary).toBe("executor-result-summary");
+    expect(executionCalls).toHaveLength(1);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "agent.delegation.completed" &&
+          event.payload["execution_mode"] === "codex_exec"
+      )
+    ).toBe(true);
+  });
+
+  it("marks delegation failed for terminal AUTH_PROFILE_REQUIRED executor error", async () => {
+    await app.close();
+
+    const injectedExecutor: DelegationExecutor = {
+      async execute() {
+        const error = new Error("Active auth profile is required for codex execution") as Error & {
+          code: "AUTH_PROFILE_REQUIRED";
+        };
+        error.code = "AUTH_PROFILE_REQUIRED";
+        throw error;
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor
+    });
+    await app.ready();
+
+    await persistence.createAgentTemplate({
+      name: "executor-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-delegation-auth-required-1" },
+      payload: {
+        requester_task_id: "task-1",
+        requester_task_run_id: "run-1",
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Run executor path" },
+        priority: 77
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("failed");
+    expect(dispatchResponse.json().result_summary).toContain("Active auth profile is required");
+
+    const failedEvent = publisher.events.find(
+      (event) =>
+        event.eventType === "agent.delegation.failed" &&
+        event.payload["reason"] === "auth_profile_required"
+    );
+    expect(failedEvent).toBeDefined();
   });
 
   it("marks delegation failed after timeout retries are exhausted", async () => {

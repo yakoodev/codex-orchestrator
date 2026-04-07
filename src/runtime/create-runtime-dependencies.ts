@@ -4,13 +4,20 @@ import { PrismaClient } from "@prisma/client";
 import type { AppConfig } from "../config";
 import { RedisStreamPublisher } from "../lib/redis-stream-publisher";
 import { S3StorageService } from "../lib/s3-storage";
-import type { EventPublisher, Persistence, StorageService } from "./contracts";
+import type {
+  DelegationExecutor,
+  EventPublisher,
+  Persistence,
+  StorageService
+} from "./contracts";
+import { createDelegationExecutor } from "./delegation-executor";
 import { PrismaPersistence } from "./prisma-persistence";
 
 export interface RuntimeDependencies {
   persistence: Persistence;
   publisher: EventPublisher;
   storage: StorageService;
+  delegationExecutor: DelegationExecutor;
   close(): Promise<void>;
 }
 
@@ -43,11 +50,17 @@ export async function createRuntimeDependencies(config: AppConfig): Promise<Runt
   await prisma.$connect();
   await redis.connect();
   await storage.ensureBucket();
+  const persistence = new PrismaPersistence(prisma);
 
   return {
-    persistence: new PrismaPersistence(prisma),
+    persistence,
     publisher: new RedisStreamPublisher(redis, config.redisStreamKey),
     storage,
+    delegationExecutor: createDelegationExecutor({
+      config,
+      persistence,
+      storage
+    }),
     close: async () => {
       await Promise.allSettled([prisma.$disconnect(), redis.quit()]);
     }

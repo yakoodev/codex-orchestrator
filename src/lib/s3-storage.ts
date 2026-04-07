@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   PutObjectCommand,
   S3Client,
@@ -40,5 +41,21 @@ export class S3StorageService implements StorageService {
         ContentType: contentType
       })
     );
+  }
+
+  public async getObject(key: string): Promise<Buffer> {
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key
+      })
+    );
+
+    if (!response.Body) {
+      throw new Error(`Object body is empty for key: ${key}`);
+    }
+
+    const bytes = await response.Body.transformToByteArray();
+    return Buffer.from(bytes);
   }
 }

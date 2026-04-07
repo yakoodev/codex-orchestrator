@@ -14,6 +14,7 @@ import {
   WorkerRuntimeMode as PrismaWorkerRuntimeMode
 } from "@prisma/client";
 import type {
+  ActiveAuthProfileRuntimeEntity,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -933,6 +934,32 @@ export class PrismaPersistence implements Persistence {
     }
 
     return toAuthProfileEntity(active);
+  }
+
+  public async getActiveAuthProfileRuntime(): Promise<ActiveAuthProfileRuntimeEntity | null> {
+    const active = await this.prisma.chatGptAuthProfile.findFirst({
+      where: { status: "active" },
+      orderBy: { updated_at: "desc" },
+      select: {
+        id: true,
+        label: true,
+        status: true,
+        checksum: true,
+        storage_path: true
+      }
+    });
+
+    if (!active) {
+      return null;
+    }
+
+    return {
+      id: active.id,
+      label: active.label,
+      status: "active",
+      checksum: active.checksum,
+      storage_path: active.storage_path
+    };
   }
 
   public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {

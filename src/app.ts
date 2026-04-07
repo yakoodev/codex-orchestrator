@@ -10,6 +10,8 @@ import type {
   ArtifactEntity,
   AuthContextEntity,
   AuthContextType,
+  DelegationExecutionError,
+  DelegationExecutor,
   AuthProfileEntity,
   DelegationRequestEntity,
   EventPublishInput,
@@ -94,6 +96,7 @@ interface AppDependencies {
   persistence: Persistence;
   publisher: EventPublisher;
   storage: StorageService;
+  delegationExecutor?: DelegationExecutor;
 }
 
 interface TaskCreateRequest {
@@ -230,6 +233,43 @@ interface ScheduleEvaluationContext {
   weeklyRemainingPct: number | null;
   fiveHourRemainingPct: number | null;
   resetEtaHours: number | null;
+}
+
+function createDefaultDelegationExecutor(): DelegationExecutor {
+  return {
+    async execute(input) {
+      const summary = `Delegation completed by template ${input.target_template.id}`;
+      return {
+        execution_mode: "mock",
+        result_summary: summary,
+        output_text: summary
+      };
+    }
+  };
+}
+
+function isDelegationExecutionError(error: unknown): error is DelegationExecutionError {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code = (error as Partial<DelegationExecutionError>).code;
+  return code === "TIMEOUT" || code === "AUTH_PROFILE_REQUIRED" || code === "EXECUTION_FAILED";
+}
+
+function delegationFailureReasonFromCode(
+  code: DelegationExecutionError["code"],
+  isTerminalAttempt: boolean
+): string {
+  if (code === "TIMEOUT") {
+    return isTerminalAttempt ? "timeout_exhausted" : "timeout_attempt";
+  }
+
+  if (code === "AUTH_PROFILE_REQUIRED") {
+    return "auth_profile_required";
+  }
+
+  return "execution_failed";
 }
 
 function sendError(reply: FastifyReply, statusCode: number, error: string, code: string): FastifyReply {
@@ -1223,6 +1263,7 @@ function isZipFile(mimeType: string, buffer: Buffer): boolean {
 
 export async function createApp(deps: AppDependencies): Promise<FastifyInstance> {
   const { config, persistence, publisher, storage } = deps;
+  const delegationExecutor = deps.delegationExecutor ?? createDefaultDelegationExecutor();
 
   const app = Fastify({ logger: true });
 
@@ -2722,50 +2763,105 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
     });
 
-    let timeoutAttemptsRemaining =
-      asNonNegativeInteger(payload["simulate_timeout_attempts"]) ?? 0;
+    const runningDelegation = await persistence.updateDelegationRequest(delegation.id, {
+      status: "running",
+      ended_at: null
+    });
+    if (!runningDelegation) {
+      return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+    }
+
+    let timeoutAttemptsRemaining = asNonNegativeInteger(payload["simulate_timeout_attempts"]) ?? 0;
 
     for (let attempt = 1; attempt <= DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT; attempt += 1) {
+      let executionResult:
+        | Awaited<ReturnType<DelegationExecutor["execute"]>>
+        | null = null;
+      let executionError: DelegationExecutionError | null = null;
+
       if (timeoutAttemptsRemaining > 0) {
         timeoutAttemptsRemaining -= 1;
-        const isTerminalAttempt = attempt === DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT;
-        const timeoutReason = isTerminalAttempt ? "timeout_exhausted" : "timeout_attempt";
+        executionError = {
+          name: "DelegationExecutionFailure",
+          message: "Delegation timed out",
+          code: "TIMEOUT"
+        };
+      } else {
+        try {
+          executionResult = await delegationExecutor.execute({
+            delegation_id: delegation.id,
+            trace_id: traceId,
+            requester_task_id: requesterTaskId,
+            capability,
+            payload,
+            target_template: {
+              id: targetTemplate.id,
+              role: targetTemplate.role,
+              model: targetTemplate.model
+            }
+          });
+        } catch (error) {
+          if (isDelegationExecutionError(error)) {
+            executionError = error;
+          } else {
+            executionError = {
+              name: "DelegationExecutionFailure",
+              message: getErrorMessage(error),
+              code: "EXECUTION_FAILED"
+            };
+          }
+        }
+      }
+
+      if (executionError) {
+        const isTerminalAttempt =
+          executionError.code !== "TIMEOUT" || attempt === DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT;
+        const failureReason = delegationFailureReasonFromCode(executionError.code, isTerminalAttempt);
 
         await publisher.publish({
           eventType: "agent.delegation.failed",
           traceId,
-          idempotencyKey: `${delegation.id}:failed:${traceId}:${attempt}`,
+          idempotencyKey: `${delegation.id}:failed:${traceId}:${attempt}:${failureReason}`,
           payload: {
-            delegation_id: acceptedDelegation.id,
-            requester_task_id: acceptedDelegation.requester_task_id,
-            capability: acceptedDelegation.capability,
+            delegation_id: runningDelegation.id,
+            requester_task_id: runningDelegation.requester_task_id,
+            capability: runningDelegation.capability,
             status: isTerminalAttempt ? "failed" : "running",
-            target_agent_template_id: acceptedDelegation.target_agent_template_id,
-            target_worker_instance_id: acceptedDelegation.target_worker_instance_id,
-            reason: timeoutReason,
+            target_agent_template_id: runningDelegation.target_agent_template_id,
+            target_worker_instance_id: runningDelegation.target_worker_instance_id,
+            reason: failureReason,
             retry_attempt: attempt
           }
         });
 
-        if (isTerminalAttempt) {
-          const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
-            status: "failed",
-            result_summary: `Delegation timed out after ${DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT} attempts`,
-            ended_at: new Date()
-          });
-          if (!failedDelegation) {
-            return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
-          }
-
-          return reply.code(202).send(delegationToResponse(failedDelegation));
+        if (!isTerminalAttempt) {
+          continue;
         }
 
+        const failedSummary =
+          executionError.code === "TIMEOUT"
+            ? `Delegation timed out after ${DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT} attempts`
+            : executionError.message;
+
+        const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
+          status: "failed",
+          result_summary: failedSummary,
+          ended_at: new Date()
+        });
+        if (!failedDelegation) {
+          return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
+        }
+
+        return reply.code(202).send(delegationToResponse(failedDelegation));
+      }
+
+      if (!executionResult) {
         continue;
       }
 
       const completedDelegation = await persistence.updateDelegationRequest(delegation.id, {
         status: "completed",
-        result_summary: `Delegation completed by template ${targetTemplate.id}`,
+        result_summary: executionResult.result_summary,
         ended_at: new Date()
       });
       if (!completedDelegation) {
@@ -2783,7 +2879,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           status: completedDelegation.status,
           target_agent_template_id: completedDelegation.target_agent_template_id,
           target_worker_instance_id: completedDelegation.target_worker_instance_id,
-          reason: null
+          reason: null,
+          execution_mode: executionResult.execution_mode
         }
       });
 

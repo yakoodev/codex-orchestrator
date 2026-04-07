@@ -5,6 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci
+RUN npm install -g @openai/codex
 
 COPY . .
 RUN npm run build

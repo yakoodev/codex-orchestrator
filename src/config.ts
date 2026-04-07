@@ -19,6 +19,10 @@ export interface AppConfig {
   switchFiveHourRemainingPercentLt: number;
   switchResetGuardHours: number;
   openApiPath: string;
+  delegationExecutorMode: "mock" | "auto" | "codex_exec";
+  codexCommand: string;
+  workerRuntimeDir: string;
+  delegationExecutionTimeoutMs: number;
 }
 
 function readInt(value: string | undefined, fallback: number): number {
@@ -51,6 +55,17 @@ function required(value: string | undefined, key: string): string {
   return value;
 }
 
+function readDelegationExecutorMode(
+  value: string | undefined
+): "mock" | "auto" | "codex_exec" {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "mock" || normalized === "auto" || normalized === "codex_exec") {
+    return normalized;
+  }
+
+  return "auto";
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     nodeEnv: env["NODE_ENV"] ?? "development",
@@ -72,6 +87,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     switchResetGuardHours: readInt(env["SWITCH_RESET_GUARD_HOURS"], 3),
     openApiPath:
       env["OPENAPI_CONTRACT_PATH"] ??
-      path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml")
+      path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml"),
+    delegationExecutorMode: readDelegationExecutorMode(env["DELEGATION_EXECUTOR_MODE"]),
+    codexCommand: env["CODEX_COMMAND"]?.trim() || "codex",
+    workerRuntimeDir:
+      env["WORKER_RUNTIME_DIR"]?.trim() ||
+      path.resolve(process.cwd(), ".runtime", "workers"),
+    delegationExecutionTimeoutMs: readInt(env["DELEGATION_EXECUTION_TIMEOUT_MS"], 180000)
   };
 }

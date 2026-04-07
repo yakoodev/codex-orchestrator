@@ -9,7 +9,8 @@ async function main(): Promise<void> {
     config,
     persistence: runtime.persistence,
     publisher: runtime.publisher,
-    storage: runtime.storage
+    storage: runtime.storage,
+    delegationExecutor: runtime.delegationExecutor
   });
 
   const shutdown = async (): Promise<void> => {

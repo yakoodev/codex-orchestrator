@@ -22,6 +22,14 @@ export interface AuthProfileEntity {
   created_at: Date;
 }
 
+export interface ActiveAuthProfileRuntimeEntity {
+  id: string;
+  label: string;
+  status: "active";
+  checksum: string;
+  storage_path: string;
+}
+
 export interface AuthSwitchEventEntity {
   id: string;
   module_key: string;
@@ -274,6 +282,30 @@ export interface EventPublishInput {
   idempotencyKey?: string | null;
 }
 
+export interface DelegationExecutionInput {
+  delegation_id: string;
+  trace_id: string;
+  requester_task_id: string;
+  capability: string;
+  payload: Record<string, unknown>;
+  target_template: Pick<AgentTemplateEntity, "id" | "role" | "model">;
+}
+
+export interface DelegationExecutionResult {
+  execution_mode: "mock" | "codex_exec";
+  result_summary: string;
+  output_text: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DelegationExecutionError extends Error {
+  code: "TIMEOUT" | "AUTH_PROFILE_REQUIRED" | "EXECUTION_FAILED";
+}
+
+export interface DelegationExecutor {
+  execute(input: DelegationExecutionInput): Promise<DelegationExecutionResult>;
+}
+
 export interface Persistence {
   pingDb(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<TaskEntity>;
@@ -374,6 +406,7 @@ export interface Persistence {
   createAuthProfile(input: CreateAuthProfileInput): Promise<AuthProfileEntity>;
   listAuthProfiles(): Promise<AuthProfileEntity[]>;
   getActiveAuthProfile(): Promise<AuthProfileEntity | null>;
+  getActiveAuthProfileRuntime(): Promise<ActiveAuthProfileRuntimeEntity | null>;
   activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null>;
   deactivateAuthProfile(id: string): Promise<boolean>;
   createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity>;
@@ -406,6 +439,7 @@ export interface Persistence {
 
 export interface StorageService {
   putObject(key: string, body: Buffer, contentType: string): Promise<void>;
+  getObject(key: string): Promise<Buffer>;
   checkReady(): Promise<void>;
   ensureBucket(): Promise<void>;
 }
