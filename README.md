@@ -20,6 +20,13 @@ Health endpoints:
 - `GET http://localhost:8080/health/live`
 - `GET http://localhost:8080/health/ready`
 
+Local smoke path (after `docker compose up -d`):
+```bash
+npm ci
+npm run smoke:local
+```
+The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles, custom modules, packs, and queue endpoints.
+
 Optional observability profile:
 ```bash
 docker compose --profile observability up -d
