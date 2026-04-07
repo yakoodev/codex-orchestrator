@@ -1502,8 +1502,14 @@ describe("smoke-core API", () => {
     expect(retriedEvents).toHaveLength(1);
 
     const switchStatuses = persistence.switchEvents.map((event) => event.status);
+    expect(switchStatuses).toContain("failed");
     expect(switchStatuses).toContain("started");
     expect(switchStatuses).toContain("completed");
+    expect(
+      persistence.switchEvents.some(
+        (event) => event.reason === "manual_activate_retry" && event.status === "failed"
+      )
+    ).toBe(true);
   });
 
   it("returns 500 when deactivate keeps failing after retries", async () => {
@@ -1535,7 +1541,17 @@ describe("smoke-core API", () => {
         event.payload["reason"] === "manual_deactivate_retry"
     );
     expect(retriedEvents).toHaveLength(2);
-    expect(persistence.switchEvents).toHaveLength(0);
+    expect(persistence.switchEvents).toHaveLength(3);
+    expect(
+      persistence.switchEvents.filter(
+        (event) => event.reason === "manual_deactivate_retry" && event.status === "failed"
+      )
+    ).toHaveLength(2);
+    expect(
+      persistence.switchEvents.some(
+        (event) => event.reason === "manual_deactivate_failed" && event.status === "failed"
+      )
+    ).toBe(true);
   });
 
   it("manages packs endpoints", async () => {
