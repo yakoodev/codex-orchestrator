@@ -1479,6 +1479,148 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("evaluates schedule AST with all/any/not predicates", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "limit-aware rule",
+        scope: "global",
+        project_id: null,
+        rule_ast: {
+          all: [
+            { predicate: "event.type", value: "limit.snapshot.captured" },
+            {
+              any: [
+                { predicate: "limit.weekly_remaining_lt", value: 5 },
+                { predicate: "limit.five_hour_remaining_lt", value: 10 }
+              ]
+            },
+            { not: { predicate: "state.module_enabled", value: false } }
+          ]
+        },
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart"
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const ruleId = createResponse.json().id as string;
+
+    const matchedResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          event_type: "limit.snapshot.captured",
+          weekly_remaining_pct: 4,
+          five_hour_remaining_pct: 20,
+          module_enabled: true
+        }
+      }
+    });
+    expect(matchedResponse.statusCode).toBe(200);
+    expect(matchedResponse.json().matched).toBe(true);
+
+    const notMatchedResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          event_type: "limit.snapshot.captured",
+          weekly_remaining_pct: 40,
+          five_hour_remaining_pct: 20,
+          module_enabled: true
+        }
+      }
+    });
+    expect(notMatchedResponse.statusCode).toBe(200);
+    expect(notMatchedResponse.json().matched).toBe(false);
+  });
+
+  it("evaluates time.cron predicate in UTC", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "utc cron rule",
+        scope: "global",
+        project_id: null,
+        rule_ast: {
+          predicate: "time.cron",
+          value: "30 12 * * *"
+        },
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart"
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const ruleId = createResponse.json().id as string;
+
+    const matchedResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          now_utc: "2026-01-02T12:30:00.000Z"
+        }
+      }
+    });
+    expect(matchedResponse.statusCode).toBe(200);
+    expect(matchedResponse.json().matched).toBe(true);
+
+    const notMatchedResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          now_utc: "2026-01-02T12:31:00.000Z"
+        }
+      }
+    });
+    expect(notMatchedResponse.statusCode).toBe(200);
+    expect(notMatchedResponse.json().matched).toBe(false);
+  });
+
+  it("supports legacy rule_ast.conditions format in schedule evaluation", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "legacy conditions rule",
+        scope: "global",
+        project_id: null,
+        rule_ast: {
+          conditions: [{ predicate: "state.module_enabled", value: true }]
+        },
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart"
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const ruleId = createResponse.json().id as string;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          module_enabled: true
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().matched).toBe(true);
+  });
+
   it("returns held queue tasks from WAITING_LIMIT", async () => {
     await persistence.createTask({
       title: "held",
