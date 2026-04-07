@@ -10,11 +10,16 @@ import {
   parseAuthJsonBuffer
 } from "./lib/auth-profile-json";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
+import {
+  AuthProfileRateLimitsError,
+  createAuthProfileRateLimitsReader
+} from "./runtime/auth-profile-rate-limits";
 import type {
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
   AuthContextType,
+  AuthProfileRateLimitsReader,
   DelegationExecutionError,
   DelegationExecutor,
   AuthProfileEntity,
@@ -65,6 +70,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/auth-profiles/chatgpt",
   "POST /api/auth-profiles/chatgpt/{id}/activate",
   "POST /api/auth-profiles/chatgpt/{id}/deactivate",
+  "GET /api/auth-profiles/chatgpt/{id}/limits",
   "GET /api/auth-profiles/chatgpt/active",
   "GET /api/auth-profiles/chatgpt/switch-events",
   "POST /api/packs",
@@ -102,6 +108,7 @@ interface AppDependencies {
   publisher: EventPublisher;
   storage: StorageService;
   delegationExecutor?: DelegationExecutor;
+  authProfileRateLimitsReader?: AuthProfileRateLimitsReader;
 }
 
 interface TaskCreateRequest {
@@ -1265,6 +1272,13 @@ function isAuthJsonUpload(
 export async function createApp(deps: AppDependencies): Promise<FastifyInstance> {
   const { config, persistence, publisher, storage } = deps;
   const delegationExecutor = deps.delegationExecutor ?? createDefaultDelegationExecutor();
+  const authProfileRateLimitsReader =
+    deps.authProfileRateLimitsReader ??
+    createAuthProfileRateLimitsReader({
+      config,
+      persistence,
+      storage
+    });
 
   const app = Fastify({ logger: true });
 
@@ -2400,6 +2414,37 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return reply.code(202).send({ accepted: true });
+  });
+
+  app.get("/api/auth-profiles/chatgpt/:id/limits", async (request, reply) => {
+    const { id } = request.params as { id: string };
+
+    try {
+      const limits = await authProfileRateLimitsReader.readByProfileId(id);
+      if (!limits) {
+        return sendError(reply, 404, "Profile not found", "NOT_FOUND");
+      }
+
+      return reply.send(limits);
+    } catch (error) {
+      if (error instanceof AuthProfileRateLimitsError && error.code === "PROFILE_PAYLOAD_INVALID") {
+        request.log.error({ err: error, profile_id: id }, "Stored auth profile payload is invalid");
+        return sendError(
+          reply,
+          500,
+          "Stored auth profile payload is invalid",
+          "AUTH_PROFILE_PAYLOAD_INVALID"
+        );
+      }
+
+      request.log.error({ err: error, profile_id: id }, "Failed to fetch live limits");
+      return sendError(
+        reply,
+        502,
+        "Failed to fetch live limits via codex app-server",
+        "RATE_LIMITS_UNAVAILABLE"
+      );
+    }
   });
 
   app.get("/api/auth-profiles/chatgpt/active", async (_request, reply) => {

@@ -596,6 +596,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/AcceptedResponse"
 
+  /api/auth-profiles/chatgpt/{id}/limits:
+    get:
+      tags: [ChatGPT Auth Profiles]
+      summary: Get live Codex limits for profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Live limits snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGptAuthProfileLimitsResponse"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Stored profile payload is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Live limits upstream unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/auth-profiles/chatgpt/active:
     get:
       tags: [ChatGPT Auth Profiles]
@@ -1237,6 +1269,102 @@ components:
           type: string
           format: date-time
       required: [id, label, status, checksum, created_at]
+
+    RateLimitWindowSnapshot:
+      type: object
+      properties:
+        used_percent:
+          type: [integer, "null"]
+        remaining_percent:
+          type: [integer, "null"]
+        window_minutes:
+          type: [integer, "null"]
+        resets_at_unix:
+          type: [integer, "null"]
+        resets_at_utc:
+          type: [string, "null"]
+          format: date-time
+        reset_after_seconds:
+          type: [integer, "null"]
+      required:
+        - used_percent
+        - remaining_percent
+        - window_minutes
+        - resets_at_unix
+        - resets_at_utc
+        - reset_after_seconds
+
+    RateLimitCreditsSnapshot:
+      type: object
+      properties:
+        has_credits:
+          type: boolean
+        unlimited:
+          type: boolean
+        balance:
+          type: [string, "null"]
+      required: [has_credits, unlimited, balance]
+
+    RateLimitSnapshot:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [openai_app_server_rpc]
+        captured_at:
+          type: string
+          format: date-time
+        limit_id:
+          type: [string, "null"]
+        limit_name:
+          type: [string, "null"]
+        plan_type:
+          type: [string, "null"]
+        primary:
+          oneOf:
+            - $ref: "#/components/schemas/RateLimitWindowSnapshot"
+            - type: "null"
+        secondary:
+          oneOf:
+            - $ref: "#/components/schemas/RateLimitWindowSnapshot"
+            - type: "null"
+        credits:
+          oneOf:
+            - $ref: "#/components/schemas/RateLimitCreditsSnapshot"
+            - type: "null"
+      required:
+        - source
+        - captured_at
+        - limit_id
+        - limit_name
+        - plan_type
+        - primary
+        - secondary
+        - credits
+
+    ChatGptAuthProfileLimitsResponse:
+      type: object
+      properties:
+        profile:
+          type: object
+          properties:
+            id:
+              type: string
+            label:
+              type: string
+            status:
+              type: string
+              enum: [active, inactive, blocked]
+            checksum:
+              type: string
+          required: [id, label, status, checksum]
+        rate_limits:
+          $ref: "#/components/schemas/RateLimitSnapshot"
+        rate_limits_by_limit_id:
+          type: [object, "null"]
+          additionalProperties:
+            $ref: "#/components/schemas/RateLimitSnapshot"
+      required: [profile, rate_limits, rate_limits_by_limit_id]
 
     AuthSwitchEvent:
       type: object

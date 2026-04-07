@@ -112,6 +112,14 @@ Notes:
 - Script also keeps fallback diagnostics from sqlite logs (`codex.rate_limits` + latest `usage limit` hit), but these are secondary.
 - If RPC fails (auth/network/process issues), exact percentages are unavailable until RPC path is restored.
 
+Service integration (uploaded auth profiles):
+- `GET /api/auth-profiles/chatgpt/{id}/limits`
+- Returns live snapshot from OpenAI via `codex app-server` using stored `auth.json` for selected profile.
+- Errors:
+  - `404 NOT_FOUND` when profile id is unknown
+  - `500 AUTH_PROFILE_PAYLOAD_INVALID` when stored `auth.json` is corrupted
+  - `502 RATE_LIMITS_UNAVAILABLE` when upstream live call is unavailable
+
 ## Web operator panel
 - Open `http://localhost:8080/ui/`.
 - Save `X-Admin-Token` from root `.env` in the Connection section.

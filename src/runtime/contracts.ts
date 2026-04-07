@@ -30,6 +30,55 @@ export interface ActiveAuthProfileRuntimeEntity {
   storage_path: string;
 }
 
+export interface AuthProfileRuntimeEntity {
+  id: string;
+  label: string;
+  status: "active" | "inactive" | "blocked";
+  checksum: string;
+  storage_path: string;
+}
+
+export interface RateLimitWindowSnapshot {
+  used_percent: number | null;
+  remaining_percent: number | null;
+  window_minutes: number | null;
+  resets_at_unix: number | null;
+  resets_at_utc: string | null;
+  reset_after_seconds: number | null;
+}
+
+export interface RateLimitCreditsSnapshot {
+  has_credits: boolean;
+  unlimited: boolean;
+  balance: string | null;
+}
+
+export interface RateLimitSnapshot {
+  source: "openai_app_server_rpc";
+  captured_at: string;
+  limit_id: string | null;
+  limit_name: string | null;
+  plan_type: string | null;
+  primary: RateLimitWindowSnapshot | null;
+  secondary: RateLimitWindowSnapshot | null;
+  credits: RateLimitCreditsSnapshot | null;
+}
+
+export interface AuthProfileRateLimitsReadResult {
+  profile: {
+    id: string;
+    label: string;
+    status: "active" | "inactive" | "blocked";
+    checksum: string;
+  };
+  rate_limits: RateLimitSnapshot;
+  rate_limits_by_limit_id: Record<string, RateLimitSnapshot> | null;
+}
+
+export interface AuthProfileRateLimitsReader {
+  readByProfileId(profileId: string): Promise<AuthProfileRateLimitsReadResult | null>;
+}
+
 export interface AuthSwitchEventEntity {
   id: string;
   module_key: string;
@@ -407,6 +456,7 @@ export interface Persistence {
   listAuthProfiles(): Promise<AuthProfileEntity[]>;
   getActiveAuthProfile(): Promise<AuthProfileEntity | null>;
   getActiveAuthProfileRuntime(): Promise<ActiveAuthProfileRuntimeEntity | null>;
+  getAuthProfileRuntimeById(id: string): Promise<AuthProfileRuntimeEntity | null>;
   activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null>;
   deactivateAuthProfile(id: string): Promise<boolean>;
   createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity>;

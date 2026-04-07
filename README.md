@@ -43,6 +43,8 @@ npm run limits:check -- --home="$HOME/.codex"
 ```
 The script uses Codex app-server RPC `account/rateLimits/read` for exact current percentages, plus fallback diagnostics from sqlite logs and optional live probe (`--probe`).
 Output includes both `used_percent` and `remaining_percent` for primary/secondary windows.
+For service-side live lookup from uploaded auth profiles, use API endpoint:
+- `GET /api/auth-profiles/chatgpt/{id}/limits`
 
 Real Codex delegation runtime:
 - `bus` image includes `@openai/codex` CLI.

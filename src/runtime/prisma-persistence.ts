@@ -962,6 +962,37 @@ export class PrismaPersistence implements Persistence {
     };
   }
 
+  public async getAuthProfileRuntimeById(id: string): Promise<{
+    id: string;
+    label: string;
+    status: "active" | "inactive" | "blocked";
+    checksum: string;
+    storage_path: string;
+  } | null> {
+    const profile = await this.prisma.chatGptAuthProfile.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        label: true,
+        status: true,
+        checksum: true,
+        storage_path: true
+      }
+    });
+
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      label: profile.label,
+      status: profile.status,
+      checksum: profile.checksum,
+      storage_path: profile.storage_path
+    };
+  }
+
   public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {
     return this.prisma.$transaction(async (tx) => {
       const target = await tx.chatGptAuthProfile.findUnique({ where: { id } });

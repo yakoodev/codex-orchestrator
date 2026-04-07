@@ -9,7 +9,10 @@ import type {
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
+  AuthProfileRateLimitsReadResult,
+  AuthProfileRateLimitsReader,
   AuthProfileEntity,
+  AuthProfileRuntimeEntity,
   AuthContextType,
   AuthSwitchEventEntity,
   CreateDelegationRequestInput,
@@ -719,6 +722,21 @@ class FakePersistence implements Persistence {
     };
   }
 
+  public async getAuthProfileRuntimeById(id: string): Promise<AuthProfileRuntimeEntity | null> {
+    const profile = this.profiles.find((item) => item.id === id);
+    if (!profile) {
+      return null;
+    }
+
+    return {
+      id: profile.id,
+      label: profile.label,
+      status: profile.status,
+      checksum: profile.checksum,
+      storage_path: profile.storage_path
+    };
+  }
+
   public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {
     this.activateAttempts += 1;
     if (this.activateFailuresRemaining > 0) {
@@ -944,11 +962,26 @@ class FakePublisher implements EventPublisher {
   }
 }
 
+class FakeAuthProfileRateLimitsReader implements AuthProfileRateLimitsReader {
+  public readonly responsesByProfileId = new Map<string, AuthProfileRateLimitsReadResult>();
+  public readonly failuresByProfileId = new Map<string, Error>();
+
+  public async readByProfileId(profileId: string): Promise<AuthProfileRateLimitsReadResult | null> {
+    const failure = this.failuresByProfileId.get(profileId);
+    if (failure) {
+      throw failure;
+    }
+
+    return this.responsesByProfileId.get(profileId) ?? null;
+  }
+}
+
 describe("smoke-core API", () => {
   let app: Awaited<ReturnType<typeof createApp>>;
   let persistence: FakePersistence;
   let storage: FakeStorage;
   let publisher: FakePublisher;
+  let authProfileRateLimitsReader: FakeAuthProfileRateLimitsReader;
 
   const config: AppConfig = {
     nodeEnv: "test",
@@ -979,12 +1012,14 @@ describe("smoke-core API", () => {
     persistence = new FakePersistence();
     storage = new FakeStorage();
     publisher = new FakePublisher();
+    authProfileRateLimitsReader = new FakeAuthProfileRateLimitsReader();
 
     app = await createApp({
       config,
       persistence,
       storage,
-      publisher
+      publisher,
+      authProfileRateLimitsReader
     });
 
     await app.ready();
@@ -1512,6 +1547,108 @@ describe("smoke-core API", () => {
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({
       error: "Active profile not found",
+      code: "NOT_FOUND"
+    });
+  });
+
+  it("returns live limits for a specific auth profile", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "limits-profile",
+      status: "inactive",
+      checksum: "checksum-limits",
+      storage_path: "auth-profiles/limits.auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    authProfileRateLimitsReader.responsesByProfileId.set(profile.id, {
+      profile: {
+        id: profile.id,
+        label: profile.label,
+        status: profile.status,
+        checksum: profile.checksum
+      },
+      rate_limits: {
+        source: "openai_app_server_rpc",
+        captured_at: "2026-04-07T20:18:20.000Z",
+        limit_id: "codex",
+        limit_name: null,
+        plan_type: "plus",
+        primary: {
+          used_percent: 22,
+          remaining_percent: 78,
+          window_minutes: 300,
+          resets_at_unix: 1775605962,
+          resets_at_utc: "2026-04-07T23:52:42.000Z",
+          reset_after_seconds: 12960
+        },
+        secondary: {
+          used_percent: 33,
+          remaining_percent: 67,
+          window_minutes: 10080,
+          resets_at_unix: 1776166327,
+          resets_at_utc: "2026-04-14T11:32:07.000Z",
+          reset_after_seconds: 573326
+        },
+        credits: {
+          has_credits: false,
+          unlimited: false,
+          balance: "0"
+        }
+      },
+      rate_limits_by_limit_id: null
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/limits`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().profile.id).toBe(profile.id);
+    expect(response.json().rate_limits.primary.remaining_percent).toBe(78);
+    expect(response.json().rate_limits.secondary.remaining_percent).toBe(67);
+  });
+
+  it("returns 502 when live limits source is unavailable", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "limits-fail-profile",
+      status: "inactive",
+      checksum: "checksum-limits-fail",
+      storage_path: "auth-profiles/limits-fail.auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    authProfileRateLimitsReader.failuresByProfileId.set(
+      profile.id,
+      new Error("rpc timeout")
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/limits`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({
+      error: "Failed to fetch live limits via codex app-server",
+      code: "RATE_LIMITS_UNAVAILABLE"
+    });
+  });
+
+  it("returns 404 for limits when auth profile does not exist", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt/profile-missing/limits",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Profile not found",
       code: "NOT_FOUND"
     });
   });
@@ -2086,7 +2223,8 @@ describe("smoke-core API", () => {
       persistence,
       publisher,
       storage,
-      delegationExecutor: injectedExecutor
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
     });
     await app.ready();
 
@@ -2144,7 +2282,8 @@ describe("smoke-core API", () => {
       persistence,
       publisher,
       storage,
-      delegationExecutor: injectedExecutor
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
     });
     await app.ready();
 
@@ -2600,7 +2739,8 @@ describe("smoke-core API", () => {
       config,
       persistence,
       publisher,
-      storage
+      storage,
+      authProfileRateLimitsReader
     });
 
     const runs = await persistence.listScheduledRuns(rule.id);
@@ -2654,7 +2794,8 @@ describe("smoke-core API", () => {
       config,
       persistence,
       publisher,
-      storage
+      storage,
+      authProfileRateLimitsReader
     });
 
     const runs = await persistence.listScheduledRuns(rule.id);
@@ -2689,7 +2830,8 @@ describe("smoke-core API", () => {
       config,
       persistence,
       publisher,
-      storage
+      storage,
+      authProfileRateLimitsReader
     });
 
     const liveResponse = await app.inject({ method: "GET", url: "/health/live" });
