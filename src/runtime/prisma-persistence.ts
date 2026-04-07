@@ -4,6 +4,10 @@ import {
   Prisma,
   PrismaClient,
   ProfileStatus,
+  ScheduleMisfirePolicy as PrismaScheduleMisfirePolicy,
+  ScheduleOverlapPolicy as PrismaScheduleOverlapPolicy,
+  ScheduleScope as PrismaScheduleScope,
+  ScheduledRunStatus as PrismaScheduledRunStatus,
   TaskStatus as PrismaTaskStatus,
   WorkerRuntimeMode as PrismaWorkerRuntimeMode
 } from "@prisma/client";
@@ -18,12 +22,20 @@ import type {
   CreateAgentTemplateInput,
   CreateAuthContextInput,
   CreateDelegationRequestInput,
+  CreateScheduledRuleInput,
+  CreateScheduledRunInput,
   CreatePackRegistryInput,
   CreateTaskInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
   PackRegistryEntity,
   Persistence,
+  ScheduledRuleEntity,
+  ScheduledRunEntity,
+  ScheduleMisfirePolicy,
+  ScheduleOverlapPolicy,
+  ScheduleScope,
+  ScheduledRunStatus,
   TaskEntity,
   WorkerEntity
 } from "./contracts";
@@ -200,6 +212,64 @@ function toDelegationRequestEntity(entity: {
     created_at: entity.created_at,
     started_at: entity.started_at,
     ended_at: entity.ended_at
+  };
+}
+
+function toScheduledRuleEntity(entity: {
+  id: string;
+  name: string;
+  scope: PrismaScheduleScope;
+  project_id: string | null;
+  is_enabled: boolean;
+  rule_ast: Prisma.JsonValue;
+  target_agent_template_id: string | null;
+  fallback_role: string | null;
+  overlap_policy: PrismaScheduleOverlapPolicy;
+  misfire_policy: PrismaScheduleMisfirePolicy;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}): ScheduledRuleEntity {
+  return {
+    id: entity.id,
+    name: entity.name,
+    scope: entity.scope as ScheduleScope,
+    project_id: entity.project_id,
+    is_enabled: entity.is_enabled,
+    rule_ast: entity.rule_ast as Record<string, unknown>,
+    target_agent_template_id: entity.target_agent_template_id,
+    fallback_role: entity.fallback_role,
+    overlap_policy: entity.overlap_policy as ScheduleOverlapPolicy,
+    misfire_policy: entity.misfire_policy as ScheduleMisfirePolicy,
+    created_by: entity.created_by,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toScheduledRunEntity(entity: {
+  id: string;
+  rule_id: string;
+  created_task_id: string | null;
+  status: PrismaScheduledRunStatus;
+  started_at: Date;
+  ended_at: Date | null;
+  skip_reason: string | null;
+  trace_id: string;
+  idempotency_key: string | null;
+  result_json: Prisma.JsonValue | null;
+}): ScheduledRunEntity {
+  return {
+    id: entity.id,
+    rule_id: entity.rule_id,
+    created_task_id: entity.created_task_id,
+    status: entity.status as ScheduledRunStatus,
+    started_at: entity.started_at,
+    ended_at: entity.ended_at,
+    skip_reason: entity.skip_reason,
+    trace_id: entity.trace_id,
+    idempotency_key: entity.idempotency_key,
+    result_json: entity.result_json as Record<string, unknown> | null
   };
 }
 
@@ -499,6 +569,123 @@ export class PrismaPersistence implements Persistence {
     }
 
     return toDelegationRequestEntity(delegation);
+  }
+
+  public async createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity> {
+    const created = await this.prisma.scheduledRule.create({
+      data: {
+        name: input.name,
+        scope: input.scope as PrismaScheduleScope,
+        project_id: input.project_id ?? null,
+        is_enabled: true,
+        rule_ast: input.rule_ast as Prisma.InputJsonValue,
+        target_agent_template_id: input.target_agent_template_id ?? null,
+        fallback_role: input.fallback_role ?? null,
+        overlap_policy: input.overlap_policy as PrismaScheduleOverlapPolicy,
+        misfire_policy: input.misfire_policy as PrismaScheduleMisfirePolicy,
+        created_by: input.created_by
+      }
+    });
+
+    return toScheduledRuleEntity(created);
+  }
+
+  public async listScheduledRules(): Promise<ScheduledRuleEntity[]> {
+    const rules = await this.prisma.scheduledRule.findMany({
+      orderBy: { created_at: "desc" }
+    });
+
+    return rules.map((rule) => toScheduledRuleEntity(rule));
+  }
+
+  public async getScheduledRuleById(id: string): Promise<ScheduledRuleEntity | null> {
+    const rule = await this.prisma.scheduledRule.findUnique({
+      where: { id }
+    });
+    if (!rule) {
+      return null;
+    }
+
+    return toScheduledRuleEntity(rule);
+  }
+
+  public async patchScheduledRule(
+    id: string,
+    patch: {
+      name?: string;
+      is_enabled?: boolean;
+      rule_ast?: Record<string, unknown>;
+      target_agent_template_id?: string | null;
+      fallback_role?: string | null;
+      overlap_policy?: ScheduleOverlapPolicy;
+      misfire_policy?: ScheduleMisfirePolicy;
+    }
+  ): Promise<ScheduledRuleEntity | null> {
+    const existing = await this.prisma.scheduledRule.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.scheduledRule.update({
+      where: { id },
+      data: {
+        name: patch.name,
+        is_enabled: patch.is_enabled,
+        rule_ast: patch.rule_ast as Prisma.InputJsonValue | undefined,
+        target_agent_template_id: patch.target_agent_template_id,
+        fallback_role: patch.fallback_role,
+        overlap_policy: patch.overlap_policy as PrismaScheduleOverlapPolicy | undefined,
+        misfire_policy: patch.misfire_policy as PrismaScheduleMisfirePolicy | undefined
+      }
+    });
+
+    return toScheduledRuleEntity(updated);
+  }
+
+  public async deleteScheduledRule(id: string): Promise<boolean> {
+    const result = await this.prisma.scheduledRule.deleteMany({
+      where: { id }
+    });
+
+    return result.count > 0;
+  }
+
+  public async setScheduledRuleEnabled(id: string, isEnabled: boolean): Promise<boolean> {
+    const result = await this.prisma.scheduledRule.updateMany({
+      where: { id },
+      data: { is_enabled: isEnabled }
+    });
+
+    return result.count > 0;
+  }
+
+  public async createScheduledRun(input: CreateScheduledRunInput): Promise<ScheduledRunEntity> {
+    const created = await this.prisma.scheduledRun.create({
+      data: {
+        rule_id: input.rule_id,
+        created_task_id: input.created_task_id ?? null,
+        status: input.status as PrismaScheduledRunStatus,
+        started_at: input.started_at ?? new Date(),
+        ended_at: input.ended_at ?? null,
+        skip_reason: input.skip_reason ?? null,
+        trace_id: input.trace_id,
+        idempotency_key: input.idempotency_key ?? null,
+        result_json: (input.result_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput
+      }
+    });
+
+    return toScheduledRunEntity(created);
+  }
+
+  public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {
+    const runs = await this.prisma.scheduledRun.findMany({
+      where: { rule_id: ruleId },
+      orderBy: { started_at: "desc" }
+    });
+
+    return runs.map((run) => toScheduledRunEntity(run));
   }
 
   public async listWorkers(): Promise<WorkerEntity[]> {

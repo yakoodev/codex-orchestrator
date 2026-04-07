@@ -13,6 +13,11 @@ import type {
   EventPublisher,
   PackRegistryEntity,
   Persistence,
+  ScheduleMisfirePolicy,
+  ScheduledRuleEntity,
+  ScheduledRunEntity,
+  ScheduleOverlapPolicy,
+  ScheduleScope,
   StorageService,
   TaskEntity,
   WorkerEntity
@@ -60,6 +65,16 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/delegation/dispatch",
   "GET /api/delegation/{id}",
   "GET /api/delegation/{id}/result",
+  "POST /api/schedules",
+  "GET /api/schedules",
+  "GET /api/schedules/{id}",
+  "PATCH /api/schedules/{id}",
+  "DELETE /api/schedules/{id}",
+  "POST /api/schedules/{id}/enable",
+  "POST /api/schedules/{id}/disable",
+  "POST /api/schedules/{id}/evaluate",
+  "POST /api/schedules/{id}/trigger",
+  "GET /api/schedules/{id}/runs",
   "GET /api/queue/held",
   "POST /api/queue/held/release",
   "GET /api/custom-modules",
@@ -162,7 +177,31 @@ interface ModulePatchRequest {
   config_json?: unknown;
 }
 
+interface ScheduleCreateRequest {
+  name?: unknown;
+  scope?: unknown;
+  project_id?: unknown;
+  rule_ast?: unknown;
+  target_agent_template_id?: unknown;
+  fallback_role?: unknown;
+  overlap_policy?: unknown;
+  misfire_policy?: unknown;
+}
+
+interface SchedulePatchRequest {
+  name?: unknown;
+  is_enabled?: unknown;
+  rule_ast?: unknown;
+  target_agent_template_id?: unknown;
+  fallback_role?: unknown;
+  overlap_policy?: unknown;
+  misfire_policy?: unknown;
+}
+
 const AUTH_CONTEXT_TYPES = new Set<AuthContextType>(["apikey", "chatgpt", "chatgptAuthTokens"]);
+const SCHEDULE_SCOPES = new Set<ScheduleScope>(["global", "project"]);
+const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_skip"]);
+const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
 
 function sendError(reply: FastifyReply, statusCode: number, error: string, code: string): FastifyReply {
   return reply.code(statusCode).send({ error, code });
@@ -199,6 +238,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isAuthContextType(value: string): value is AuthContextType {
   return AUTH_CONTEXT_TYPES.has(value as AuthContextType);
+}
+
+function isScheduleScope(value: string): value is ScheduleScope {
+  return SCHEDULE_SCOPES.has(value as ScheduleScope);
+}
+
+function isScheduleOverlapPolicy(value: string): value is ScheduleOverlapPolicy {
+  return SCHEDULE_OVERLAP_POLICIES.has(value as ScheduleOverlapPolicy);
+}
+
+function isScheduleMisfirePolicy(value: string): value is ScheduleMisfirePolicy {
+  return SCHEDULE_MISFIRE_POLICIES.has(value as ScheduleMisfirePolicy);
 }
 
 function taskToResponse(task: TaskEntity): Record<string, unknown> {
@@ -291,6 +342,39 @@ function delegationToResponse(delegation: DelegationRequestEntity): Record<strin
     created_at: delegation.created_at,
     started_at: delegation.started_at,
     ended_at: delegation.ended_at
+  };
+}
+
+function scheduledRuleToResponse(rule: ScheduledRuleEntity): Record<string, unknown> {
+  return {
+    id: rule.id,
+    name: rule.name,
+    scope: rule.scope,
+    project_id: rule.project_id,
+    is_enabled: rule.is_enabled,
+    rule_ast: rule.rule_ast,
+    target_agent_template_id: rule.target_agent_template_id,
+    fallback_role: rule.fallback_role,
+    overlap_policy: rule.overlap_policy,
+    misfire_policy: rule.misfire_policy,
+    created_by: rule.created_by,
+    created_at: rule.created_at,
+    updated_at: rule.updated_at
+  };
+}
+
+function scheduledRunToResponse(run: ScheduledRunEntity): Record<string, unknown> {
+  return {
+    id: run.id,
+    rule_id: run.rule_id,
+    created_task_id: run.created_task_id,
+    status: run.status,
+    started_at: run.started_at,
+    ended_at: run.ended_at,
+    skip_reason: run.skip_reason,
+    trace_id: run.trace_id,
+    idempotency_key: run.idempotency_key,
+    result_json: run.result_json
   };
 }
 
@@ -1190,6 +1274,353 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       status: delegation.status,
       result_summary: delegation.result_summary,
       artifacts: []
+    });
+  });
+
+  app.post("/api/schedules", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const body = request.body as ScheduleCreateRequest;
+
+    const name = asNonEmptyString(body.name);
+    const scopeValue = asNonEmptyString(body.scope);
+    const overlapPolicyValue = asNonEmptyString(body.overlap_policy);
+    const misfirePolicyValue = asNonEmptyString(body.misfire_policy);
+
+    if (!name || !scopeValue || !overlapPolicyValue || !misfirePolicyValue || !isPlainObject(body.rule_ast)) {
+      return sendError(
+        reply,
+        400,
+        "name, scope, rule_ast, overlap_policy and misfire_policy are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (!isScheduleScope(scopeValue)) {
+      return sendError(reply, 400, "Invalid scope", "VALIDATION_ERROR");
+    }
+
+    if (!isScheduleOverlapPolicy(overlapPolicyValue)) {
+      return sendError(reply, 400, "Invalid overlap_policy", "VALIDATION_ERROR");
+    }
+
+    if (!isScheduleMisfirePolicy(misfirePolicyValue)) {
+      return sendError(reply, 400, "Invalid misfire_policy", "VALIDATION_ERROR");
+    }
+
+    let projectId: string | null = null;
+    if (body.project_id !== undefined && body.project_id !== null) {
+      projectId = asNonEmptyString(body.project_id);
+      if (!projectId) {
+        return sendError(reply, 400, "project_id must be a non-empty string or null", "VALIDATION_ERROR");
+      }
+    }
+
+    if (scopeValue === "project" && !projectId) {
+      return sendError(reply, 400, "project_id is required when scope=project", "VALIDATION_ERROR");
+    }
+
+    if (scopeValue === "global" && projectId) {
+      return sendError(reply, 400, "project_id must be null when scope=global", "VALIDATION_ERROR");
+    }
+
+    let targetAgentTemplateId: string | null = null;
+    if (body.target_agent_template_id !== undefined && body.target_agent_template_id !== null) {
+      targetAgentTemplateId = asNonEmptyString(body.target_agent_template_id);
+      if (!targetAgentTemplateId) {
+        return sendError(
+          reply,
+          400,
+          "target_agent_template_id must be a non-empty string or null",
+          "VALIDATION_ERROR"
+        );
+      }
+    }
+
+    let fallbackRole: string | null = null;
+    if (body.fallback_role !== undefined && body.fallback_role !== null) {
+      fallbackRole = asNonEmptyString(body.fallback_role);
+      if (!fallbackRole) {
+        return sendError(reply, 400, "fallback_role must be a non-empty string or null", "VALIDATION_ERROR");
+      }
+    }
+
+    const created = await persistence.createScheduledRule({
+      name,
+      scope: scopeValue,
+      project_id: projectId,
+      rule_ast: body.rule_ast,
+      target_agent_template_id: targetAgentTemplateId,
+      fallback_role: fallbackRole,
+      overlap_policy: overlapPolicyValue,
+      misfire_policy: misfirePolicyValue,
+      created_by: "admin"
+    });
+
+    await publisher.publish({
+      eventType: "schedule.rule.created",
+      traceId,
+      idempotencyKey: `${created.id}:created`,
+      payload: {
+        rule_id: created.id,
+        scope: created.scope,
+        status: created.is_enabled ? "enabled" : "disabled",
+        reason: "rule_created"
+      }
+    });
+
+    return reply.code(201).send(scheduledRuleToResponse(created));
+  });
+
+  app.get("/api/schedules", async (_request, reply) => {
+    const rules = await persistence.listScheduledRules();
+    return reply.send({ items: rules.map((rule) => scheduledRuleToResponse(rule)) });
+  });
+
+  app.get("/api/schedules/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    return reply.send(scheduledRuleToResponse(rule));
+  });
+
+  app.patch("/api/schedules/:id", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as SchedulePatchRequest;
+
+    const patch: Parameters<Persistence["patchScheduledRule"]>[1] = {};
+
+    if (body.name != null) {
+      const name = asNonEmptyString(body.name);
+      if (!name) {
+        return sendError(reply, 400, "name must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.name = name;
+    }
+
+    if (body.is_enabled != null) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_enabled = body.is_enabled;
+    }
+
+    if (body.rule_ast != null) {
+      if (!isPlainObject(body.rule_ast)) {
+        return sendError(reply, 400, "rule_ast must be an object", "VALIDATION_ERROR");
+      }
+      patch.rule_ast = body.rule_ast;
+    }
+
+    if (body.target_agent_template_id !== undefined) {
+      if (body.target_agent_template_id === null) {
+        patch.target_agent_template_id = null;
+      } else {
+        const value = asNonEmptyString(body.target_agent_template_id);
+        if (!value) {
+          return sendError(
+            reply,
+            400,
+            "target_agent_template_id must be a non-empty string or null",
+            "VALIDATION_ERROR"
+          );
+        }
+        patch.target_agent_template_id = value;
+      }
+    }
+
+    if (body.fallback_role !== undefined) {
+      if (body.fallback_role === null) {
+        patch.fallback_role = null;
+      } else {
+        const value = asNonEmptyString(body.fallback_role);
+        if (!value) {
+          return sendError(reply, 400, "fallback_role must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.fallback_role = value;
+      }
+    }
+
+    if (body.overlap_policy != null) {
+      const value = asNonEmptyString(body.overlap_policy);
+      if (!value || !isScheduleOverlapPolicy(value)) {
+        return sendError(reply, 400, "Invalid overlap_policy", "VALIDATION_ERROR");
+      }
+      patch.overlap_policy = value;
+    }
+
+    if (body.misfire_policy != null) {
+      const value = asNonEmptyString(body.misfire_policy);
+      if (!value || !isScheduleMisfirePolicy(value)) {
+        return sendError(reply, 400, "Invalid misfire_policy", "VALIDATION_ERROR");
+      }
+      patch.misfire_policy = value;
+    }
+
+    const updated = await persistence.patchScheduledRule(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    await publisher.publish({
+      eventType: "schedule.rule.updated",
+      traceId,
+      idempotencyKey: `${updated.id}:updated:${traceId}`,
+      payload: {
+        rule_id: updated.id,
+        scope: updated.scope,
+        status: updated.is_enabled ? "enabled" : "disabled",
+        reason: "rule_updated"
+      }
+    });
+
+    return reply.send(scheduledRuleToResponse(updated));
+  });
+
+  app.delete("/api/schedules/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const deleted = await persistence.deleteScheduledRule(id);
+    if (!deleted) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
+  });
+
+  app.post("/api/schedules/:id/enable", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const { id } = request.params as { id: string };
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    await persistence.setScheduledRuleEnabled(id, true);
+    await publisher.publish({
+      eventType: "schedule.rule.enabled",
+      traceId,
+      idempotencyKey: `${id}:enabled:${traceId}`,
+      payload: {
+        rule_id: id,
+        scope: rule.scope,
+        status: "enabled",
+        reason: "manual_enable"
+      }
+    });
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/schedules/:id/disable", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const { id } = request.params as { id: string };
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    await persistence.setScheduledRuleEnabled(id, false);
+    await publisher.publish({
+      eventType: "schedule.rule.disabled",
+      traceId,
+      idempotencyKey: `${id}:disabled:${traceId}`,
+      payload: {
+        rule_id: id,
+        scope: rule.scope,
+        status: "disabled",
+        reason: "manual_disable"
+      }
+    });
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/schedules/:id/evaluate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { dry_run_context?: unknown } | undefined;
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    if (body?.dry_run_context != null && !isPlainObject(body.dry_run_context)) {
+      return sendError(reply, 400, "dry_run_context must be an object", "VALIDATION_ERROR");
+    }
+
+    const dryRunContext = isPlainObject(body?.dry_run_context)
+      ? body?.dry_run_context
+      : {};
+
+    let matched = rule.is_enabled;
+    const reasons: string[] = [];
+
+    if (!rule.is_enabled) {
+      reasons.push("rule_disabled");
+    } else {
+      reasons.push("rule_enabled");
+    }
+
+    if (dryRunContext["force_match"] === true) {
+      matched = true;
+      reasons.push("forced_by_dry_run_context");
+    }
+
+    return reply.send({
+      rule_id: id,
+      matched,
+      reasons
+    });
+  });
+
+  app.post("/api/schedules/:id/trigger", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const { id } = request.params as { id: string };
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    const isEnabled = rule.is_enabled;
+    const run = await persistence.createScheduledRun({
+      rule_id: id,
+      status: isEnabled ? "started" : "skipped_due_to_overlap",
+      started_at: new Date(),
+      ended_at: isEnabled ? null : new Date(),
+      skip_reason: isEnabled ? null : "rule_disabled",
+      trace_id: traceId,
+      idempotency_key: `${id}:${traceId}`,
+      result_json: isEnabled ? null : { reason: "rule_disabled" }
+    });
+
+    await publisher.publish({
+      eventType: isEnabled ? "schedule.run.started" : "schedule.run.skipped_due_to_overlap",
+      traceId,
+      idempotencyKey: `${run.id}:${traceId}`,
+      payload: {
+        rule_id: id,
+        run_id: run.id,
+        scope: rule.scope,
+        status: run.status,
+        reason: run.skip_reason
+      }
+    });
+
+    return reply.code(202).send(scheduledRunToResponse(run));
+  });
+
+  app.get("/api/schedules/:id/runs", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const rule = await persistence.getScheduledRuleById(id);
+    if (!rule) {
+      return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+    }
+
+    const runs = await persistence.listScheduledRuns(id);
+    return reply.send({
+      items: runs.map((run) => scheduledRunToResponse(run))
     });
   });
 

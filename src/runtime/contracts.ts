@@ -109,6 +109,40 @@ export interface DelegationRequestEntity {
   ended_at: Date | null;
 }
 
+export type ScheduleScope = "global" | "project";
+export type ScheduleOverlapPolicy = "one_active_skip";
+export type ScheduleMisfirePolicy = "recompute_due_on_restart";
+export type ScheduledRunStatus = "started" | "completed" | "failed" | "skipped_due_to_overlap";
+
+export interface ScheduledRuleEntity {
+  id: string;
+  name: string;
+  scope: ScheduleScope;
+  project_id: string | null;
+  is_enabled: boolean;
+  rule_ast: Record<string, unknown>;
+  target_agent_template_id: string | null;
+  fallback_role: string | null;
+  overlap_policy: ScheduleOverlapPolicy;
+  misfire_policy: ScheduleMisfirePolicy;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ScheduledRunEntity {
+  id: string;
+  rule_id: string;
+  created_task_id: string | null;
+  status: ScheduledRunStatus;
+  started_at: Date;
+  ended_at: Date | null;
+  skip_reason: string | null;
+  trace_id: string;
+  idempotency_key: string | null;
+  result_json: Record<string, unknown> | null;
+}
+
 export interface CreateTaskInput {
   title: string;
   description: string;
@@ -172,6 +206,30 @@ export interface CreateDelegationRequestInput {
   trace_id: string;
 }
 
+export interface CreateScheduledRuleInput {
+  name: string;
+  scope: ScheduleScope;
+  project_id?: string | null;
+  rule_ast: Record<string, unknown>;
+  target_agent_template_id?: string | null;
+  fallback_role?: string | null;
+  overlap_policy: ScheduleOverlapPolicy;
+  misfire_policy: ScheduleMisfirePolicy;
+  created_by: string;
+}
+
+export interface CreateScheduledRunInput {
+  rule_id: string;
+  created_task_id?: string | null;
+  status: ScheduledRunStatus;
+  started_at?: Date;
+  ended_at?: Date | null;
+  skip_reason?: string | null;
+  trace_id: string;
+  idempotency_key?: string | null;
+  result_json?: Record<string, unknown> | null;
+}
+
 export interface EventPublishInput {
   eventType: string;
   traceId: string;
@@ -222,6 +280,25 @@ export interface Persistence {
   materializePack(id: string): Promise<boolean>;
   createDelegationRequest(input: CreateDelegationRequestInput): Promise<DelegationRequestEntity>;
   getDelegationRequest(id: string): Promise<DelegationRequestEntity | null>;
+  createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity>;
+  listScheduledRules(): Promise<ScheduledRuleEntity[]>;
+  getScheduledRuleById(id: string): Promise<ScheduledRuleEntity | null>;
+  patchScheduledRule(
+    id: string,
+    patch: {
+      name?: string;
+      is_enabled?: boolean;
+      rule_ast?: Record<string, unknown>;
+      target_agent_template_id?: string | null;
+      fallback_role?: string | null;
+      overlap_policy?: ScheduleOverlapPolicy;
+      misfire_policy?: ScheduleMisfirePolicy;
+    }
+  ): Promise<ScheduledRuleEntity | null>;
+  deleteScheduledRule(id: string): Promise<boolean>;
+  setScheduledRuleEnabled(id: string, isEnabled: boolean): Promise<boolean>;
+  createScheduledRun(input: CreateScheduledRunInput): Promise<ScheduledRunEntity>;
+  listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]>;
   listWorkers(): Promise<WorkerEntity[]>;
   setWorkerStatus(id: string, status: "READY" | "DISABLED"): Promise<boolean>;
   workerExists(id: string): Promise<boolean>;

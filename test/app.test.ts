@@ -11,12 +11,18 @@ import type {
   AuthContextType,
   AuthSwitchEventEntity,
   CreateDelegationRequestInput,
+  CreateScheduledRuleInput,
+  CreateScheduledRunInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
   EventPublishInput,
   EventPublisher,
   PackRegistryEntity,
   Persistence,
+  ScheduledRuleEntity,
+  ScheduledRunEntity,
+  ScheduleMisfirePolicy,
+  ScheduleOverlapPolicy,
   StorageService,
   TaskEntity,
   WorkerEntity
@@ -44,6 +50,8 @@ class FakePersistence implements Persistence {
   public readonly switchEvents: AuthSwitchEventEntity[] = [];
   public readonly modules: CustomModuleConfigEntity[] = [];
   public readonly delegations: DelegationRequestEntity[] = [];
+  public readonly schedules: ScheduledRuleEntity[] = [];
+  public readonly scheduledRuns: ScheduledRunEntity[] = [];
 
   private taskCounter = 1;
   private agentTemplateCounter = 1;
@@ -54,6 +62,8 @@ class FakePersistence implements Persistence {
   private profileCounter = 1;
   private moduleCounter = 1;
   private delegationCounter = 1;
+  private scheduleCounter = 1;
+  private scheduleRunCounter = 1;
 
   public dbReady = true;
 
@@ -327,6 +337,122 @@ class FakePersistence implements Persistence {
 
   public async getDelegationRequest(id: string): Promise<DelegationRequestEntity | null> {
     return this.delegations.find((delegation) => delegation.id === id) ?? null;
+  }
+
+  public async createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity> {
+    const now = new Date();
+    const rule: ScheduledRuleEntity = {
+      id: `schedule-${this.scheduleCounter++}`,
+      name: input.name,
+      scope: input.scope,
+      project_id: input.project_id ?? null,
+      is_enabled: true,
+      rule_ast: input.rule_ast,
+      target_agent_template_id: input.target_agent_template_id ?? null,
+      fallback_role: input.fallback_role ?? null,
+      overlap_policy: input.overlap_policy,
+      misfire_policy: input.misfire_policy,
+      created_by: input.created_by,
+      created_at: now,
+      updated_at: now
+    };
+
+    this.schedules.push(rule);
+    return rule;
+  }
+
+  public async listScheduledRules(): Promise<ScheduledRuleEntity[]> {
+    return [...this.schedules];
+  }
+
+  public async getScheduledRuleById(id: string): Promise<ScheduledRuleEntity | null> {
+    return this.schedules.find((rule) => rule.id === id) ?? null;
+  }
+
+  public async patchScheduledRule(
+    id: string,
+    patch: {
+      name?: string;
+      is_enabled?: boolean;
+      rule_ast?: Record<string, unknown>;
+      target_agent_template_id?: string | null;
+      fallback_role?: string | null;
+      overlap_policy?: ScheduleOverlapPolicy;
+      misfire_policy?: ScheduleMisfirePolicy;
+    }
+  ): Promise<ScheduledRuleEntity | null> {
+    const rule = this.schedules.find((item) => item.id === id);
+    if (!rule) {
+      return null;
+    }
+
+    if (patch.name) {
+      rule.name = patch.name;
+    }
+    if (typeof patch.is_enabled === "boolean") {
+      rule.is_enabled = patch.is_enabled;
+    }
+    if (patch.rule_ast) {
+      rule.rule_ast = patch.rule_ast;
+    }
+    if (patch.target_agent_template_id !== undefined) {
+      rule.target_agent_template_id = patch.target_agent_template_id;
+    }
+    if (patch.fallback_role !== undefined) {
+      rule.fallback_role = patch.fallback_role;
+    }
+    if (patch.overlap_policy) {
+      rule.overlap_policy = patch.overlap_policy;
+    }
+    if (patch.misfire_policy) {
+      rule.misfire_policy = patch.misfire_policy;
+    }
+    rule.updated_at = new Date();
+    return rule;
+  }
+
+  public async deleteScheduledRule(id: string): Promise<boolean> {
+    const index = this.schedules.findIndex((rule) => rule.id === id);
+    if (index < 0) {
+      return false;
+    }
+
+    this.schedules.splice(index, 1);
+    this.scheduledRuns.splice(0, this.scheduledRuns.length, ...this.scheduledRuns.filter((run) => run.rule_id !== id));
+    return true;
+  }
+
+  public async setScheduledRuleEnabled(id: string, isEnabled: boolean): Promise<boolean> {
+    const rule = this.schedules.find((item) => item.id === id);
+    if (!rule) {
+      return false;
+    }
+
+    rule.is_enabled = isEnabled;
+    rule.updated_at = new Date();
+    return true;
+  }
+
+  public async createScheduledRun(input: CreateScheduledRunInput): Promise<ScheduledRunEntity> {
+    const run: ScheduledRunEntity = {
+      id: `schedule-run-${this.scheduleRunCounter++}`,
+      rule_id: input.rule_id,
+      created_task_id: input.created_task_id ?? null,
+      status: input.status,
+      started_at: input.started_at ?? new Date(),
+      ended_at: input.ended_at ?? null,
+      skip_reason: input.skip_reason ?? null,
+      trace_id: input.trace_id,
+      idempotency_key: input.idempotency_key ?? null,
+      result_json: input.result_json ?? null
+    };
+
+    this.scheduledRuns.push(run);
+    return run;
+  }
+
+  public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {
+    return this.scheduledRuns.filter((run) => run.rule_id === ruleId);
   }
 
   public async listWorkers(): Promise<WorkerEntity[]> {
@@ -1156,6 +1282,131 @@ describe("smoke-core API", () => {
     });
   });
 
+  it("manages schedules endpoints", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-1" },
+      payload: {
+        name: "Nightly check",
+        scope: "global",
+        project_id: null,
+        rule_ast: {
+          conditions: [{ predicate: "time.cron", operator: "eq", value: "0 3 * * *" }]
+        },
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart"
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const ruleId = createResponse.json().id as string;
+    expect(createResponse.json().name).toBe("Nightly check");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: `/api/schedules/${ruleId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().id).toBe(ruleId);
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/schedules/${ruleId}`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-2" },
+      payload: {
+        name: "Nightly check updated",
+        is_enabled: false,
+        fallback_role: "reviewer"
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().is_enabled).toBe(false);
+    expect(patchResponse.json().fallback_role).toBe("reviewer");
+
+    const evaluateResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/evaluate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        dry_run_context: {
+          force_match: true
+        }
+      }
+    });
+    expect(evaluateResponse.statusCode).toBe(200);
+    expect(evaluateResponse.json().rule_id).toBe(ruleId);
+    expect(evaluateResponse.json().matched).toBe(true);
+
+    const triggerResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/trigger`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-3" }
+    });
+    expect(triggerResponse.statusCode).toBe(202);
+    expect(triggerResponse.json().status).toBe("skipped_due_to_overlap");
+
+    const runsResponse = await app.inject({
+      method: "GET",
+      url: `/api/schedules/${ruleId}/runs`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(runsResponse.statusCode).toBe(200);
+    expect(runsResponse.json().items).toHaveLength(1);
+
+    const enableResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/enable`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(enableResponse.statusCode).toBe(202);
+
+    const secondTriggerResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/trigger`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-4" }
+    });
+    expect(secondTriggerResponse.statusCode).toBe(202);
+    expect(secondTriggerResponse.json().status).toBe("started");
+
+    const disableResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/disable`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(disableResponse.statusCode).toBe(202);
+    expect(disableResponse.json()).toEqual({ accepted: true });
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/schedules/${ruleId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteResponse.statusCode).toBe(204);
+
+    const getAfterDelete = await app.inject({
+      method: "GET",
+      url: `/api/schedules/${ruleId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getAfterDelete.statusCode).toBe(404);
+
+    expect(
+      publisher.events.some((event) => event.eventType === "schedule.rule.created")
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "schedule.run.started")
+    ).toBe(true);
+  });
+
   it("returns held queue tasks from WAITING_LIMIT", async () => {
     await persistence.createTask({
       title: "held",
@@ -1296,7 +1547,7 @@ describe("smoke-core API", () => {
   it("returns 501 for non-implemented OpenAPI endpoint", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/schedules",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}/executions`,
       headers: { "x-admin-token": config.adminToken }
     });
 
