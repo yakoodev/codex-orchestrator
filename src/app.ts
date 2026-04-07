@@ -24,7 +24,7 @@ import type {
   TaskEntity,
   WorkerEntity
 } from "./runtime/contracts";
-import { isTaskStatus } from "./types";
+import { isTaskStatus, type TaskStatus } from "./types";
 
 const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /health/live",
@@ -347,6 +347,82 @@ async function publishEventBestEffort(options: {
       },
       options.logMessage
     );
+  }
+}
+
+interface TaskStatusTransition {
+  task_id: string;
+  status_before: TaskStatus;
+  status_after: TaskStatus;
+}
+
+async function holdNewAndQueuedTasksForAuthSwitch(
+  persistence: Persistence
+): Promise<TaskStatusTransition[]> {
+  const tasks = await persistence.listTasks();
+  const candidates = tasks.filter((task) => task.status === "NEW" || task.status === "QUEUED");
+
+  const transitions: TaskStatusTransition[] = [];
+  for (const task of candidates) {
+    const statusBefore = task.status;
+    const updated = await persistence.updateTaskStatus(task.id, "WAITING_LIMIT");
+    if (!updated) {
+      continue;
+    }
+
+    transitions.push({
+      task_id: task.id,
+      status_before: statusBefore,
+      status_after: "WAITING_LIMIT"
+    });
+  }
+
+  return transitions;
+}
+
+async function releaseHeldTasksForAuthSwitch(
+  persistence: Persistence
+): Promise<TaskStatusTransition[]> {
+  const heldTasks = await persistence.listHeldTasks();
+  await persistence.releaseHeldQueue();
+
+  return heldTasks.map((task) => ({
+    task_id: task.id,
+    status_before: "WAITING_LIMIT",
+    status_after: "QUEUED"
+  }));
+}
+
+async function publishTaskAuthSwitchingEvents(options: {
+  app: FastifyInstance;
+  publisher: EventPublisher;
+  traceId: string;
+  transitions: TaskStatusTransition[];
+  reason: string;
+}): Promise<void> {
+  for (const transition of options.transitions) {
+    await publishEventBestEffort({
+      app: options.app,
+      publisher: options.publisher,
+      event: {
+        eventType: "task.auth_switching",
+        traceId: options.traceId,
+        taskId: transition.task_id,
+        idempotencyKey: `${transition.task_id}:${transition.status_before}:${transition.status_after}:${options.traceId}`,
+        payload: {
+          task_id: transition.task_id,
+          status_before: transition.status_before,
+          status_after: transition.status_after,
+          reason: options.reason
+        }
+      },
+      logMessage: "Failed to publish task.auth_switching",
+      logContext: {
+        task_id: transition.task_id,
+        status_before: transition.status_before,
+        status_after: transition.status_after
+      }
+    });
   }
 }
 
@@ -1848,6 +1924,31 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         logContext: { profile_id: activated.id }
       });
     } else {
+      const holdTransitions = await holdNewAndQueuedTasksForAuthSwitch(persistence);
+      if (holdTransitions.length > 0) {
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "queue.hold_started",
+            traceId,
+            idempotencyKey: `queue_hold_start:${traceId}`,
+            payload: {
+              reason: "auth_switch_started",
+              held_count: holdTransitions.length
+            }
+          },
+          logMessage: "Failed to publish queue.hold_started"
+        });
+        await publishTaskAuthSwitchingEvents({
+          app,
+          publisher,
+          traceId,
+          transitions: holdTransitions,
+          reason: "auth_switch_hold_started"
+        });
+      }
+
       const startedAt = new Date();
       const startedSwitchEvent = await persistence.createAuthSwitchEvent({
         module_key: SWITCH_MODULE_KEY,
@@ -1908,6 +2009,31 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         logMessage: "Failed to publish auth_profile.switch.completed",
         logContext: { profile_id: activated.id }
       });
+
+      const releaseTransitions = await releaseHeldTasksForAuthSwitch(persistence);
+      if (releaseTransitions.length > 0) {
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "queue.hold_released",
+            traceId,
+            idempotencyKey: `queue_hold_release:${traceId}`,
+            payload: {
+              reason: "auth_switch_completed",
+              held_count: releaseTransitions.length
+            }
+          },
+          logMessage: "Failed to publish queue.hold_released"
+        });
+        await publishTaskAuthSwitchingEvents({
+          app,
+          publisher,
+          traceId,
+          transitions: releaseTransitions,
+          reason: "auth_switch_release_completed"
+        });
+      }
     }
 
     await publishEventBestEffort({
@@ -2056,6 +2182,31 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     if (activeBeforeDeactivate?.id === id) {
+      const holdTransitions = await holdNewAndQueuedTasksForAuthSwitch(persistence);
+      if (holdTransitions.length > 0) {
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "queue.hold_started",
+            traceId,
+            idempotencyKey: `queue_hold_start:${traceId}`,
+            payload: {
+              reason: "auth_switch_started",
+              held_count: holdTransitions.length
+            }
+          },
+          logMessage: "Failed to publish queue.hold_started"
+        });
+        await publishTaskAuthSwitchingEvents({
+          app,
+          publisher,
+          traceId,
+          transitions: holdTransitions,
+          reason: "auth_switch_hold_started"
+        });
+      }
+
       const startedAt = new Date();
       const startedSwitchEvent = await persistence.createAuthSwitchEvent({
         module_key: SWITCH_MODULE_KEY,
@@ -2116,6 +2267,31 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         logMessage: "Failed to publish auth_profile.switch.completed",
         logContext: { profile_id: id }
       });
+
+      const releaseTransitions = await releaseHeldTasksForAuthSwitch(persistence);
+      if (releaseTransitions.length > 0) {
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "queue.hold_released",
+            traceId,
+            idempotencyKey: `queue_hold_release:${traceId}`,
+            payload: {
+              reason: "auth_switch_completed",
+              held_count: releaseTransitions.length
+            }
+          },
+          logMessage: "Failed to publish queue.hold_released"
+        });
+        await publishTaskAuthSwitchingEvents({
+          app,
+          publisher,
+          traceId,
+          transitions: releaseTransitions,
+          reason: "auth_switch_release_completed"
+        });
+      }
     } else {
       const skippedSwitchEvent = await persistence.createAuthSwitchEvent({
         module_key: SWITCH_MODULE_KEY,
@@ -2177,6 +2353,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   });
 
   app.post("/api/packs", async (request, reply) => {
+    const traceId = getTraceId(request);
     const body = request.body as PackCreateRequest;
     const packId = asNonEmptyString(body.pack_id);
     const role = asNonEmptyString(body.role);
@@ -2219,6 +2396,44 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       "admin"
     );
 
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "pack.registered",
+        traceId,
+        idempotencyKey: `${created.id}:pack_registered:${traceId}`,
+        payload: {
+          pack_id: created.pack_id,
+          source_type: created.source_type,
+          pinned_version: created.pinned_version,
+          materialize_status: created.materialize_status,
+          reason: "pack_registered"
+        }
+      },
+      logMessage: "Failed to publish pack.registered",
+      logContext: { pack_id: created.pack_id }
+    });
+
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "pack.validated",
+        traceId,
+        idempotencyKey: `${created.id}:pack_validated:${traceId}`,
+        payload: {
+          pack_id: created.pack_id,
+          source_type: created.source_type,
+          pinned_version: created.pinned_version,
+          materialize_status: created.materialize_status,
+          reason: "schema_valid"
+        }
+      },
+      logMessage: "Failed to publish pack.validated",
+      logContext: { pack_id: created.pack_id }
+    });
+
     return reply.code(201).send(packToResponse(created));
   });
 
@@ -2238,8 +2453,15 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   });
 
   app.patch("/api/packs/:id", async (request, reply) => {
+    const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
     const body = request.body as PackPatchRequest;
+    const existingPack = await persistence.getPackById(id);
+    if (!existingPack) {
+      return sendError(reply, 404, "Pack not found", "NOT_FOUND");
+    }
+    const previousPinnedVersion = existingPack.pinned_version;
+    const previousSourceRef = existingPack.source_ref;
 
     const patch: Parameters<Persistence["patchPack"]>[1] = {};
 
@@ -2271,14 +2493,61 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 404, "Pack not found", "NOT_FOUND");
     }
 
+    const rotated =
+      (patch.pinned_version != null && patch.pinned_version !== previousPinnedVersion) ||
+      (patch.source_ref != null && patch.source_ref !== previousSourceRef);
+    if (rotated) {
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "pack.rotated",
+          traceId,
+          idempotencyKey: `${updated.id}:pack_rotated:${traceId}`,
+          payload: {
+            pack_id: updated.pack_id,
+            source_type: updated.source_type,
+            pinned_version: updated.pinned_version,
+            materialize_status: updated.materialize_status,
+            reason: "pack_version_or_source_rotated"
+          }
+        },
+        logMessage: "Failed to publish pack.rotated",
+        logContext: { pack_id: updated.pack_id }
+      });
+    }
+
     return reply.send(packToResponse(updated));
   });
 
   app.post("/api/packs/:id/materialize", async (request, reply) => {
+    const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
     const materialized = await persistence.materializePack(id);
     if (!materialized) {
       return sendError(reply, 404, "Pack not found", "NOT_FOUND");
+    }
+
+    const materializedPack = await persistence.getPackById(id);
+    if (materializedPack) {
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "pack.materialized",
+          traceId,
+          idempotencyKey: `${materializedPack.id}:pack_materialized:${traceId}`,
+          payload: {
+            pack_id: materializedPack.pack_id,
+            source_type: materializedPack.source_type,
+            pinned_version: materializedPack.pinned_version,
+            materialize_status: materializedPack.materialize_status,
+            reason: "manual_materialize"
+          }
+        },
+        logMessage: "Failed to publish pack.materialized",
+        logContext: { pack_id: materializedPack.pack_id }
+      });
     }
 
     return reply.code(202).send({ accepted: true });
@@ -2971,7 +3240,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/queue/held/release", async (request, reply) => {
     const traceId = getTraceId(request);
+    const heldTasksBeforeRelease = await persistence.listHeldTasks();
     const releasedCount = await persistence.releaseHeldQueue();
+
+    if (heldTasksBeforeRelease.length > 0) {
+      await publishTaskAuthSwitchingEvents({
+        app,
+        publisher,
+        traceId,
+        transitions: heldTasksBeforeRelease.map((task) => ({
+          task_id: task.id,
+          status_before: "WAITING_LIMIT",
+          status_after: "QUEUED"
+        })),
+        reason: "manual_queue_release"
+      });
+    }
 
     await publishEventBestEffort({
       app,

@@ -38,6 +38,26 @@
 }
 ```
 
+## task.auth_switching
+```json
+{
+  "event_id": "evt-02a",
+  "event_type": "task.auth_switching",
+  "timestamp": "2026-04-06T12:05:10Z",
+  "trace_id": "trace-switch-01",
+  "task_id": "task-123",
+  "worker_id": null,
+  "idempotency_key": "task-123:QUEUED:WAITING_LIMIT:trace-switch-01",
+  "version": "1.0",
+  "payload": {
+    "task_id": "task-123",
+    "status_before": "QUEUED",
+    "status_after": "WAITING_LIMIT",
+    "reason": "auth_switch_hold_started"
+  }
+}
+```
+
 ## auth_profile.switch.retried
 ```json
 {
@@ -120,6 +140,27 @@
     "target_agent_template_id": "tmpl-tester",
     "target_worker_instance_id": "worker-tester-9",
     "reason": null
+  }
+}
+```
+
+## pack.registered
+```json
+{
+  "event_id": "evt-04a",
+  "event_type": "pack.registered",
+  "timestamp": "2026-04-06T12:07:30Z",
+  "trace_id": "trace-pack-02",
+  "task_id": null,
+  "worker_id": null,
+  "idempotency_key": "pack-01:pack_registered:trace-pack-02",
+  "version": "1.0",
+  "payload": {
+    "pack_id": "ui-tester-pack",
+    "source_type": "git",
+    "pinned_version": "v1.3.0",
+    "materialize_status": "registered",
+    "reason": "pack_registered"
   }
 }
 ```

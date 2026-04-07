@@ -44,7 +44,9 @@
 - [x] Публикуются обязательные события для реализованных действий, включая:
   - `auth_profile.uploaded`, `auth_profile.activated`
   - `auth_profile.switch.started/retried/failed/completed/skipped` (manual activate/deactivate + retry/no-op/failure)
-  - `queue.hold_released` (manual queue release endpoint)
+  - `queue.hold_started`, `queue.hold_released`
+  - `task.auth_switching`
+  - `pack.registered/validated/materialized/rotated`
   - `module.execution.started/completed/failed`
   - `agent.delegation.requested/accepted/completed/failed`
   - `schedule.rule.*`, `schedule.run.*`
@@ -78,6 +80,8 @@
 - [x] Terminal failure manual switch публикует отдельное событие `auth_profile.switch.failed` (помимо DB-backed `AuthSwitchEvent`).
 - [x] Side-effects для manual switch (`AuthSwitchEvent`/event publish на retry+failed) работают fail-safe: при их локальной ошибке основной activate/deactivate flow не прерывается.
 - [x] Post-commit publish для manual switch success path и `POST /api/queue/held/release` работает best-effort (операция не откатывается из-за сбоя публикации события).
+- [x] Manual auth switch теперь проходит через queue workflow `hold -> switch -> release` для `NEW/QUEUED` задач с публикацией `queue.hold_started/queue.hold_released` и `task.auth_switching`.
+- [x] Pack lifecycle endpoints публикуют `pack.registered`, `pack.validated`, `pack.rotated`, `pack.materialized`.
 
 ## Что намеренно вне PR1
 - [ ] Web UI.

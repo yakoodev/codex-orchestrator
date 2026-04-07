@@ -1484,6 +1484,77 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("runs hold-switch-release workflow for manual activate", async () => {
+    await persistence.createTask({
+      title: "queued-before-switch",
+      description: "queued task before auth switch",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "QUEUED",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const targetProfile = await persistence.createAuthProfile({
+      label: "activate-with-workflow",
+      status: "inactive",
+      checksum: "checksum-activate-with-workflow",
+      storage_path: "auth-profiles/activate-with-workflow.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${targetProfile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-workflow-1" }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "queue.hold_started" &&
+          event.payload["reason"] === "auth_switch_started" &&
+          event.payload["held_count"] === 1
+      )
+    ).toBe(true);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "queue.hold_released" &&
+          event.payload["reason"] === "auth_switch_completed" &&
+          event.payload["held_count"] === 1
+      )
+    ).toBe(true);
+
+    const taskSwitchEvents = publisher.events.filter(
+      (event) =>
+        event.eventType === "task.auth_switching" && event.payload["task_id"] === "task-1"
+    );
+    expect(taskSwitchEvents).toHaveLength(2);
+    expect(
+      taskSwitchEvents.some(
+        (event) =>
+          event.payload["status_before"] === "QUEUED" &&
+          event.payload["status_after"] === "WAITING_LIMIT" &&
+          event.payload["reason"] === "auth_switch_hold_started"
+      )
+    ).toBe(true);
+    expect(
+      taskSwitchEvents.some(
+        (event) =>
+          event.payload["status_before"] === "WAITING_LIMIT" &&
+          event.payload["status_after"] === "QUEUED" &&
+          event.payload["reason"] === "auth_switch_release_completed"
+      )
+    ).toBe(true);
+  });
+
   it("retries activate on transient failure and emits auth_profile.switch.retried", async () => {
     const profile = await persistence.createAuthProfile({
       label: "retry-activate",
@@ -1727,7 +1798,7 @@ describe("smoke-core API", () => {
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/packs",
-      headers: { "x-admin-token": config.adminToken },
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-pack-create-1" },
       payload: {
         pack_id: "backend-pack",
         role: "developer",
@@ -1740,6 +1811,22 @@ describe("smoke-core API", () => {
     });
     expect(createResponse.statusCode).toBe(201);
     const packId = createResponse.json().id as string;
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "pack.registered" &&
+          event.payload["pack_id"] === "backend-pack" &&
+          event.payload["pinned_version"] === "v1.0.0"
+      )
+    ).toBe(true);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "pack.validated" &&
+          event.payload["pack_id"] === "backend-pack" &&
+          event.payload["reason"] === "schema_valid"
+      )
+    ).toBe(true);
 
     const listResponse = await app.inject({
       method: "GET",
@@ -1760,7 +1847,7 @@ describe("smoke-core API", () => {
     const patchResponse = await app.inject({
       method: "PATCH",
       url: `/api/packs/${packId}`,
-      headers: { "x-admin-token": config.adminToken },
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-pack-rotate-1" },
       payload: {
         pinned_version: "v1.1.0",
         is_enabled: false
@@ -1769,14 +1856,30 @@ describe("smoke-core API", () => {
     expect(patchResponse.statusCode).toBe(200);
     expect(patchResponse.json().pinned_version).toBe("v1.1.0");
     expect(patchResponse.json().is_enabled).toBe(false);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "pack.rotated" &&
+          event.payload["pack_id"] === "backend-pack" &&
+          event.payload["pinned_version"] === "v1.1.0"
+      )
+    ).toBe(true);
 
     const materializeResponse = await app.inject({
       method: "POST",
       url: `/api/packs/${packId}/materialize`,
-      headers: { "x-admin-token": config.adminToken }
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-pack-materialize-1" }
     });
     expect(materializeResponse.statusCode).toBe(202);
     expect(materializeResponse.json()).toEqual({ accepted: true });
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "pack.materialized" &&
+          event.payload["pack_id"] === "backend-pack" &&
+          event.payload["materialize_status"] === "materialized"
+      )
+    ).toBe(true);
   });
 
   it("handles delegation capabilities dispatch and result", async () => {
@@ -2429,6 +2532,16 @@ describe("smoke-core API", () => {
           event.eventType === "queue.hold_released" &&
           event.payload["reason"] === "manual_release" &&
           event.payload["held_count"] === 1
+      )
+    ).toBe(true);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "task.auth_switching" &&
+          event.payload["task_id"] === "task-1" &&
+          event.payload["status_before"] === "WAITING_LIMIT" &&
+          event.payload["status_after"] === "QUEUED" &&
+          event.payload["reason"] === "manual_queue_release"
       )
     ).toBe(true);
 
