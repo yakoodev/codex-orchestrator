@@ -66,6 +66,7 @@
 - [x] Schedule rule AST evaluator (`all/any/not`, typed predicates, UTC `time.cron`, legacy `conditions`).
 - [x] Идемпотентность `POST /api/schedules/{id}/trigger` по `trace_id` (повтор возвращает существующий run).
 - [x] Delegation lifecycle и timeout-retry semantics (до 3 попыток с terminal `failed`).
+- [x] Покрыт тестом terminal failed path для делегации при отсутствии подходящего capability target.
 - [x] Retry/backoff и идемпотентность для `PATCH /api/custom-modules/{key}`.
 
 ## Что намеренно вне PR1

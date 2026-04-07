@@ -1438,6 +1438,33 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("marks delegation failed when no capability target is available", async () => {
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-delegation-no-target-1" },
+      payload: {
+        requester_task_id: "task-1",
+        requester_task_run_id: "run-1",
+        capability: "architect",
+        target_selector: { role: "architect" },
+        payload: { task: "missing target" },
+        priority: 50
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("failed");
+    expect(dispatchResponse.json().result_summary).toContain("No enabled template found");
+
+    const failedEvent = publisher.events.find(
+      (event) =>
+        event.eventType === "agent.delegation.failed" &&
+        event.payload["reason"] === "no_capability_target"
+    );
+    expect(failedEvent).toBeDefined();
+  });
+
   it("manages schedules endpoints", async () => {
     const createResponse = await app.inject({
       method: "POST",
