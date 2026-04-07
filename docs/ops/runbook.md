@@ -108,6 +108,7 @@ npm run limits:check -- --home="$HOME/.codex" --json
 
 Notes:
 - Primary source is `codex app-server` JSON-RPC method `account/rateLimits/read`.
+- Script reports both `used_percent` and `remaining_percent` (остаток = `100 - used_percent`) for primary/secondary windows.
 - Script also keeps fallback diagnostics from sqlite logs (`codex.rate_limits` + latest `usage limit` hit), but these are secondary.
 - If RPC fails (auth/network/process issues), exact percentages are unavailable until RPC path is restored.
 

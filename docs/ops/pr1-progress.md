@@ -94,7 +94,7 @@
 - [x] В Docker-образ `bus` добавлен `@openai/codex`, чтобы реальный executor работал в compose-окружении без ручной установки CLI.
 - [x] Добавлены unit/API тесты на injected executor path (`completed`) и terminal fail-path (`AUTH_PROFILE_REQUIRED`) для защиты новой runtime-ветки.
 - [x] Добавлен multi-channel механизм операционного съема логов: `npm run logs:check` (API + Docker logs + Redis Streams + optional Loki readiness) и обновлен runbook с диагностическими командами.
-- [x] Добавлен механизм съема точных лимитов для нескольких `CODEX_HOME`: `npm run limits:check` использует `codex app-server` RPC `account/rateLimits/read` как primary source, плюс fallback-диагностику из sqlite и optional live probe.
+- [x] Добавлен механизм съема точных лимитов для нескольких `CODEX_HOME`: `npm run limits:check` использует `codex app-server` RPC `account/rateLimits/read` как primary source, считает и выводит `used_percent` + `remaining_percent` (остаток), плюс fallback-диагностику из sqlite и optional live probe.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.

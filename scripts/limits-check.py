@@ -52,10 +52,31 @@ def compute_reset_after_seconds(resets_at: Any, now_ts: int) -> Optional[int]:
     return delta
 
 
+def compute_remaining_percent(used_percent: Any) -> Optional[Any]:
+    if used_percent is None:
+        return None
+
+    try:
+        used_value = float(used_percent)
+    except Exception:
+        return None
+
+    if used_value < 0:
+        used_value = 0.0
+    if used_value > 100:
+        used_value = 100.0
+
+    remaining_value = 100.0 - used_value
+    if remaining_value.is_integer():
+        return int(remaining_value)
+    return round(remaining_value, 2)
+
+
 def normalize_window(win: Any, now_ts: int) -> Dict[str, Any]:
     if not isinstance(win, dict):
         return {
             "used_percent": None,
+            "remaining_percent": None,
             "window_minutes": None,
             "reset_at": None,
             "reset_after_seconds": None,
@@ -79,6 +100,7 @@ def normalize_window(win: Any, now_ts: int) -> Dict[str, Any]:
 
     return {
         "used_percent": used_percent,
+        "remaining_percent": compute_remaining_percent(used_percent),
         "window_minutes": window_minutes,
         "reset_at": reset_at,
         "reset_after_seconds": reset_after_seconds,
@@ -587,14 +609,16 @@ def render_human(result: Dict[str, Any]) -> None:
             )
         )
         print(
-            "primary: used={}%, window={}m, reset_after={}s".format(
+            "primary: remaining={}%, used={}%, window={}m, reset_after={}s".format(
+                primary.get("remaining_percent"),
                 primary.get("used_percent"),
                 primary.get("window_minutes"),
                 primary.get("reset_after_seconds"),
             )
         )
         print(
-            "secondary: used={}%, window={}m, reset_after={}s".format(
+            "secondary: remaining={}%, used={}%, window={}m, reset_after={}s".format(
+                secondary.get("remaining_percent"),
                 secondary.get("used_percent"),
                 secondary.get("window_minutes"),
                 secondary.get("reset_after_seconds"),
