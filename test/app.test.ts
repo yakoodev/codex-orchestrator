@@ -1551,6 +1551,38 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("keeps activate success response when final publish fails", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "activate-final-publish-failure",
+      status: "inactive",
+      checksum: "checksum-activate-final-publish-failure",
+      storage_path: "auth-profiles/activate-final-publish-failure.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    publisher.publishFailuresByEventType.set("auth_profile.activated", 1);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-final-publish-fail" }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect((await persistence.getActiveAuthProfile())?.id).toBe(profile.id);
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "auth_profile.switch.completed" &&
+          event.payload["reason"] === "manual_activate"
+      )
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "auth_profile.activated")
+    ).toBe(false);
+  });
+
   it("returns 500 when activate keeps failing after retries", async () => {
     const currentActive = await persistence.createAuthProfile({
       label: "current-active",
@@ -2399,6 +2431,45 @@ describe("smoke-core API", () => {
           event.payload["held_count"] === 1
       )
     ).toBe(true);
+
+    const heldAfterRelease = await app.inject({
+      method: "GET",
+      url: "/api/queue/held",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(heldAfterRelease.statusCode).toBe(200);
+    expect(heldAfterRelease.json().items).toHaveLength(0);
+  });
+
+  it("releases held queue even when hold_released publish fails", async () => {
+    await persistence.createTask({
+      title: "held-publish-failure",
+      description: "held task",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "WAITING_LIMIT",
+      source: "api",
+      created_by: "admin"
+    });
+    publisher.publishFailuresByEventType.set("queue.hold_released", 1);
+
+    const releaseResponse = await app.inject({
+      method: "POST",
+      url: "/api/queue/held/release",
+      headers: {
+        "x-admin-token": config.adminToken,
+        "x-trace-id": "trace-queue-release-publish-fail"
+      }
+    });
+
+    expect(releaseResponse.statusCode).toBe(202);
+    expect(releaseResponse.json()).toEqual({ accepted: true });
+    expect(
+      publisher.events.some((event) => event.eventType === "queue.hold_released")
+    ).toBe(false);
 
     const heldAfterRelease = await app.inject({
       method: "GET",

@@ -10,6 +10,7 @@ import type {
   AuthContextType,
   AuthProfileEntity,
   DelegationRequestEntity,
+  EventPublishInput,
   EventPublisher,
   ModuleExecutionEntity,
   PackRegistryEntity,
@@ -325,6 +326,28 @@ async function withRetry<T>(options: {
   }
 
   throw new Error(`${operationName} failed after ${maxAttempts} attempts`);
+}
+
+async function publishEventBestEffort(options: {
+  app: FastifyInstance;
+  publisher: EventPublisher;
+  event: EventPublishInput;
+  logMessage: string;
+  logContext?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await options.publisher.publish(options.event);
+  } catch (error) {
+    options.app.log.error(
+      {
+        err: error,
+        event_type: options.event.eventType,
+        trace_id: options.event.traceId,
+        ...(options.logContext ?? {})
+      },
+      options.logMessage
+    );
+  }
 }
 
 function asFiniteNumber(value: unknown): number | null {
@@ -1807,16 +1830,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: new Date()
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.skipped",
-        traceId,
-        idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: activated.id,
-          from_profile_id: activated.id,
-          to_profile_id: activated.id,
-          reason: "manual_activate_noop"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.skipped",
+          traceId,
+          idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: activated.id,
+            from_profile_id: activated.id,
+            to_profile_id: activated.id,
+            reason: "manual_activate_noop"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.skipped",
+        logContext: { profile_id: activated.id }
       });
     } else {
       const startedAt = new Date();
@@ -1832,16 +1861,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: null
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.started",
-        traceId,
-        idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: activated.id,
-          from_profile_id: previousActive?.id ?? null,
-          to_profile_id: activated.id,
-          reason: "manual_activate"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.started",
+          traceId,
+          idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: activated.id,
+            from_profile_id: previousActive?.id ?? null,
+            to_profile_id: activated.id,
+            reason: "manual_activate"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.started",
+        logContext: { profile_id: activated.id }
       });
 
       const completedSwitchEvent = await persistence.createAuthSwitchEvent({
@@ -1856,28 +1891,40 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: new Date()
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.completed",
-        traceId,
-        idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: activated.id,
-          from_profile_id: previousActive?.id ?? null,
-          to_profile_id: activated.id,
-          reason: "manual_activate"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.completed",
+          traceId,
+          idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: activated.id,
+            from_profile_id: previousActive?.id ?? null,
+            to_profile_id: activated.id,
+            reason: "manual_activate"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.completed",
+        logContext: { profile_id: activated.id }
       });
     }
 
-    await publisher.publish({
-      eventType: "auth_profile.activated",
-      traceId,
-      idempotencyKey: `${id}:activate`,
-      payload: {
-        profile_id: activated.id,
-        status: activated.status,
-        label: activated.label
-      }
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "auth_profile.activated",
+        traceId,
+        idempotencyKey: `${id}:activate`,
+        payload: {
+          profile_id: activated.id,
+          status: activated.status,
+          label: activated.label
+        }
+      },
+      logMessage: "Failed to publish auth_profile.activated",
+      logContext: { profile_id: activated.id }
     });
 
     return reply.code(202).send({ accepted: true });
@@ -2022,16 +2069,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: null
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.started",
-        traceId,
-        idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: null,
-          from_profile_id: id,
-          to_profile_id: null,
-          reason: "manual_deactivate"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.started",
+          traceId,
+          idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: null,
+            from_profile_id: id,
+            to_profile_id: null,
+            reason: "manual_deactivate"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.started",
+        logContext: { profile_id: id }
       });
 
       const completedSwitchEvent = await persistence.createAuthSwitchEvent({
@@ -2046,16 +2099,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: new Date()
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.completed",
-        traceId,
-        idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: null,
-          from_profile_id: id,
-          to_profile_id: null,
-          reason: "manual_deactivate"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.completed",
+          traceId,
+          idempotencyKey: `${completedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: null,
+            from_profile_id: id,
+            to_profile_id: null,
+            reason: "manual_deactivate"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.completed",
+        logContext: { profile_id: id }
       });
     } else {
       const skippedSwitchEvent = await persistence.createAuthSwitchEvent({
@@ -2070,16 +2129,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: new Date()
       });
 
-      await publisher.publish({
-        eventType: "auth_profile.switch.skipped",
-        traceId,
-        idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
-        payload: {
-          profile_id: null,
-          from_profile_id: id,
-          to_profile_id: null,
-          reason: "manual_deactivate_noop"
-        }
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.skipped",
+          traceId,
+          idempotencyKey: `${skippedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: null,
+            from_profile_id: id,
+            to_profile_id: null,
+            reason: "manual_deactivate_noop"
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.skipped",
+        logContext: { profile_id: id }
       });
     }
 
@@ -2908,14 +2973,19 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const traceId = getTraceId(request);
     const releasedCount = await persistence.releaseHeldQueue();
 
-    await publisher.publish({
-      eventType: "queue.hold_released",
-      traceId,
-      idempotencyKey: `queue_hold_release:${traceId}`,
-      payload: {
-        reason: "manual_release",
-        held_count: releasedCount
-      }
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "queue.hold_released",
+        traceId,
+        idempotencyKey: `queue_hold_release:${traceId}`,
+        payload: {
+          reason: "manual_release",
+          held_count: releasedCount
+        }
+      },
+      logMessage: "Failed to publish queue.hold_released"
     });
 
     return reply.code(202).send({ accepted: true });
