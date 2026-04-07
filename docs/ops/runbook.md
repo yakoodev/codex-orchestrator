@@ -85,8 +85,8 @@ curl http://localhost:${LOKI_PORT:-3100}/ready
 ```
 If port `3100` is busy on host, change `LOKI_PORT` in root `.env` before starting `--profile observability`.
 
-## Limits retrieval (best-effort)
-To inspect available usage-limit signals for one or many `CODEX_HOME` directories:
+## Limits retrieval (exact via Codex app-server RPC)
+To read exact current limit percentages for one or many `CODEX_HOME` directories:
 ```bash
 npm run limits:check -- --home="$HOME/.codex"
 ```
@@ -107,8 +107,9 @@ npm run limits:check -- --home="$HOME/.codex" --json
 ```
 
 Notes:
-- Exact current percentages are available only when a recent `codex.rate_limits` event exists in local sqlite logs.
-- If no `codex.rate_limits` event is present, tool still reports latest explicit `usage limit` hits (if any) and live-probe availability status.
+- Primary source is `codex app-server` JSON-RPC method `account/rateLimits/read`.
+- Script also keeps fallback diagnostics from sqlite logs (`codex.rate_limits` + latest `usage limit` hit), but these are secondary.
+- If RPC fails (auth/network/process issues), exact percentages are unavailable until RPC path is restored.
 
 ## Web operator panel
 - Open `http://localhost:8080/ui/`.
