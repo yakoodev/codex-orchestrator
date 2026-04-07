@@ -1793,6 +1793,49 @@ describe("smoke-core API", () => {
     expect(runsResponse.json().items).toHaveLength(1);
   });
 
+  it("recovers due schedule run on app startup for restart event", async () => {
+    await app.close();
+    publisher.events.splice(0, publisher.events.length);
+
+    const rule = await persistence.createScheduledRule({
+      name: "startup recovery rule",
+      scope: "global",
+      project_id: null,
+      rule_ast: {
+        predicate: "event.type",
+        value: "system.restart"
+      },
+      overlap_policy: "one_active_skip",
+      misfire_policy: "recompute_due_on_restart",
+      created_by: "admin"
+    });
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage
+    });
+
+    const runs = await persistence.listScheduledRuns(rule.id);
+    expect(runs).toHaveLength(1);
+    const recoveredRun = runs[0];
+    expect(recoveredRun).toBeDefined();
+    if (!recoveredRun) {
+      throw new Error("Expected startup recovery run to exist");
+    }
+    expect(recoveredRun.status).toBe("started");
+    expect(recoveredRun.idempotency_key).toContain("startup_recovery");
+
+    const recoveryEvent = publisher.events.find(
+      (event) =>
+        event.eventType === "schedule.run.started" &&
+        event.payload["rule_id"] === rule.id &&
+        event.payload["reason"] === "startup_recovery"
+    );
+    expect(recoveryEvent).toBeDefined();
+  });
+
   it("returns held queue tasks from WAITING_LIMIT", async () => {
     await persistence.createTask({
       title: "held",
