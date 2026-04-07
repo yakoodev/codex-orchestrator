@@ -455,6 +455,14 @@ class FakePersistence implements Persistence {
     return run;
   }
 
+  public async getActiveScheduledRun(ruleId: string): Promise<ScheduledRunEntity | null> {
+    return (
+      this.scheduledRuns.find(
+        (run) => run.rule_id === ruleId && run.status === "started" && run.ended_at === null
+      ) ?? null
+    );
+  }
+
   public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {
     return this.scheduledRuns.filter((run) => run.rule_id === ruleId);
   }
@@ -1379,7 +1387,7 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-3" }
     });
     expect(triggerResponse.statusCode).toBe(202);
-    expect(triggerResponse.json().status).toBe("skipped_due_to_overlap");
+    expect(triggerResponse.json().status).toBe("failed");
 
     const runsResponse = await app.inject({
       method: "GET",
@@ -1403,6 +1411,14 @@ describe("smoke-core API", () => {
     });
     expect(secondTriggerResponse.statusCode).toBe(202);
     expect(secondTriggerResponse.json().status).toBe("started");
+
+    const overlapTriggerResponse = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/trigger`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-5" }
+    });
+    expect(overlapTriggerResponse.statusCode).toBe(202);
+    expect(overlapTriggerResponse.json().status).toBe("skipped_due_to_overlap");
 
     const disableResponse = await app.inject({
       method: "POST",
@@ -1431,6 +1447,12 @@ describe("smoke-core API", () => {
     ).toBe(true);
     expect(
       publisher.events.some((event) => event.eventType === "schedule.run.started")
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "schedule.run.failed")
+    ).toBe(true);
+    expect(
+      publisher.events.some((event) => event.eventType === "schedule.run.skipped_due_to_overlap")
     ).toBe(true);
   });
 

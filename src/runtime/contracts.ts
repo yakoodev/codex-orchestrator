@@ -315,6 +315,7 @@ export interface Persistence {
   deleteScheduledRule(id: string): Promise<boolean>;
   setScheduledRuleEnabled(id: string, isEnabled: boolean): Promise<boolean>;
   createScheduledRun(input: CreateScheduledRunInput): Promise<ScheduledRunEntity>;
+  getActiveScheduledRun(ruleId: string): Promise<ScheduledRunEntity | null>;
   listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]>;
   listWorkers(): Promise<WorkerEntity[]>;
   setWorkerStatus(id: string, status: "READY" | "DISABLED"): Promise<boolean>;

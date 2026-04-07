@@ -700,6 +700,23 @@ export class PrismaPersistence implements Persistence {
     return toScheduledRunEntity(created);
   }
 
+  public async getActiveScheduledRun(ruleId: string): Promise<ScheduledRunEntity | null> {
+    const run = await this.prisma.scheduledRun.findFirst({
+      where: {
+        rule_id: ruleId,
+        status: "started",
+        ended_at: null
+      },
+      orderBy: { started_at: "desc" }
+    });
+
+    if (!run) {
+      return null;
+    }
+
+    return toScheduledRunEntity(run);
+  }
+
   public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {
     const runs = await this.prisma.scheduledRun.findMany({
       where: { rule_id: ruleId },

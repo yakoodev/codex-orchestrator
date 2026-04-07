@@ -1611,32 +1611,90 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
     }
 
-    const isEnabled = rule.is_enabled;
-    const run = await persistence.createScheduledRun({
+    const now = new Date();
+
+    if (!rule.is_enabled) {
+      const failedRun = await persistence.createScheduledRun({
+        rule_id: id,
+        status: "failed",
+        started_at: now,
+        ended_at: now,
+        skip_reason: "rule_disabled",
+        trace_id: traceId,
+        idempotency_key: `${id}:${traceId}`,
+        result_json: { reason: "rule_disabled" }
+      });
+
+      await publisher.publish({
+        eventType: "schedule.run.failed",
+        traceId,
+        idempotencyKey: `${failedRun.id}:${traceId}`,
+        payload: {
+          rule_id: id,
+          run_id: failedRun.id,
+          scope: rule.scope,
+          status: failedRun.status,
+          reason: failedRun.skip_reason
+        }
+      });
+
+      return reply.code(202).send(scheduledRunToResponse(failedRun));
+    }
+
+    const activeRun = await persistence.getActiveScheduledRun(id);
+    if (activeRun) {
+      const skippedRun = await persistence.createScheduledRun({
+        rule_id: id,
+        status: "skipped_due_to_overlap",
+        started_at: now,
+        ended_at: now,
+        skip_reason: "active_run_exists",
+        trace_id: traceId,
+        idempotency_key: `${id}:${traceId}`,
+        result_json: { active_run_id: activeRun.id }
+      });
+
+      await publisher.publish({
+        eventType: "schedule.run.skipped_due_to_overlap",
+        traceId,
+        idempotencyKey: `${skippedRun.id}:${traceId}`,
+        payload: {
+          rule_id: id,
+          run_id: skippedRun.id,
+          scope: rule.scope,
+          status: skippedRun.status,
+          reason: skippedRun.skip_reason
+        }
+      });
+
+      return reply.code(202).send(scheduledRunToResponse(skippedRun));
+    }
+
+    const startedRun = await persistence.createScheduledRun({
       rule_id: id,
-      status: isEnabled ? "started" : "skipped_due_to_overlap",
-      started_at: new Date(),
-      ended_at: isEnabled ? null : new Date(),
-      skip_reason: isEnabled ? null : "rule_disabled",
+      status: "started",
+      started_at: now,
+      ended_at: null,
+      skip_reason: null,
       trace_id: traceId,
       idempotency_key: `${id}:${traceId}`,
-      result_json: isEnabled ? null : { reason: "rule_disabled" }
+      result_json: null
     });
 
     await publisher.publish({
-      eventType: isEnabled ? "schedule.run.started" : "schedule.run.skipped_due_to_overlap",
+      eventType: "schedule.run.started",
       traceId,
-      idempotencyKey: `${run.id}:${traceId}`,
+      idempotencyKey: `${startedRun.id}:${traceId}`,
       payload: {
         rule_id: id,
-        run_id: run.id,
+        run_id: startedRun.id,
         scope: rule.scope,
-        status: run.status,
-        reason: run.skip_reason
+        status: startedRun.status,
+        reason: null
       }
     });
 
-    return reply.code(202).send(scheduledRunToResponse(run));
+    return reply.code(202).send(scheduledRunToResponse(startedRun));
   });
 
   app.get("/api/schedules/:id/runs", async (request, reply) => {
