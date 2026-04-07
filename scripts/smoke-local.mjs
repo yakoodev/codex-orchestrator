@@ -76,6 +76,7 @@ async function main() {
   const cwd = process.cwd();
   const envPath = path.join(cwd, ".env");
   const env = parseDotEnv(envPath);
+  const runId = `${Date.now()}`;
 
   const adminToken = process.env.ADMIN_TOKEN ?? env.ADMIN_TOKEN;
   const port = process.env.PORT ?? env.PORT ?? "8080";
@@ -143,11 +144,31 @@ async function main() {
     })
   });
   const delegationId = delegation.data.id;
+  if (delegation.data.status !== "completed") {
+    fail("delegation should complete in smoke happy-path", delegation.data);
+  }
   ok("dispatch delegation");
 
   await requestJson(baseUrl, adminToken, "GET", `/api/delegation/${delegationId}`, { expected: [200] });
   await requestJson(baseUrl, adminToken, "GET", `/api/delegation/${delegationId}/result`, { expected: [200] });
   ok("read delegation status/result");
+
+  const timeoutDelegation = await requestJson(baseUrl, adminToken, "POST", "/api/delegation/dispatch", {
+    expected: [202],
+    headers: { "Content-Type": "application/json", "X-Trace-Id": "smoke-trace-delegation-timeout" },
+    body: JSON.stringify({
+      requester_task_id: taskId,
+      requester_task_run_id: null,
+      capability: "reviewer",
+      target_selector: { role: "reviewer" },
+      payload: { from: "smoke-script", simulate_timeout_attempts: 5 },
+      priority: 100
+    })
+  });
+  if (timeoutDelegation.data.status !== "failed") {
+    fail("delegation timeout path must end with failed status", timeoutDelegation.data);
+  }
+  ok("delegation timeout-retry terminal failed path");
 
   const schedule = await requestJson(baseUrl, adminToken, "POST", "/api/schedules", {
     expected: [201],
@@ -166,12 +187,28 @@ async function main() {
   const scheduleId = schedule.data.id;
   ok("create schedule");
 
-  await requestJson(baseUrl, adminToken, "POST", `/api/schedules/${scheduleId}/trigger`, {
+  const firstScheduleTrigger = await requestJson(baseUrl, adminToken, "POST", `/api/schedules/${scheduleId}/trigger`, {
     expected: [202],
     headers: { "X-Trace-Id": "smoke-trace-schedule-run" }
   });
-  await requestJson(baseUrl, adminToken, "GET", `/api/schedules/${scheduleId}/runs`, { expected: [200] });
-  ok("trigger and list schedule runs");
+  const secondScheduleTrigger = await requestJson(baseUrl, adminToken, "POST", `/api/schedules/${scheduleId}/trigger`, {
+    expected: [202],
+    headers: { "X-Trace-Id": "smoke-trace-schedule-run" }
+  });
+  if (firstScheduleTrigger.data.id !== secondScheduleTrigger.data.id) {
+    fail("schedule trigger should be idempotent for same trace id", {
+      first: firstScheduleTrigger.data,
+      second: secondScheduleTrigger.data
+    });
+  }
+
+  const scheduleRuns = await requestJson(baseUrl, adminToken, "GET", `/api/schedules/${scheduleId}/runs`, {
+    expected: [200]
+  });
+  if (!Array.isArray(scheduleRuns.data.items) || scheduleRuns.data.items.length !== 1) {
+    fail("schedule idempotent trigger should not create duplicate runs", scheduleRuns.data);
+  }
+  ok("trigger and list schedule runs (idempotent)");
 
   const form = new FormData();
   const zipBlob = new Blob([Buffer.from([0x50, 0x4b, 0x03, 0x04])], { type: "application/zip" });
@@ -211,13 +248,13 @@ async function main() {
     expected: [201],
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      pack_id: "smoke-pack",
+      pack_id: `smoke-pack-${runId}`,
       role: "developer",
       capabilities_json: { code: true },
       source_type: "git",
-      source_ref: "https://example.com/smoke-pack.git",
+      source_ref: `https://example.com/smoke-pack-${runId}.git`,
       pinned_version: "v1.0.0",
-      manifest_json: { name: "smoke-pack" }
+      manifest_json: { name: `smoke-pack-${runId}` }
     })
   });
   const packId = pack.data.id;

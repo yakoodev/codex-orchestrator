@@ -57,6 +57,7 @@
   - `contract-prisma`
 - [x] E2E smoke не включен в CI (только локальный compose smoke-path).
 - [x] Локальный smoke-path документирован (`docs/ops/smoke-test.md`, `npm run smoke:local`).
+- [x] Локальный smoke-path покрывает ветки timeout/retry делегации и идемпотентный trigger расписаний.
 - [x] Добавлен этот прогресс-трекер для прозрачной фиксации статуса реализации.
 
 ## Что уже дополнительно реализовано сверх базового smoke-core

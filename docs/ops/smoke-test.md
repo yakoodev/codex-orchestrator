@@ -13,7 +13,9 @@ Verify that runtime deployment and critical control plane endpoints work from do
 - Admin guard (`401` without `X-Admin-Token` for `/api/*`).
 - Task create/list.
 - Delegation capabilities/dispatch/status/result.
+- Delegation timeout/retry path with terminal `failed` status.
 - Schedules create/trigger/runs.
+- Schedule trigger idempotency (same `X-Trace-Id` returns existing run).
 - ChatGPT auth profile upload/activate.
 - Custom module config patch + execution history.
 - Pack register/materialize.
