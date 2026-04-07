@@ -66,6 +66,7 @@
 - [x] Schedule rule AST evaluator (`all/any/not`, typed predicates, UTC `time.cron`, legacy `conditions`).
 - [x] Идемпотентность `POST /api/schedules/{id}/trigger` по `trace_id` (повтор возвращает существующий run).
 - [x] Startup recovery для расписаний с `misfire_policy = recompute_due_on_restart` (идемпотентный запуск по часовому bucket + `schedule.run.started/skipped_due_to_overlap` события).
+- [x] Startup recovery работает fail-safe: ошибка чтения правил на старте логируется и не роняет приложение.
 - [x] Delegation lifecycle и timeout-retry semantics (до 3 попыток с terminal `failed`).
 - [x] Покрыт тестом terminal failed path для делегации при отсутствии подходящего capability target.
 - [x] Retry/backoff и идемпотентность для `PATCH /api/custom-modules/{key}`.

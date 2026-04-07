@@ -72,6 +72,7 @@ class FakePersistence implements Persistence {
   public dbReady = true;
   public moduleUpdateFailuresRemaining = 0;
   public moduleUpdateAttempts = 0;
+  public failListScheduledRules = false;
 
   public async pingDb(): Promise<void> {
     if (!this.dbReady) {
@@ -406,6 +407,9 @@ class FakePersistence implements Persistence {
   }
 
   public async listScheduledRules(): Promise<ScheduledRuleEntity[]> {
+    if (this.failListScheduledRules) {
+      throw new Error("scheduled rules list failed");
+    }
     return [...this.schedules];
   }
 
@@ -1834,6 +1838,80 @@ describe("smoke-core API", () => {
         event.payload["reason"] === "startup_recovery"
     );
     expect(recoveryEvent).toBeDefined();
+  });
+
+  it("records skipped startup recovery when active run already exists", async () => {
+    await app.close();
+    publisher.events.splice(0, publisher.events.length);
+
+    const rule = await persistence.createScheduledRule({
+      name: "startup overlap rule",
+      scope: "global",
+      project_id: null,
+      rule_ast: {
+        predicate: "event.type",
+        value: "system.restart"
+      },
+      overlap_policy: "one_active_skip",
+      misfire_policy: "recompute_due_on_restart",
+      created_by: "admin"
+    });
+
+    const activeRun = await persistence.createScheduledRun({
+      rule_id: rule.id,
+      status: "started",
+      started_at: new Date(),
+      ended_at: null,
+      skip_reason: null,
+      trace_id: "manual-active-run",
+      idempotency_key: "manual-active-run",
+      result_json: { source: "seed" }
+    });
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage
+    });
+
+    const runs = await persistence.listScheduledRuns(rule.id);
+    expect(runs).toHaveLength(2);
+    const recoveryRuns = runs.filter((run) => run.idempotency_key?.includes("startup_recovery"));
+    expect(recoveryRuns).toHaveLength(1);
+
+    const recoveryRun = recoveryRuns[0];
+    expect(recoveryRun).toBeDefined();
+    if (!recoveryRun) {
+      throw new Error("Expected startup overlap recovery run to exist");
+    }
+
+    expect(recoveryRun.status).toBe("skipped_due_to_overlap");
+    expect(recoveryRun.skip_reason).toBe("active_run_exists_on_recovery");
+    expect(recoveryRun.result_json).toEqual({ active_run_id: activeRun.id, recovery: true });
+
+    const skippedEvent = publisher.events.find(
+      (event) =>
+        event.eventType === "schedule.run.skipped_due_to_overlap" &&
+        event.payload["rule_id"] === rule.id &&
+        event.payload["reason"] === "startup_recovery_overlap"
+    );
+    expect(skippedEvent).toBeDefined();
+  });
+
+  it("does not fail app startup when schedule listing fails during recovery", async () => {
+    await app.close();
+    persistence.failListScheduledRules = true;
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage
+    });
+
+    const liveResponse = await app.inject({ method: "GET", url: "/health/live" });
+    expect(liveResponse.statusCode).toBe(200);
   });
 
   it("returns held queue tasks from WAITING_LIMIT", async () => {

@@ -783,7 +783,14 @@ async function runScheduleRecoveryOnStartup(deps: {
   const now = new Date();
   const recoveryBucket = now.toISOString().slice(0, 13);
 
-  const rules = await persistence.listScheduledRules();
+  let rules: Awaited<ReturnType<Persistence["listScheduledRules"]>>;
+  try {
+    rules = await persistence.listScheduledRules();
+  } catch (error) {
+    app.log.error({ err: error }, "Failed to list schedule rules during startup recovery");
+    return;
+  }
+
   for (const rule of rules) {
     if (!rule.is_enabled || rule.misfire_policy !== "recompute_due_on_restart") {
       continue;
