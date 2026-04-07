@@ -1419,6 +1419,20 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("returns 404 when active profile is not selected", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt/active",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Active profile not found",
+      code: "NOT_FOUND"
+    });
+  });
+
   it("emits skipped switch event for activate noop when profile is already active", async () => {
     const profile = await persistence.createAuthProfile({
       label: "already-active",

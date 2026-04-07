@@ -603,6 +603,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChatGptAuthProfile"
+        "404":
+          description: Active profile is not selected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/auth-profiles/chatgpt/switch-events:
     get:
