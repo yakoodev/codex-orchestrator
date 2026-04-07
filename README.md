@@ -8,6 +8,7 @@ Open-source orchestrator bus for Codex workers with limit-aware scheduling, dete
 - Contracts: [`docs/contracts`](/docs/contracts)
 - Docker/Ops: [`docs/docker`](/docs/docker)
 - PR1 status tracker: [`docs/ops/pr1-progress.md`](/docs/ops/pr1-progress.md)
+- Manual test scenarios: [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md)
 
 ## Quickstart (Root UX)
 ```bash
@@ -28,6 +29,7 @@ npm ci
 npm run smoke:local
 ```
 The smoke script checks auth guard, tasks, delegation, schedules, auth-profiles, custom modules, packs, and queue endpoints.
+For exact manual QA scenarios (UI + API), use [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md).
 
 Built-in web control panel:
 - Open `http://localhost:8080/ui/`

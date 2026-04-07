@@ -94,8 +94,36 @@ async function main() {
   await requestJson(baseUrl, null, "GET", "/health/ready", { expected: [200] });
   ok("health/ready");
 
+  const uiIndex = await requestJson(baseUrl, null, "GET", "/ui/", { expected: [200] });
+  if (typeof uiIndex.data !== "string" || !uiIndex.data.includes('id="lang-select"')) {
+    fail("ui index should include language switch", uiIndex.data);
+  }
+
+  const uiScript = await requestJson(baseUrl, null, "GET", "/ui/app.js", { expected: [200] });
+  if (typeof uiScript.data !== "string" || !uiScript.data.includes("const I18N =")) {
+    fail("ui script should include localization dictionary", uiScript.data);
+  }
+
+  const uiStyles = await requestJson(baseUrl, null, "GET", "/ui/styles.css", { expected: [200] });
+  if (typeof uiStyles.data !== "string" || !uiStyles.data.includes(".stats-grid")) {
+    fail("ui styles should include dashboard metrics layout", uiStyles.data);
+  }
+  ok("ui static assets");
+
   await requestJson(baseUrl, null, "GET", "/api/tasks", { expected: [401] });
   ok("admin token guard");
+
+  const noActiveProfile = await requestJson(
+    baseUrl,
+    adminToken,
+    "GET",
+    "/api/auth-profiles/chatgpt/active",
+    { expected: [404] }
+  );
+  if (!noActiveProfile.data || noActiveProfile.data.code !== "NOT_FOUND") {
+    fail("active profile empty state should return 404 NOT_FOUND", noActiveProfile.data);
+  }
+  ok("active profile empty state (404)");
 
   const task = await requestJson(baseUrl, adminToken, "POST", "/api/tasks", {
     expected: [201],
@@ -262,6 +290,20 @@ async function main() {
     expected: [202],
     headers: { "X-Trace-Id": "smoke-trace-profile-deactivate" }
   });
+
+  const noActiveAfterDeactivate = await requestJson(
+    baseUrl,
+    adminToken,
+    "GET",
+    "/api/auth-profiles/chatgpt/active",
+    { expected: [404] }
+  );
+  if (!noActiveAfterDeactivate.data || noActiveAfterDeactivate.data.code !== "NOT_FOUND") {
+    fail(
+      "active profile should return 404 NOT_FOUND after manual deactivate",
+      noActiveAfterDeactivate.data
+    );
+  }
 
   const switchEventsAfterDeactivate = await requestJson(
     baseUrl,

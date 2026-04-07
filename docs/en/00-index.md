@@ -6,6 +6,7 @@
 - [API and Events](/docs/en/02-api-events.md)
 - [Data + Runtime](/docs/en/03-data-runtime.md)
 - [Docker + Ops](/docs/en/04-docker-ops.md)
+- [Manual Test Scenarios (UI + API)](/docs/ops/manual-test-scenarios.md)
 - [Security + Threat model lite](/docs/en/05-security-threat-model-lite.md)
 - [OSS Process](/docs/en/06-oss-process.md)
 - [Traceability Matrix](/docs/en/07-traceability-matrix.md)

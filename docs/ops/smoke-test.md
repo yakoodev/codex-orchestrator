@@ -3,6 +3,9 @@
 ## Goal
 Verify that runtime deployment and critical control plane endpoints work from documentation only.
 
+Detailed manual QA scenarios for user acceptance:
+- [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md)
+
 ## Steps
 1. Start compose stack from repository root (`cp .env.example .env && docker compose up -d`).
 2. Install dependencies (`npm ci`).
@@ -12,7 +15,9 @@ Verify that runtime deployment and critical control plane endpoints work from do
    - open `http://localhost:8080/ui/` and run one operator cycle (`create task -> activate profile -> release held queue`).
 
 ## Automated smoke coverage
+- UI static delivery (`/ui/`, `/ui/app.js`, `/ui/styles.css`) and localization assets presence.
 - Admin guard (`401` without `X-Admin-Token` for `/api/*`).
+- Active profile empty-state (`GET /api/auth-profiles/chatgpt/active` -> `404 NOT_FOUND` when no active profile).
 - Task create/list.
 - Delegation capabilities/dispatch/status/result.
 - Delegation timeout/retry path with terminal `failed` status.

@@ -86,6 +86,8 @@
 - [x] Web panel улучшен: добавлены RU/EN локализация, переключатель языка, KPI-статистика по ключевым сущностям и fail-soft refresh панелей.
 - [x] Для UI backlog заведена отдельная задача в шине: `cmnonv80f0001mp2uw9zjyt4y` (UI/UX + localization enhancement).
 - [x] Синхронизирован API контракт для `GET /api/auth-profiles/chatgpt/active`: документирован ответ `404` при отсутствии выбранного активного профиля.
+- [x] Расширен `smoke:local`: проверка выдачи UI-статики (`/ui/*`) и empty-state `active profile` (`404 NOT_FOUND`).
+- [x] Добавлен пошаговый manual QA guide с точными PowerShell-сценариями: `docs/ops/manual-test-scenarios.md`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
