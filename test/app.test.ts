@@ -74,6 +74,10 @@ class FakePersistence implements Persistence {
   public moduleUpdateFailuresRemaining = 0;
   public moduleUpdateAttempts = 0;
   public failListScheduledRules = false;
+  public activateFailuresRemaining = 0;
+  public deactivateFailuresRemaining = 0;
+  public activateAttempts = 0;
+  public deactivateAttempts = 0;
 
   public async pingDb(): Promise<void> {
     if (!this.dbReady) {
@@ -697,6 +701,12 @@ class FakePersistence implements Persistence {
   }
 
   public async activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null> {
+    this.activateAttempts += 1;
+    if (this.activateFailuresRemaining > 0) {
+      this.activateFailuresRemaining -= 1;
+      throw new Error("auth profile activate transient failure");
+    }
+
     const target = this.profiles.find((profile) => profile.id === id);
     if (!target) {
       return null;
@@ -714,6 +724,12 @@ class FakePersistence implements Persistence {
   }
 
   public async deactivateAuthProfile(id: string): Promise<boolean> {
+    this.deactivateAttempts += 1;
+    if (this.deactivateFailuresRemaining > 0) {
+      this.deactivateFailuresRemaining -= 1;
+      throw new Error("auth profile deactivate transient failure");
+    }
+
     const target = this.profiles.find((profile) => profile.id === id);
     if (!target) {
       return false;
@@ -1455,6 +1471,71 @@ describe("smoke-core API", () => {
           event.payload["reason"] === "manual_deactivate_noop"
       )
     ).toBe(true);
+  });
+
+  it("retries activate on transient failure and emits auth_profile.switch.retried", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "retry-activate",
+      status: "inactive",
+      checksum: "checksum-retry-activate",
+      storage_path: "auth-profiles/retry-activate.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    persistence.activateFailuresRemaining = 1;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/activate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-activate-retry" }
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(persistence.activateAttempts).toBe(2);
+
+    const retriedEvents = publisher.events.filter(
+      (event) =>
+        event.eventType === "auth_profile.switch.retried" &&
+        event.payload["reason"] === "manual_activate_retry"
+    );
+    expect(retriedEvents).toHaveLength(1);
+
+    const switchStatuses = persistence.switchEvents.map((event) => event.status);
+    expect(switchStatuses).toContain("started");
+    expect(switchStatuses).toContain("completed");
+  });
+
+  it("returns 500 when deactivate keeps failing after retries", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "retry-deactivate",
+      status: "inactive",
+      checksum: "checksum-retry-deactivate",
+      storage_path: "auth-profiles/retry-deactivate.zip",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+    await persistence.activateAuthProfile(profile.id, "admin");
+    persistence.deactivateFailuresRemaining = 5;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/auth-profiles/chatgpt/${profile.id}/deactivate`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-deactivate-retry-fail" },
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json().code).toBe("AUTH_SWITCH_FAILED");
+    expect(persistence.deactivateAttempts).toBe(3);
+
+    const retriedEvents = publisher.events.filter(
+      (event) =>
+        event.eventType === "auth_profile.switch.retried" &&
+        event.payload["reason"] === "manual_deactivate_retry"
+    );
+    expect(retriedEvents).toHaveLength(2);
+    expect(persistence.switchEvents).toHaveLength(0);
   });
 
   it("manages packs endpoints", async () => {

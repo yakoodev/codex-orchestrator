@@ -205,6 +205,7 @@ const SCHEDULE_SCOPES = new Set<ScheduleScope>(["global", "project"]);
 const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_skip"]);
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
 const DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT = 3;
+const DEFAULT_AUTH_SWITCH_RETRY_LIMIT = 3;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -288,7 +289,12 @@ async function withRetry<T>(options: {
   maxAttempts: number;
   initialDelayMs: number;
   fn: () => Promise<T>;
-  onRetry: (ctx: { operationName: string; attempt: number; error: unknown; nextDelayMs: number }) => void;
+  onRetry: (ctx: {
+    operationName: string;
+    attempt: number;
+    error: unknown;
+    nextDelayMs: number;
+  }) => void | Promise<void>;
 }): Promise<T> {
   const { operationName, maxAttempts, initialDelayMs, fn, onRetry } = options;
 
@@ -303,7 +309,7 @@ async function withRetry<T>(options: {
       }
 
       const nextDelayMs = initialDelayMs * 2 ** (attempt - 1);
-      onRetry({ operationName, attempt, error, nextDelayMs });
+      await onRetry({ operationName, attempt, error, nextDelayMs });
       await sleep(nextDelayMs);
     }
   }
@@ -1658,7 +1664,46 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const { id } = request.params as { id: string };
     const previousActive = await persistence.getActiveAuthProfile();
 
-    const activated = await persistence.activateAuthProfile(id, "admin");
+    let activated: AuthProfileEntity | null;
+    try {
+      activated = await withRetry({
+        operationName: "auth_profile_activate",
+        maxAttempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
+        initialDelayMs: 50,
+        fn: async () => persistence.activateAuthProfile(id, "admin"),
+        onRetry: async ({ attempt, error, nextDelayMs }) => {
+          const nextAttempt = attempt + 1;
+          app.log.warn(
+            {
+              operation: "auth_profile_activate",
+              attempt,
+              nextDelayMs,
+              err: error,
+              profile_id: id,
+              trace_id: traceId
+            },
+            "Retrying auth profile activate"
+          );
+          await publisher.publish({
+            eventType: "auth_profile.switch.retried",
+            traceId,
+            idempotencyKey: `${id}:activate_retry:${nextAttempt}:${traceId}`,
+            payload: {
+              profile_id: id,
+              from_profile_id: previousActive?.id ?? null,
+              to_profile_id: id,
+              reason: "manual_activate_retry",
+              failed_attempt: attempt,
+              next_attempt: nextAttempt,
+              next_delay_ms: nextDelayMs
+            }
+          });
+        }
+      });
+    } catch (error) {
+      app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile activate failed");
+      return sendError(reply, 500, "Auth profile activate failed", "AUTH_SWITCH_FAILED");
+    }
     if (!activated) {
       return sendError(reply, 404, "Profile not found", "NOT_FOUND");
     }
@@ -1756,7 +1801,47 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
     const activeBeforeDeactivate = await persistence.getActiveAuthProfile();
-    const deactivated = await persistence.deactivateAuthProfile(id);
+
+    let deactivated: boolean;
+    try {
+      deactivated = await withRetry({
+        operationName: "auth_profile_deactivate",
+        maxAttempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
+        initialDelayMs: 50,
+        fn: async () => persistence.deactivateAuthProfile(id),
+        onRetry: async ({ attempt, error, nextDelayMs }) => {
+          const nextAttempt = attempt + 1;
+          app.log.warn(
+            {
+              operation: "auth_profile_deactivate",
+              attempt,
+              nextDelayMs,
+              err: error,
+              profile_id: id,
+              trace_id: traceId
+            },
+            "Retrying auth profile deactivate"
+          );
+          await publisher.publish({
+            eventType: "auth_profile.switch.retried",
+            traceId,
+            idempotencyKey: `${id}:deactivate_retry:${nextAttempt}:${traceId}`,
+            payload: {
+              profile_id: null,
+              from_profile_id: id,
+              to_profile_id: null,
+              reason: "manual_deactivate_retry",
+              failed_attempt: attempt,
+              next_attempt: nextAttempt,
+              next_delay_ms: nextDelayMs
+            }
+          });
+        }
+      });
+    } catch (error) {
+      app.log.error({ err: error, profile_id: id, trace_id: traceId }, "Auth profile deactivate failed");
+      return sendError(reply, 500, "Auth profile deactivate failed", "AUTH_SWITCH_FAILED");
+    }
     if (!deactivated) {
       return sendError(reply, 404, "Profile not found", "NOT_FOUND");
     }
