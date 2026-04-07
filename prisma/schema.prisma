@@ -105,6 +105,14 @@ enum SwitchEventStatus {
   @@map("switch_event_status")
 }
 
+enum ModuleExecutionStatus {
+  started
+  completed
+  failed
+
+  @@map("module_execution_status")
+}
+
 enum ScheduleScope {
   global
   project
@@ -380,6 +388,18 @@ model CustomModuleConfig {
   updated_at DateTime @updatedAt
 
   @@map("custom_module_configs")
+}
+
+model ModuleExecution {
+  id         String                @id @default(cuid())
+  module_key String
+  event_type String
+  status     ModuleExecutionStatus
+  started_at DateTime              @default(now())
+  ended_at   DateTime?
+
+  @@index([module_key, started_at])
+  @@map("module_executions")
 }
 
 model ChatGptAuthProfile {

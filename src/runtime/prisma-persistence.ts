@@ -1,6 +1,7 @@
 import {
   AuthContextType as PrismaAuthContextType,
   ArtifactType as PrismaArtifactType,
+  ModuleExecutionStatus as PrismaModuleExecutionStatus,
   Prisma,
   PrismaClient,
   ProfileStatus,
@@ -22,12 +23,14 @@ import type {
   CreateAgentTemplateInput,
   CreateAuthContextInput,
   CreateDelegationRequestInput,
+  CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
   CreatePackRegistryInput,
   CreateTaskInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
+  ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
   ScheduledRuleEntity,
@@ -308,6 +311,24 @@ function toModuleConfigEntity(entity: {
     is_enabled: entity.is_enabled,
     scope: entity.scope,
     config_json: entity.config_json as Record<string, unknown>
+  };
+}
+
+function toModuleExecutionEntity(entity: {
+  id: string;
+  module_key: string;
+  event_type: string;
+  status: PrismaModuleExecutionStatus;
+  started_at: Date;
+  ended_at: Date | null;
+}): ModuleExecutionEntity {
+  return {
+    id: entity.id,
+    module_key: entity.module_key,
+    event_type: entity.event_type,
+    status: entity.status,
+    started_at: entity.started_at,
+    ended_at: entity.ended_at
   };
 }
 
@@ -921,6 +942,30 @@ export class PrismaPersistence implements Persistence {
     }
 
     return toModuleConfigEntity(moduleConfig);
+  }
+
+  public async listModuleExecutions(moduleKey: string): Promise<ModuleExecutionEntity[]> {
+    const executions = await this.prisma.moduleExecution.findMany({
+      where: { module_key: moduleKey },
+      orderBy: { started_at: "desc" },
+      take: 100
+    });
+
+    return executions.map((execution) => toModuleExecutionEntity(execution));
+  }
+
+  public async createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity> {
+    const created = await this.prisma.moduleExecution.create({
+      data: {
+        module_key: input.module_key,
+        event_type: input.event_type,
+        status: input.status,
+        started_at: input.started_at ?? new Date(),
+        ended_at: input.ended_at ?? null
+      }
+    });
+
+    return toModuleExecutionEntity(created);
   }
 
   public async createCustomModuleConfig(input: {

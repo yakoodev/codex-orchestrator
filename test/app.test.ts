@@ -11,12 +11,14 @@ import type {
   AuthContextType,
   AuthSwitchEventEntity,
   CreateDelegationRequestInput,
+  CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
   EventPublishInput,
   EventPublisher,
+  ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
   ScheduledRuleEntity,
@@ -49,6 +51,7 @@ class FakePersistence implements Persistence {
   })[] = [];
   public readonly switchEvents: AuthSwitchEventEntity[] = [];
   public readonly modules: CustomModuleConfigEntity[] = [];
+  public readonly moduleExecutions: ModuleExecutionEntity[] = [];
   public readonly delegations: DelegationRequestEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
@@ -61,6 +64,7 @@ class FakePersistence implements Persistence {
   private artifactCounter = 1;
   private profileCounter = 1;
   private moduleCounter = 1;
+  private moduleExecutionCounter = 1;
   private delegationCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
@@ -670,6 +674,26 @@ class FakePersistence implements Persistence {
 
   public async getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null> {
     return this.modules.find((module) => module.module_key === key) ?? null;
+  }
+
+  public async listModuleExecutions(moduleKey: string): Promise<ModuleExecutionEntity[]> {
+    return this.moduleExecutions
+      .filter((execution) => execution.module_key === moduleKey)
+      .sort((left, right) => right.started_at.getTime() - left.started_at.getTime());
+  }
+
+  public async createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity> {
+    const execution: ModuleExecutionEntity = {
+      id: `module-execution-${this.moduleExecutionCounter++}`,
+      module_key: input.module_key,
+      event_type: input.event_type,
+      status: input.status,
+      started_at: input.started_at ?? new Date(),
+      ended_at: input.ended_at ?? null
+    };
+
+    this.moduleExecutions.push(execution);
+    return execution;
   }
 
   public async createCustomModuleConfig(input: {
@@ -1501,6 +1525,16 @@ describe("smoke-core API", () => {
     expect(
       publisher.events.some((event) => event.eventType === "module.execution.completed")
     ).toBe(true);
+
+    const executionsResponse = await app.inject({
+      method: "GET",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}/executions`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(executionsResponse.statusCode).toBe(200);
+    expect(executionsResponse.json().items).toHaveLength(2);
+    expect(executionsResponse.json().items[0].module_key).toBe(SWITCH_MODULE_KEY);
   });
 
   it("lists custom modules", async () => {
@@ -1544,17 +1578,13 @@ describe("smoke-core API", () => {
     expect(response.json().items[0].id).toBe("switch-1");
   });
 
-  it("returns 501 for non-implemented OpenAPI endpoint", async () => {
+  it("returns 404 for unknown route", async () => {
     const response = await app.inject({
       method: "GET",
-      url: `/api/custom-modules/${SWITCH_MODULE_KEY}/executions`,
+      url: "/api/non-existent-route",
       headers: { "x-admin-token": config.adminToken }
     });
 
-    expect(response.statusCode).toBe(501);
-    expect(response.json()).toEqual({
-      error: "Not implemented in PR1",
-      code: "NOT_IMPLEMENTED"
-    });
+    expect(response.statusCode).toBe(404);
   });
 });

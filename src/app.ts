@@ -11,6 +11,7 @@ import type {
   AuthProfileEntity,
   DelegationRequestEntity,
   EventPublisher,
+  ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
   ScheduleMisfirePolicy,
@@ -79,6 +80,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/queue/held/release",
   "GET /api/custom-modules",
   "GET /api/custom-modules/{key}",
+  "GET /api/custom-modules/{key}/executions",
   "PATCH /api/custom-modules/{key}"
 ]);
 
@@ -375,6 +377,17 @@ function scheduledRunToResponse(run: ScheduledRunEntity): Record<string, unknown
     trace_id: run.trace_id,
     idempotency_key: run.idempotency_key,
     result_json: run.result_json
+  };
+}
+
+function moduleExecutionToResponse(execution: ModuleExecutionEntity): Record<string, unknown> {
+  return {
+    id: execution.id,
+    module_key: execution.module_key,
+    event_type: execution.event_type,
+    status: execution.status,
+    started_at: execution.started_at,
+    ended_at: execution.ended_at
   };
 }
 
@@ -1660,10 +1673,24 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send(moduleConfig);
   });
 
+  app.get("/api/custom-modules/:key/executions", async (request, reply) => {
+    const { key } = request.params as { key: string };
+    const moduleConfig = await ensureCustomModuleConfig(persistence, config, key);
+    if (!moduleConfig) {
+      return sendError(reply, 404, "Module config not found", "NOT_FOUND");
+    }
+
+    const executions = await persistence.listModuleExecutions(key);
+    return reply.send({
+      items: executions.map((execution) => moduleExecutionToResponse(execution))
+    });
+  });
+
   app.patch("/api/custom-modules/:key", async (request, reply) => {
     const traceId = getTraceId(request);
     const { key } = request.params as { key: string };
     const body = request.body as ModulePatchRequest;
+    const startedAt = new Date();
 
     const moduleConfig = await ensureCustomModuleConfig(persistence, config, key);
     if (!moduleConfig) {
@@ -1689,6 +1716,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
     });
 
+    await persistence.createModuleExecution({
+      module_key: key,
+      event_type: "module.execution.started",
+      status: "started",
+      started_at: startedAt,
+      ended_at: null
+    });
+
     const updated = await persistence.updateCustomModuleConfig(key, {
       is_enabled: typeof body.is_enabled === "boolean" ? body.is_enabled : undefined,
       config_json: isPlainObject(body.config_json) ? body.config_json : undefined,
@@ -1708,6 +1743,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         status: "completed",
         reason: "config_update_completed"
       }
+    });
+
+    await persistence.createModuleExecution({
+      module_key: key,
+      event_type: "module.execution.completed",
+      status: "completed",
+      started_at: startedAt,
+      ended_at: new Date()
     });
 
     return reply.send(updated);

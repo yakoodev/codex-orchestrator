@@ -41,6 +41,15 @@ export interface CustomModuleConfigEntity {
   config_json: Record<string, unknown>;
 }
 
+export interface ModuleExecutionEntity {
+  id: string;
+  module_key: string;
+  event_type: string;
+  status: "started" | "completed" | "failed";
+  started_at: Date;
+  ended_at: Date | null;
+}
+
 export interface AuthContextEntity {
   id: string;
   label: string;
@@ -230,6 +239,14 @@ export interface CreateScheduledRunInput {
   result_json?: Record<string, unknown> | null;
 }
 
+export interface CreateModuleExecutionInput {
+  module_key: string;
+  event_type: string;
+  status: "started" | "completed" | "failed";
+  started_at?: Date;
+  ended_at?: Date | null;
+}
+
 export interface EventPublishInput {
   eventType: string;
   traceId: string;
@@ -329,6 +346,8 @@ export interface Persistence {
   listHeldTasks(): Promise<TaskEntity[]>;
   listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]>;
   getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null>;
+  listModuleExecutions(moduleKey: string): Promise<ModuleExecutionEntity[]>;
+  createModuleExecution(input: CreateModuleExecutionInput): Promise<ModuleExecutionEntity>;
   createCustomModuleConfig(input: {
     module_key: string;
     is_enabled: boolean;
