@@ -4,14 +4,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp, SWITCH_MODULE_KEY } from "../src/app";
 import type { AppConfig } from "../src/config";
 import type {
+  AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
   AuthProfileEntity,
   AuthContextType,
   AuthSwitchEventEntity,
+  CreateDelegationRequestInput,
   CustomModuleConfigEntity,
+  DelegationRequestEntity,
   EventPublishInput,
   EventPublisher,
+  PackRegistryEntity,
   Persistence,
   StorageService,
   TaskEntity,
@@ -21,6 +25,8 @@ import type { TaskStatus } from "../src/types";
 
 class FakePersistence implements Persistence {
   public readonly tasks: TaskEntity[] = [];
+  public readonly agentTemplates: AgentTemplateEntity[] = [];
+  public readonly packs: PackRegistryEntity[] = [];
   public readonly workers: WorkerEntity[] = [];
   public readonly authContexts: (AuthContextEntity & {
     provider: string;
@@ -37,13 +43,17 @@ class FakePersistence implements Persistence {
   })[] = [];
   public readonly switchEvents: AuthSwitchEventEntity[] = [];
   public readonly modules: CustomModuleConfigEntity[] = [];
+  public readonly delegations: DelegationRequestEntity[] = [];
 
   private taskCounter = 1;
+  private agentTemplateCounter = 1;
+  private packCounter = 1;
   private workerCounter = 1;
   private authContextCounter = 1;
   private artifactCounter = 1;
   private profileCounter = 1;
   private moduleCounter = 1;
+  private delegationCounter = 1;
 
   public dbReady = true;
 
@@ -80,6 +90,243 @@ class FakePersistence implements Persistence {
 
   public async listTasks(status?: TaskStatus): Promise<TaskEntity[]> {
     return status ? this.tasks.filter((task) => task.status === status) : [...this.tasks];
+  }
+
+  public async getTaskById(id: string): Promise<TaskEntity | null> {
+    return this.tasks.find((task) => task.id === id) ?? null;
+  }
+
+  public async updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null> {
+    const task = this.tasks.find((item) => item.id === id);
+    if (!task) {
+      return null;
+    }
+
+    task.status = status;
+    return task;
+  }
+
+  public async releaseHeldQueue(): Promise<number> {
+    let changed = 0;
+    for (const task of this.tasks) {
+      if (task.status === "WAITING_LIMIT") {
+        task.status = "QUEUED";
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
+  public async createAgentTemplate(input: {
+    name: string;
+    role: string;
+    description?: string;
+    model: string;
+    auth_context_id?: string;
+    pack_registry_entry_id?: string | null;
+    system_prompt: string;
+    instructions_md?: string;
+    sandbox_policy: string;
+    approval_policy: string;
+    output_schema?: Record<string, unknown>;
+  }): Promise<AgentTemplateEntity> {
+    void input.description;
+    void input.system_prompt;
+    void input.instructions_md;
+    void input.output_schema;
+
+    const template: AgentTemplateEntity = {
+      id: `agent-template-${this.agentTemplateCounter++}`,
+      name: input.name,
+      role: input.role,
+      model: input.model,
+      auth_context_id: input.auth_context_id ?? null,
+      pack_registry_entry_id: input.pack_registry_entry_id ?? null,
+      sandbox_policy: input.sandbox_policy,
+      approval_policy: input.approval_policy,
+      is_enabled: true
+    };
+
+    this.agentTemplates.push(template);
+    return template;
+  }
+
+  public async listAgentTemplates(): Promise<AgentTemplateEntity[]> {
+    return [...this.agentTemplates];
+  }
+
+  public async patchAgentTemplate(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string;
+      model?: string;
+      auth_context_id?: string;
+      pack_registry_entry_id?: string | null;
+      system_prompt?: string;
+      instructions_md?: string;
+      sandbox_policy?: string;
+      approval_policy?: string;
+      output_schema?: Record<string, unknown>;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentTemplateEntity | null> {
+    void patch.description;
+    void patch.system_prompt;
+    void patch.instructions_md;
+    void patch.output_schema;
+
+    const template = this.agentTemplates.find((item) => item.id === id);
+    if (!template) {
+      return null;
+    }
+
+    if (patch.name) {
+      template.name = patch.name;
+    }
+    if (patch.role) {
+      template.role = patch.role;
+    }
+    if (patch.model) {
+      template.model = patch.model;
+    }
+    if (patch.auth_context_id) {
+      template.auth_context_id = patch.auth_context_id;
+    }
+    if (patch.pack_registry_entry_id !== undefined) {
+      template.pack_registry_entry_id = patch.pack_registry_entry_id;
+    }
+    if (patch.sandbox_policy) {
+      template.sandbox_policy = patch.sandbox_policy;
+    }
+    if (patch.approval_policy) {
+      template.approval_policy = patch.approval_policy;
+    }
+    if (typeof patch.is_enabled === "boolean") {
+      template.is_enabled = patch.is_enabled;
+    }
+
+    return template;
+  }
+
+  public async deleteAgentTemplate(id: string): Promise<boolean> {
+    const index = this.agentTemplates.findIndex((item) => item.id === id);
+    if (index < 0) {
+      return false;
+    }
+
+    this.agentTemplates.splice(index, 1);
+    return true;
+  }
+
+  public async createPack(
+    input: {
+      pack_id: string;
+      role: string;
+      capabilities_json: Record<string, unknown>;
+      source_type: "git" | "zip";
+      source_ref: string;
+      pinned_version: string;
+      manifest_json: Record<string, unknown>;
+    },
+    registeredBy: string
+  ): Promise<PackRegistryEntity> {
+    const now = new Date();
+    const pack: PackRegistryEntity = {
+      id: `pack-${this.packCounter++}`,
+      pack_id: input.pack_id,
+      role: input.role,
+      capabilities_json: input.capabilities_json,
+      source_type: input.source_type,
+      source_ref: input.source_ref,
+      pinned_version: input.pinned_version,
+      manifest_json: input.manifest_json,
+      materialize_status: "registered",
+      cached_path: null,
+      is_enabled: true,
+      registered_by: registeredBy,
+      created_at: now,
+      updated_at: now
+    };
+    this.packs.push(pack);
+    return pack;
+  }
+
+  public async listPacks(): Promise<PackRegistryEntity[]> {
+    return [...this.packs];
+  }
+
+  public async getPackById(id: string): Promise<PackRegistryEntity | null> {
+    return this.packs.find((pack) => pack.id === id) ?? null;
+  }
+
+  public async patchPack(
+    id: string,
+    patch: {
+      pinned_version?: string;
+      is_enabled?: boolean;
+      source_ref?: string;
+    }
+  ): Promise<PackRegistryEntity | null> {
+    const pack = this.packs.find((item) => item.id === id);
+    if (!pack) {
+      return null;
+    }
+
+    if (patch.pinned_version) {
+      pack.pinned_version = patch.pinned_version;
+    }
+    if (patch.source_ref) {
+      pack.source_ref = patch.source_ref;
+    }
+    if (typeof patch.is_enabled === "boolean") {
+      pack.is_enabled = patch.is_enabled;
+    }
+    pack.updated_at = new Date();
+    return pack;
+  }
+
+  public async materializePack(id: string): Promise<boolean> {
+    const pack = this.packs.find((item) => item.id === id);
+    if (!pack) {
+      return false;
+    }
+
+    pack.materialize_status = "materialized";
+    pack.cached_path = `/packs/cache/${id}`;
+    pack.updated_at = new Date();
+    return true;
+  }
+
+  public async createDelegationRequest(
+    input: CreateDelegationRequestInput
+  ): Promise<DelegationRequestEntity> {
+    const now = new Date();
+    const delegation: DelegationRequestEntity = {
+      id: `delegation-${this.delegationCounter++}`,
+      requester_task_id: input.requester_task_id,
+      requester_task_run_id: input.requester_task_run_id ?? null,
+      capability: input.capability,
+      target_selector: input.target_selector,
+      payload: input.payload,
+      priority: input.priority ?? 100,
+      status: "requested",
+      target_agent_template_id: null,
+      target_worker_instance_id: null,
+      result_summary: null,
+      trace_id: input.trace_id,
+      created_at: now,
+      started_at: null,
+      ended_at: null
+    };
+
+    this.delegations.push(delegation);
+    return delegation;
+  }
+
+  public async getDelegationRequest(id: string): Promise<DelegationRequestEntity | null> {
+    return this.delegations.find((delegation) => delegation.id === id) ?? null;
   }
 
   public async listWorkers(): Promise<WorkerEntity[]> {
@@ -291,6 +538,10 @@ class FakePersistence implements Persistence {
     return this.tasks.filter((task) => task.status === "WAITING_LIMIT");
   }
 
+  public async listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]> {
+    return [...this.modules];
+  }
+
   public async getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null> {
     return this.modules.find((module) => module.module_key === key) ?? null;
   }
@@ -475,6 +726,124 @@ describe("smoke-core API", () => {
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().items).toHaveLength(1);
+  });
+
+  it("handles task lifecycle endpoints", async () => {
+    const task = await persistence.createTask({
+      title: "Lifecycle task",
+      description: "task lifecycle",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${task.id}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().id).toBe(task.id);
+
+    const pauseResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/pause`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(pauseResponse.statusCode).toBe(200);
+    expect(pauseResponse.json().status).toBe("INTERRUPTED");
+
+    const resumeResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/resume`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(resumeResponse.statusCode).toBe(200);
+    expect(resumeResponse.json().status).toBe("QUEUED");
+
+    const approveResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/approve`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(approveResponse.statusCode).toBe(200);
+    expect(approveResponse.json().status).toBe("RUNNING");
+
+    const rejectResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/reject`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(rejectResponse.statusCode).toBe(200);
+    expect(rejectResponse.json().status).toBe("BLOCKED");
+
+    const replanResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/replan`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: { reason: "new plan" }
+    });
+    expect(replanResponse.statusCode).toBe(202);
+    expect(replanResponse.json()).toEqual({ accepted: true });
+
+    const stopResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/stop`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(stopResponse.statusCode).toBe(200);
+    expect(stopResponse.json().status).toBe("FAILED_TERMINAL");
+  });
+
+  it("manages agent templates CRUD", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/agents/templates",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "Backend Dev",
+        role: "developer",
+        model: "gpt-5.4",
+        system_prompt: "You are a backend developer.",
+        sandbox_policy: "workspace_write",
+        approval_policy: "never"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const templateId = createResponse.json().id as string;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/agents/templates",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/agents/templates/${templateId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "Backend Dev Updated",
+        is_enabled: false
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().name).toBe("Backend Dev Updated");
+    expect(patchResponse.json().is_enabled).toBe(false);
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/agents/templates/${templateId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteResponse.statusCode).toBe(204);
   });
 
   it("manages auth contexts lifecycle", async () => {
@@ -671,6 +1040,122 @@ describe("smoke-core API", () => {
     expect(deactivateResponse.json()).toEqual({ accepted: true });
   });
 
+  it("manages packs endpoints", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/packs",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        pack_id: "backend-pack",
+        role: "developer",
+        capabilities_json: { code: true },
+        source_type: "git",
+        source_ref: "https://example.com/repo.git",
+        pinned_version: "v1.0.0",
+        manifest_json: { name: "backend-pack" }
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const packId = createResponse.json().id as string;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/packs",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: `/api/packs/${packId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().id).toBe(packId);
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/packs/${packId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        pinned_version: "v1.1.0",
+        is_enabled: false
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().pinned_version).toBe("v1.1.0");
+    expect(patchResponse.json().is_enabled).toBe(false);
+
+    const materializeResponse = await app.inject({
+      method: "POST",
+      url: `/api/packs/${packId}/materialize`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(materializeResponse.statusCode).toBe(202);
+    expect(materializeResponse.json()).toEqual({ accepted: true });
+  });
+
+  it("handles delegation capabilities dispatch and result", async () => {
+    await persistence.createAgentTemplate({
+      name: "helper-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const capabilitiesResponse = await app.inject({
+      method: "GET",
+      url: "/api/delegation/capabilities",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(capabilitiesResponse.statusCode).toBe(200);
+    expect(capabilitiesResponse.json().items).toHaveLength(1);
+    expect(capabilitiesResponse.json().items[0].capability).toBe("reviewer");
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-delegation-1" },
+      payload: {
+        requester_task_id: "task-1",
+        requester_task_run_id: "run-1",
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { task: "check patch" },
+        priority: 77
+      }
+    });
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("requested");
+    expect(dispatchResponse.json().trace_id).toBe("trace-delegation-1");
+    const delegationId = dispatchResponse.json().id as string;
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: `/api/delegation/${delegationId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().id).toBe(delegationId);
+    expect(getResponse.json().capability).toBe("reviewer");
+
+    const resultResponse = await app.inject({
+      method: "GET",
+      url: `/api/delegation/${delegationId}/result`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(resultResponse.statusCode).toBe(200);
+    expect(resultResponse.json()).toEqual({
+      id: delegationId,
+      status: "requested",
+      result_summary: null,
+      artifacts: []
+    });
+  });
+
   it("returns held queue tasks from WAITING_LIMIT", async () => {
     await persistence.createTask({
       title: "held",
@@ -707,6 +1192,38 @@ describe("smoke-core API", () => {
     expect(response.json().items[0].status).toBe("WAITING_LIMIT");
   });
 
+  it("releases held queue", async () => {
+    await persistence.createTask({
+      title: "held-1",
+      description: "held task",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "WAITING_LIMIT",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const releaseResponse = await app.inject({
+      method: "POST",
+      url: "/api/queue/held/release",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(releaseResponse.statusCode).toBe(202);
+    expect(releaseResponse.json()).toEqual({ accepted: true });
+
+    const heldAfterRelease = await app.inject({
+      method: "GET",
+      url: "/api/queue/held",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(heldAfterRelease.statusCode).toBe(200);
+    expect(heldAfterRelease.json().items).toHaveLength(0);
+  });
+
   it("auto-seeds default module config and allows patch", async () => {
     const getResponse = await app.inject({
       method: "GET",
@@ -735,6 +1252,24 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("lists custom modules", async () => {
+    await app.inject({
+      method: "GET",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/custom-modules",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.length).toBeGreaterThan(0);
+    expect(response.json().items[0].module_key).toBe(SWITCH_MODULE_KEY);
+  });
+
   it("returns switch-events from persistence", async () => {
     persistence.switchEvents.push({
       id: "switch-1",
@@ -761,7 +1296,7 @@ describe("smoke-core API", () => {
   it("returns 501 for non-implemented OpenAPI endpoint", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/packs",
+      url: "/api/schedules",
       headers: { "x-admin-token": config.adminToken }
     });
 

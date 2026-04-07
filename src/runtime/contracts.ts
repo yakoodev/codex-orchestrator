@@ -62,6 +62,53 @@ export interface ArtifactEntity {
   path: string;
 }
 
+export interface AgentTemplateEntity {
+  id: string;
+  name: string;
+  role: string;
+  model: string;
+  auth_context_id: string | null;
+  pack_registry_entry_id: string | null;
+  sandbox_policy: string;
+  approval_policy: string;
+  is_enabled: boolean;
+}
+
+export interface PackRegistryEntity {
+  id: string;
+  pack_id: string;
+  role: string;
+  capabilities_json: Record<string, unknown>;
+  source_type: "git" | "zip";
+  source_ref: string;
+  pinned_version: string;
+  manifest_json: Record<string, unknown>;
+  materialize_status: "registered" | "materialized" | "failed";
+  cached_path: string | null;
+  is_enabled: boolean;
+  registered_by: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface DelegationRequestEntity {
+  id: string;
+  requester_task_id: string;
+  requester_task_run_id: string | null;
+  capability: string;
+  target_selector: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  priority: number;
+  status: "requested" | "accepted" | "running" | "completed" | "failed" | "cancelled";
+  target_agent_template_id: string | null;
+  target_worker_instance_id: string | null;
+  result_summary: string | null;
+  trace_id: string;
+  created_at: Date;
+  started_at: Date | null;
+  ended_at: Date | null;
+}
+
 export interface CreateTaskInput {
   title: string;
   description: string;
@@ -91,6 +138,40 @@ export interface CreateAuthContextInput {
   limit_policy?: Record<string, unknown>;
 }
 
+export interface CreateAgentTemplateInput {
+  name: string;
+  role: string;
+  description?: string;
+  model: string;
+  auth_context_id?: string;
+  pack_registry_entry_id?: string | null;
+  system_prompt: string;
+  instructions_md?: string;
+  sandbox_policy: string;
+  approval_policy: string;
+  output_schema?: Record<string, unknown>;
+}
+
+export interface CreatePackRegistryInput {
+  pack_id: string;
+  role: string;
+  capabilities_json: Record<string, unknown>;
+  source_type: "git" | "zip";
+  source_ref: string;
+  pinned_version: string;
+  manifest_json: Record<string, unknown>;
+}
+
+export interface CreateDelegationRequestInput {
+  requester_task_id: string;
+  requester_task_run_id?: string | null;
+  capability: string;
+  target_selector: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  priority?: number;
+  trace_id: string;
+}
+
 export interface EventPublishInput {
   eventType: string;
   traceId: string;
@@ -104,6 +185,43 @@ export interface Persistence {
   pingDb(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<TaskEntity>;
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
+  getTaskById(id: string): Promise<TaskEntity | null>;
+  updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null>;
+  releaseHeldQueue(): Promise<number>;
+  createAgentTemplate(input: CreateAgentTemplateInput): Promise<AgentTemplateEntity>;
+  listAgentTemplates(): Promise<AgentTemplateEntity[]>;
+  patchAgentTemplate(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string;
+      model?: string;
+      auth_context_id?: string;
+      pack_registry_entry_id?: string | null;
+      system_prompt?: string;
+      instructions_md?: string;
+      sandbox_policy?: string;
+      approval_policy?: string;
+      output_schema?: Record<string, unknown>;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentTemplateEntity | null>;
+  deleteAgentTemplate(id: string): Promise<boolean>;
+  createPack(input: CreatePackRegistryInput, registeredBy: string): Promise<PackRegistryEntity>;
+  listPacks(): Promise<PackRegistryEntity[]>;
+  getPackById(id: string): Promise<PackRegistryEntity | null>;
+  patchPack(
+    id: string,
+    patch: {
+      pinned_version?: string;
+      is_enabled?: boolean;
+      source_ref?: string;
+    }
+  ): Promise<PackRegistryEntity | null>;
+  materializePack(id: string): Promise<boolean>;
+  createDelegationRequest(input: CreateDelegationRequestInput): Promise<DelegationRequestEntity>;
+  getDelegationRequest(id: string): Promise<DelegationRequestEntity | null>;
   listWorkers(): Promise<WorkerEntity[]>;
   setWorkerStatus(id: string, status: "READY" | "DISABLED"): Promise<boolean>;
   workerExists(id: string): Promise<boolean>;
@@ -132,6 +250,7 @@ export interface Persistence {
   deactivateAuthProfile(id: string): Promise<boolean>;
   listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]>;
   listHeldTasks(): Promise<TaskEntity[]>;
+  listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]>;
   getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null>;
   createCustomModuleConfig(input: {
     module_key: string;

@@ -4,11 +4,14 @@ import multipart from "@fastify/multipart";
 import type { AppConfig } from "./config";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import type {
+  AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
   AuthContextType,
   AuthProfileEntity,
+  DelegationRequestEntity,
   EventPublisher,
+  PackRegistryEntity,
   Persistence,
   StorageService,
   TaskEntity,
@@ -21,6 +24,17 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /health/ready",
   "POST /api/tasks",
   "GET /api/tasks",
+  "GET /api/tasks/{id}",
+  "POST /api/tasks/{id}/pause",
+  "POST /api/tasks/{id}/resume",
+  "POST /api/tasks/{id}/stop",
+  "POST /api/tasks/{id}/replan",
+  "POST /api/tasks/{id}/approve",
+  "POST /api/tasks/{id}/reject",
+  "POST /api/agents/templates",
+  "GET /api/agents/templates",
+  "PATCH /api/agents/templates/{id}",
+  "DELETE /api/agents/templates/{id}",
   "GET /api/workers",
   "POST /api/workers/{id}/restart",
   "POST /api/workers/{id}/disable",
@@ -37,7 +51,18 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/auth-profiles/chatgpt/{id}/deactivate",
   "GET /api/auth-profiles/chatgpt/active",
   "GET /api/auth-profiles/chatgpt/switch-events",
+  "POST /api/packs",
+  "GET /api/packs",
+  "GET /api/packs/{id}",
+  "PATCH /api/packs/{id}",
+  "POST /api/packs/{id}/materialize",
+  "GET /api/delegation/capabilities",
+  "POST /api/delegation/dispatch",
+  "GET /api/delegation/{id}",
+  "GET /api/delegation/{id}/result",
   "GET /api/queue/held",
+  "POST /api/queue/held/release",
+  "GET /api/custom-modules",
   "GET /api/custom-modules/{key}",
   "PATCH /api/custom-modules/{key}"
 ]);
@@ -76,6 +101,60 @@ interface AuthContextPatchRequest {
   limit_policy?: unknown;
   is_enabled?: unknown;
   notes?: unknown;
+}
+
+interface AgentTemplateCreateRequest {
+  name?: unknown;
+  role?: unknown;
+  description?: unknown;
+  model?: unknown;
+  auth_context_id?: unknown;
+  pack_registry_entry_id?: unknown;
+  system_prompt?: unknown;
+  instructions_md?: unknown;
+  sandbox_policy?: unknown;
+  approval_policy?: unknown;
+  output_schema?: unknown;
+}
+
+interface AgentTemplatePatchRequest {
+  name?: unknown;
+  role?: unknown;
+  description?: unknown;
+  model?: unknown;
+  auth_context_id?: unknown;
+  pack_registry_entry_id?: unknown;
+  system_prompt?: unknown;
+  instructions_md?: unknown;
+  sandbox_policy?: unknown;
+  approval_policy?: unknown;
+  output_schema?: unknown;
+  is_enabled?: unknown;
+}
+
+interface PackCreateRequest {
+  pack_id?: unknown;
+  role?: unknown;
+  capabilities_json?: unknown;
+  source_type?: unknown;
+  source_ref?: unknown;
+  pinned_version?: unknown;
+  manifest_json?: unknown;
+}
+
+interface PackPatchRequest {
+  pinned_version?: unknown;
+  is_enabled?: unknown;
+  source_ref?: unknown;
+}
+
+interface DelegationDispatchRequest {
+  requester_task_id?: unknown;
+  requester_task_run_id?: unknown;
+  capability?: unknown;
+  target_selector?: unknown;
+  payload?: unknown;
+  priority?: unknown;
 }
 
 interface ModulePatchRequest {
@@ -159,6 +238,59 @@ function artifactToResponse(artifact: ArtifactEntity): Record<string, unknown> {
     task_id: artifact.task_id,
     type: artifact.type,
     path: artifact.path
+  };
+}
+
+function agentTemplateToResponse(template: AgentTemplateEntity): Record<string, unknown> {
+  return {
+    id: template.id,
+    name: template.name,
+    role: template.role,
+    model: template.model,
+    auth_context_id: template.auth_context_id,
+    pack_registry_entry_id: template.pack_registry_entry_id,
+    sandbox_policy: template.sandbox_policy,
+    approval_policy: template.approval_policy,
+    is_enabled: template.is_enabled
+  };
+}
+
+function packToResponse(pack: PackRegistryEntity): Record<string, unknown> {
+  return {
+    id: pack.id,
+    pack_id: pack.pack_id,
+    role: pack.role,
+    capabilities_json: pack.capabilities_json,
+    source_type: pack.source_type,
+    source_ref: pack.source_ref,
+    pinned_version: pack.pinned_version,
+    manifest_json: pack.manifest_json,
+    materialize_status: pack.materialize_status,
+    cached_path: pack.cached_path,
+    is_enabled: pack.is_enabled,
+    registered_by: pack.registered_by,
+    created_at: pack.created_at,
+    updated_at: pack.updated_at
+  };
+}
+
+function delegationToResponse(delegation: DelegationRequestEntity): Record<string, unknown> {
+  return {
+    id: delegation.id,
+    requester_task_id: delegation.requester_task_id,
+    requester_task_run_id: delegation.requester_task_run_id,
+    capability: delegation.capability,
+    target_selector: delegation.target_selector,
+    payload: delegation.payload,
+    priority: delegation.priority,
+    status: delegation.status,
+    target_agent_template_id: delegation.target_agent_template_id,
+    target_worker_instance_id: delegation.target_worker_instance_id,
+    result_summary: delegation.result_summary,
+    trace_id: delegation.trace_id,
+    created_at: delegation.created_at,
+    started_at: delegation.started_at,
+    ended_at: delegation.ended_at
   };
 }
 
@@ -328,6 +460,245 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     const tasks = await persistence.listTasks(status);
     return reply.send({ items: tasks.map((task) => taskToResponse(task)) });
+  });
+
+  app.get("/api/tasks/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.getTaskById(id);
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/tasks/:id/pause", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "INTERRUPTED");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/tasks/:id/resume", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "QUEUED");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/tasks/:id/stop", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "FAILED_TERMINAL");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/tasks/:id/replan", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "REPLANNING");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/tasks/:id/approve", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "RUNNING");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/tasks/:id/reject", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const task = await persistence.updateTaskStatus(id, "BLOCKED");
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.send(taskToResponse(task));
+  });
+
+  app.post("/api/agents/templates", async (request, reply) => {
+    const body = request.body as AgentTemplateCreateRequest;
+    const name = asNonEmptyString(body.name);
+    const role = asNonEmptyString(body.role);
+    const model = asNonEmptyString(body.model);
+    const systemPrompt = asNonEmptyString(body.system_prompt);
+    const sandboxPolicy = asNonEmptyString(body.sandbox_policy);
+    const approvalPolicy = asNonEmptyString(body.approval_policy);
+
+    if (!name || !role || !model || !systemPrompt || !sandboxPolicy || !approvalPolicy) {
+      return sendError(
+        reply,
+        400,
+        "name, role, model, system_prompt, sandbox_policy and approval_policy are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (body.output_schema != null && !isPlainObject(body.output_schema)) {
+      return sendError(reply, 400, "output_schema must be an object", "VALIDATION_ERROR");
+    }
+
+    const created = await persistence.createAgentTemplate({
+      name,
+      role,
+      description: asNonEmptyString(body.description) ?? undefined,
+      model,
+      auth_context_id: asNonEmptyString(body.auth_context_id) ?? undefined,
+      pack_registry_entry_id:
+        body.pack_registry_entry_id == null
+          ? undefined
+          : asNonEmptyString(body.pack_registry_entry_id),
+      system_prompt: systemPrompt,
+      instructions_md: asNonEmptyString(body.instructions_md) ?? undefined,
+      sandbox_policy: sandboxPolicy,
+      approval_policy: approvalPolicy,
+      output_schema: isPlainObject(body.output_schema) ? body.output_schema : undefined
+    });
+
+    return reply.code(201).send(agentTemplateToResponse(created));
+  });
+
+  app.get("/api/agents/templates", async (_request, reply) => {
+    const templates = await persistence.listAgentTemplates();
+    return reply.send({ items: templates.map((template) => agentTemplateToResponse(template)) });
+  });
+
+  app.patch("/api/agents/templates/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as AgentTemplatePatchRequest;
+
+    const patch: Parameters<Persistence["patchAgentTemplate"]>[1] = {};
+
+    if (body.name != null) {
+      const value = asNonEmptyString(body.name);
+      if (!value) {
+        return sendError(reply, 400, "name must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.name = value;
+    }
+
+    if (body.role != null) {
+      const value = asNonEmptyString(body.role);
+      if (!value) {
+        return sendError(reply, 400, "role must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.role = value;
+    }
+
+    if (body.description != null) {
+      const value = asNonEmptyString(body.description);
+      if (!value) {
+        return sendError(reply, 400, "description must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.description = value;
+    }
+
+    if (body.model != null) {
+      const value = asNonEmptyString(body.model);
+      if (!value) {
+        return sendError(reply, 400, "model must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.model = value;
+    }
+
+    if (body.auth_context_id != null) {
+      const value = asNonEmptyString(body.auth_context_id);
+      if (!value) {
+        return sendError(reply, 400, "auth_context_id must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.auth_context_id = value;
+    }
+
+    if (body.pack_registry_entry_id !== undefined) {
+      if (body.pack_registry_entry_id === null) {
+        patch.pack_registry_entry_id = null;
+      } else {
+        const value = asNonEmptyString(body.pack_registry_entry_id);
+        if (!value) {
+          return sendError(reply, 400, "pack_registry_entry_id must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.pack_registry_entry_id = value;
+      }
+    }
+
+    if (body.system_prompt != null) {
+      const value = asNonEmptyString(body.system_prompt);
+      if (!value) {
+        return sendError(reply, 400, "system_prompt must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.system_prompt = value;
+    }
+
+    if (body.instructions_md != null) {
+      const value = asNonEmptyString(body.instructions_md);
+      if (!value) {
+        return sendError(reply, 400, "instructions_md must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.instructions_md = value;
+    }
+
+    if (body.sandbox_policy != null) {
+      const value = asNonEmptyString(body.sandbox_policy);
+      if (!value) {
+        return sendError(reply, 400, "sandbox_policy must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.sandbox_policy = value;
+    }
+
+    if (body.approval_policy != null) {
+      const value = asNonEmptyString(body.approval_policy);
+      if (!value) {
+        return sendError(reply, 400, "approval_policy must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.approval_policy = value;
+    }
+
+    if (body.output_schema != null) {
+      if (!isPlainObject(body.output_schema)) {
+        return sendError(reply, 400, "output_schema must be an object", "VALIDATION_ERROR");
+      }
+      patch.output_schema = body.output_schema;
+    }
+
+    if (body.is_enabled != null) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_enabled = body.is_enabled;
+    }
+
+    const updated = await persistence.patchAgentTemplate(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Agent template not found", "NOT_FOUND");
+    }
+
+    return reply.send(agentTemplateToResponse(updated));
+  });
+
+  app.delete("/api/agents/templates/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const deleted = await persistence.deleteAgentTemplate(id);
+    if (!deleted) {
+      return sendError(reply, 404, "Agent template not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
   });
 
   app.get("/api/workers", async (_request, reply) => {
@@ -618,11 +989,233 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     });
   });
 
+  app.post("/api/packs", async (request, reply) => {
+    const body = request.body as PackCreateRequest;
+    const packId = asNonEmptyString(body.pack_id);
+    const role = asNonEmptyString(body.role);
+    const sourceType = asNonEmptyString(body.source_type);
+    const sourceRef = asNonEmptyString(body.source_ref);
+    const pinnedVersion = asNonEmptyString(body.pinned_version);
+
+    if (!packId || !role || !sourceType || !sourceRef || !pinnedVersion) {
+      return sendError(
+        reply,
+        400,
+        "pack_id, role, source_type, source_ref and pinned_version are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (sourceType !== "git" && sourceType !== "zip") {
+      return sendError(reply, 400, "source_type must be git or zip", "VALIDATION_ERROR");
+    }
+
+    if (!isPlainObject(body.capabilities_json) || !isPlainObject(body.manifest_json)) {
+      return sendError(
+        reply,
+        400,
+        "capabilities_json and manifest_json must be objects",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const created = await persistence.createPack(
+      {
+        pack_id: packId,
+        role,
+        capabilities_json: body.capabilities_json,
+        source_type: sourceType,
+        source_ref: sourceRef,
+        pinned_version: pinnedVersion,
+        manifest_json: body.manifest_json
+      },
+      "admin"
+    );
+
+    return reply.code(201).send(packToResponse(created));
+  });
+
+  app.get("/api/packs", async (_request, reply) => {
+    const packs = await persistence.listPacks();
+    return reply.send({ items: packs.map((pack) => packToResponse(pack)) });
+  });
+
+  app.get("/api/packs/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const pack = await persistence.getPackById(id);
+    if (!pack) {
+      return sendError(reply, 404, "Pack not found", "NOT_FOUND");
+    }
+
+    return reply.send(packToResponse(pack));
+  });
+
+  app.patch("/api/packs/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as PackPatchRequest;
+
+    const patch: Parameters<Persistence["patchPack"]>[1] = {};
+
+    if (body.pinned_version != null) {
+      const pinnedVersion = asNonEmptyString(body.pinned_version);
+      if (!pinnedVersion) {
+        return sendError(reply, 400, "pinned_version must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.pinned_version = pinnedVersion;
+    }
+
+    if (body.source_ref != null) {
+      const sourceRef = asNonEmptyString(body.source_ref);
+      if (!sourceRef) {
+        return sendError(reply, 400, "source_ref must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.source_ref = sourceRef;
+    }
+
+    if (body.is_enabled != null) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_enabled = body.is_enabled;
+    }
+
+    const updated = await persistence.patchPack(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Pack not found", "NOT_FOUND");
+    }
+
+    return reply.send(packToResponse(updated));
+  });
+
+  app.post("/api/packs/:id/materialize", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const materialized = await persistence.materializePack(id);
+    if (!materialized) {
+      return sendError(reply, 404, "Pack not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.get("/api/delegation/capabilities", async (_request, reply) => {
+    const templates = await persistence.listAgentTemplates();
+    const capabilityMap = new Map<
+      string,
+      { roles: Set<string>; agent_template_ids: string[] }
+    >();
+
+    for (const template of templates) {
+      const capability = template.role;
+      const existing = capabilityMap.get(capability);
+      if (!existing) {
+        capabilityMap.set(capability, {
+          roles: new Set([template.role]),
+          agent_template_ids: [template.id]
+        });
+        continue;
+      }
+
+      existing.roles.add(template.role);
+      existing.agent_template_ids.push(template.id);
+    }
+
+    const items = Array.from(capabilityMap.entries()).map(([capability, value]) => ({
+      capability,
+      roles: Array.from(value.roles),
+      agent_template_ids: value.agent_template_ids
+    }));
+
+    return reply.send({ items });
+  });
+
+  app.post("/api/delegation/dispatch", async (request, reply) => {
+    const body = request.body as DelegationDispatchRequest;
+    const requesterTaskId = asNonEmptyString(body.requester_task_id);
+    const capability = asNonEmptyString(body.capability);
+    const requesterTaskRunId = asNonEmptyString(body.requester_task_run_id);
+    const traceId = getTraceId(request);
+
+    if (!requesterTaskId || !capability) {
+      return sendError(
+        reply,
+        400,
+        "requester_task_id and capability are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (!isPlainObject(body.target_selector) || !isPlainObject(body.payload)) {
+      return sendError(
+        reply,
+        400,
+        "target_selector and payload must be objects",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const priority = typeof body.priority === "number" ? body.priority : 100;
+
+    const delegation = await persistence.createDelegationRequest({
+      requester_task_id: requesterTaskId,
+      requester_task_run_id: requesterTaskRunId,
+      capability,
+      target_selector: body.target_selector,
+      payload: body.payload,
+      priority,
+      trace_id: traceId
+    });
+
+    return reply.code(202).send(delegationToResponse(delegation));
+  });
+
+  app.get("/api/delegation/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const delegation = await persistence.getDelegationRequest(id);
+    if (!delegation) {
+      return sendError(reply, 404, "Delegation not found", "NOT_FOUND");
+    }
+
+    return reply.send(delegationToResponse(delegation));
+  });
+
+  app.get("/api/delegation/:id/result", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const delegation = await persistence.getDelegationRequest(id);
+    if (!delegation) {
+      return sendError(reply, 404, "Delegation not found", "NOT_FOUND");
+    }
+
+    return reply.send({
+      id: delegation.id,
+      status: delegation.status,
+      result_summary: delegation.result_summary,
+      artifacts: []
+    });
+  });
+
+  app.get("/api/custom-modules", async (_request, reply) => {
+    const moduleConfigs = await persistence.listCustomModuleConfigs();
+    return reply.send({
+      items: moduleConfigs.map((moduleConfig) => ({
+        id: moduleConfig.id,
+        module_key: moduleConfig.module_key,
+        is_enabled: moduleConfig.is_enabled,
+        scope: moduleConfig.scope,
+        config_json: moduleConfig.config_json
+      }))
+    });
+  });
+
   app.get("/api/queue/held", async (_request, reply) => {
     const heldTasks = await persistence.listHeldTasks();
     return reply.send({
       items: heldTasks.map((task) => taskToResponse(task))
     });
+  });
+
+  app.post("/api/queue/held/release", async (_request, reply) => {
+    await persistence.releaseHeldQueue();
+    return reply.code(202).send({ accepted: true });
   });
 
   app.get("/api/custom-modules/:key", async (request, reply) => {

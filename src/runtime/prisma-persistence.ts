@@ -8,15 +8,21 @@ import {
   WorkerRuntimeMode as PrismaWorkerRuntimeMode
 } from "@prisma/client";
 import type {
+  AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
   AuthContextType,
   AuthProfileEntity,
   AuthSwitchEventEntity,
   CreateAuthProfileInput,
+  CreateAgentTemplateInput,
   CreateAuthContextInput,
+  CreateDelegationRequestInput,
+  CreatePackRegistryInput,
   CreateTaskInput,
   CustomModuleConfigEntity,
+  DelegationRequestEntity,
+  PackRegistryEntity,
   Persistence,
   TaskEntity,
   WorkerEntity
@@ -103,6 +109,100 @@ function toArtifactEntity(entity: {
   };
 }
 
+function toAgentTemplateEntity(entity: {
+  id: string;
+  name: string;
+  role: string;
+  model: string;
+  auth_context_id: string | null;
+  pack_registry_entry_id: string | null;
+  sandbox_policy: string;
+  approval_policy: string;
+  is_enabled: boolean;
+}): AgentTemplateEntity {
+  return {
+    id: entity.id,
+    name: entity.name,
+    role: entity.role,
+    model: entity.model,
+    auth_context_id: entity.auth_context_id,
+    pack_registry_entry_id: entity.pack_registry_entry_id,
+    sandbox_policy: entity.sandbox_policy,
+    approval_policy: entity.approval_policy,
+    is_enabled: entity.is_enabled
+  };
+}
+
+function toPackRegistryEntity(entity: {
+  id: string;
+  pack_id: string;
+  role: string;
+  capabilities_json: Prisma.JsonValue;
+  source_type: "git" | "zip";
+  source_ref: string;
+  pinned_version: string;
+  manifest_json: Prisma.JsonValue;
+  materialize_status: "registered" | "materialized" | "failed";
+  cached_path: string | null;
+  is_enabled: boolean;
+  registered_by: string;
+  created_at: Date;
+  updated_at: Date;
+}): PackRegistryEntity {
+  return {
+    id: entity.id,
+    pack_id: entity.pack_id,
+    role: entity.role,
+    capabilities_json: entity.capabilities_json as Record<string, unknown>,
+    source_type: entity.source_type,
+    source_ref: entity.source_ref,
+    pinned_version: entity.pinned_version,
+    manifest_json: entity.manifest_json as Record<string, unknown>,
+    materialize_status: entity.materialize_status,
+    cached_path: entity.cached_path,
+    is_enabled: entity.is_enabled,
+    registered_by: entity.registered_by,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toDelegationRequestEntity(entity: {
+  id: string;
+  requester_task_id: string;
+  requester_task_run_id: string | null;
+  capability: string;
+  target_selector_json: Prisma.JsonValue;
+  payload_json: Prisma.JsonValue;
+  priority: number;
+  status: "requested" | "accepted" | "running" | "completed" | "failed" | "cancelled";
+  target_agent_template_id: string | null;
+  target_worker_instance_id: string | null;
+  result_summary: string | null;
+  trace_id: string;
+  created_at: Date;
+  started_at: Date | null;
+  ended_at: Date | null;
+}): DelegationRequestEntity {
+  return {
+    id: entity.id,
+    requester_task_id: entity.requester_task_id,
+    requester_task_run_id: entity.requester_task_run_id,
+    capability: entity.capability,
+    target_selector: entity.target_selector_json as Record<string, unknown>,
+    payload: entity.payload_json as Record<string, unknown>,
+    priority: entity.priority,
+    status: entity.status,
+    target_agent_template_id: entity.target_agent_template_id,
+    target_worker_instance_id: entity.target_worker_instance_id,
+    result_summary: entity.result_summary,
+    trace_id: entity.trace_id,
+    created_at: entity.created_at,
+    started_at: entity.started_at,
+    ended_at: entity.ended_at
+  };
+}
+
 function toAuthSwitchEventEntity(entity: {
   id: string;
   module_key: string;
@@ -173,6 +273,232 @@ export class PrismaPersistence implements Persistence {
     });
 
     return tasks.map((task) => toTaskEntity(task));
+  }
+
+  public async getTaskById(id: string): Promise<TaskEntity | null> {
+    const task = await this.prisma.task.findUnique({
+      where: { id }
+    });
+
+    if (!task) {
+      return null;
+    }
+
+    return toTaskEntity(task);
+  }
+
+  public async updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null> {
+    const existing = await this.prisma.task.findUnique({
+      where: { id }
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.task.update({
+      where: { id },
+      data: { status: status as PrismaTaskStatus }
+    });
+
+    return toTaskEntity(updated);
+  }
+
+  public async releaseHeldQueue(): Promise<number> {
+    const result = await this.prisma.task.updateMany({
+      where: { status: "WAITING_LIMIT" },
+      data: { status: "QUEUED" }
+    });
+
+    return result.count;
+  }
+
+  public async createAgentTemplate(input: CreateAgentTemplateInput): Promise<AgentTemplateEntity> {
+    const created = await this.prisma.agentTemplate.create({
+      data: {
+        name: input.name,
+        role: input.role,
+        description: input.description,
+        model: input.model,
+        auth_context_id: input.auth_context_id,
+        pack_registry_entry_id: input.pack_registry_entry_id ?? null,
+        system_prompt: input.system_prompt,
+        instructions_md: input.instructions_md,
+        sandbox_policy: input.sandbox_policy,
+        approval_policy: input.approval_policy,
+        output_schema: input.output_schema as Prisma.InputJsonValue | undefined
+      }
+    });
+
+    return toAgentTemplateEntity(created);
+  }
+
+  public async listAgentTemplates(): Promise<AgentTemplateEntity[]> {
+    const templates = await this.prisma.agentTemplate.findMany({
+      orderBy: { created_at: "desc" }
+    });
+
+    return templates.map((template) => toAgentTemplateEntity(template));
+  }
+
+  public async patchAgentTemplate(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string;
+      model?: string;
+      auth_context_id?: string;
+      pack_registry_entry_id?: string | null;
+      system_prompt?: string;
+      instructions_md?: string;
+      sandbox_policy?: string;
+      approval_policy?: string;
+      output_schema?: Record<string, unknown>;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentTemplateEntity | null> {
+    const existing = await this.prisma.agentTemplate.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.agentTemplate.update({
+      where: { id },
+      data: {
+        name: patch.name,
+        role: patch.role,
+        description: patch.description,
+        model: patch.model,
+        auth_context_id: patch.auth_context_id,
+        pack_registry_entry_id: patch.pack_registry_entry_id,
+        system_prompt: patch.system_prompt,
+        instructions_md: patch.instructions_md,
+        sandbox_policy: patch.sandbox_policy,
+        approval_policy: patch.approval_policy,
+        output_schema: patch.output_schema as Prisma.InputJsonValue | undefined,
+        is_enabled: patch.is_enabled
+      }
+    });
+
+    return toAgentTemplateEntity(updated);
+  }
+
+  public async deleteAgentTemplate(id: string): Promise<boolean> {
+    const result = await this.prisma.agentTemplate.deleteMany({
+      where: { id }
+    });
+
+    return result.count > 0;
+  }
+
+  public async createPack(input: CreatePackRegistryInput, registeredBy: string): Promise<PackRegistryEntity> {
+    const created = await this.prisma.packRegistryEntry.create({
+      data: {
+        pack_id: input.pack_id,
+        role: input.role,
+        capabilities_json: input.capabilities_json as Prisma.InputJsonValue,
+        source_type: input.source_type,
+        source_ref: input.source_ref,
+        pinned_version: input.pinned_version,
+        manifest_json: input.manifest_json as Prisma.InputJsonValue,
+        registered_by: registeredBy
+      }
+    });
+
+    return toPackRegistryEntity(created);
+  }
+
+  public async listPacks(): Promise<PackRegistryEntity[]> {
+    const packs = await this.prisma.packRegistryEntry.findMany({
+      orderBy: { created_at: "desc" }
+    });
+
+    return packs.map((pack) => toPackRegistryEntity(pack));
+  }
+
+  public async getPackById(id: string): Promise<PackRegistryEntity | null> {
+    const pack = await this.prisma.packRegistryEntry.findUnique({
+      where: { id }
+    });
+
+    if (!pack) {
+      return null;
+    }
+
+    return toPackRegistryEntity(pack);
+  }
+
+  public async patchPack(
+    id: string,
+    patch: {
+      pinned_version?: string;
+      is_enabled?: boolean;
+      source_ref?: string;
+    }
+  ): Promise<PackRegistryEntity | null> {
+    const existing = await this.prisma.packRegistryEntry.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.packRegistryEntry.update({
+      where: { id },
+      data: {
+        pinned_version: patch.pinned_version,
+        is_enabled: patch.is_enabled,
+        source_ref: patch.source_ref
+      }
+    });
+
+    return toPackRegistryEntity(updated);
+  }
+
+  public async materializePack(id: string): Promise<boolean> {
+    const result = await this.prisma.packRegistryEntry.updateMany({
+      where: { id },
+      data: {
+        materialize_status: "materialized",
+        cached_path: `/packs/cache/${id}`
+      }
+    });
+
+    return result.count > 0;
+  }
+
+  public async createDelegationRequest(
+    input: CreateDelegationRequestInput
+  ): Promise<DelegationRequestEntity> {
+    const created = await this.prisma.delegationRequest.create({
+      data: {
+        requester_task_id: input.requester_task_id,
+        requester_task_run_id: input.requester_task_run_id ?? null,
+        capability: input.capability,
+        target_selector_json: input.target_selector as Prisma.InputJsonValue,
+        payload_json: input.payload as Prisma.InputJsonValue,
+        priority: input.priority ?? 100,
+        status: "requested",
+        trace_id: input.trace_id
+      }
+    });
+
+    return toDelegationRequestEntity(created);
+  }
+
+  public async getDelegationRequest(id: string): Promise<DelegationRequestEntity | null> {
+    const delegation = await this.prisma.delegationRequest.findUnique({
+      where: { id }
+    });
+
+    if (!delegation) {
+      return null;
+    }
+
+    return toDelegationRequestEntity(delegation);
   }
 
   public async listWorkers(): Promise<WorkerEntity[]> {
@@ -388,6 +714,14 @@ export class PrismaPersistence implements Persistence {
     });
 
     return tasks.map((task) => toTaskEntity(task));
+  }
+
+  public async listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]> {
+    const moduleConfigs = await this.prisma.customModuleConfig.findMany({
+      orderBy: { updated_at: "desc" }
+    });
+
+    return moduleConfigs.map((moduleConfig) => toModuleConfigEntity(moduleConfig));
   }
 
   public async getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null> {
