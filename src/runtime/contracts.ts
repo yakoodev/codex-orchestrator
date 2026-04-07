@@ -11,6 +11,9 @@ export interface TaskEntity {
   branch: string | null;
 }
 
+export type AuthContextType = "apikey" | "chatgpt" | "chatgptAuthTokens";
+export type WorkerRuntimeMode = "ondemand" | "warm_pool" | "dedicated";
+
 export interface AuthProfileEntity {
   id: string;
   label: string;
@@ -38,6 +41,27 @@ export interface CustomModuleConfigEntity {
   config_json: Record<string, unknown>;
 }
 
+export interface AuthContextEntity {
+  id: string;
+  label: string;
+  type: AuthContextType;
+  is_enabled: boolean;
+}
+
+export interface WorkerEntity {
+  id: string;
+  status: string;
+  runtime_mode: WorkerRuntimeMode;
+  current_task_id: string | null;
+}
+
+export interface ArtifactEntity {
+  id: string;
+  task_id: string;
+  type: "diff" | "patch" | "log" | "test_report" | "screenshot" | "summary" | "trace";
+  path: string;
+}
+
 export interface CreateTaskInput {
   title: string;
   description: string;
@@ -59,6 +83,14 @@ export interface CreateAuthProfileInput {
   uploaded_by: string;
 }
 
+export interface CreateAuthContextInput {
+  label: string;
+  type: AuthContextType;
+  provider: string;
+  usage_policy?: Record<string, unknown>;
+  limit_policy?: Record<string, unknown>;
+}
+
 export interface EventPublishInput {
   eventType: string;
   traceId: string;
@@ -72,8 +104,32 @@ export interface Persistence {
   pingDb(): Promise<void>;
   createTask(input: CreateTaskInput): Promise<TaskEntity>;
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
+  listWorkers(): Promise<WorkerEntity[]>;
+  setWorkerStatus(id: string, status: "READY" | "DISABLED"): Promise<boolean>;
+  workerExists(id: string): Promise<boolean>;
+  getWorkerLogs(id: string): Promise<string[]>;
+  createAuthContext(input: CreateAuthContextInput): Promise<AuthContextEntity>;
+  listAuthContexts(): Promise<AuthContextEntity[]>;
+  patchAuthContext(
+    id: string,
+    patch: {
+      label?: string;
+      type?: AuthContextType;
+      provider?: string;
+      usage_policy?: Record<string, unknown>;
+      limit_policy?: Record<string, unknown>;
+      is_enabled?: boolean;
+      notes?: string;
+    }
+  ): Promise<AuthContextEntity | null>;
+  disableAuthContext(id: string): Promise<boolean>;
+  listTaskArtifacts(taskId: string): Promise<ArtifactEntity[]>;
+  getArtifactById(id: string): Promise<ArtifactEntity | null>;
   createAuthProfile(input: CreateAuthProfileInput): Promise<AuthProfileEntity>;
+  listAuthProfiles(): Promise<AuthProfileEntity[]>;
+  getActiveAuthProfile(): Promise<AuthProfileEntity | null>;
   activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null>;
+  deactivateAuthProfile(id: string): Promise<boolean>;
   listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]>;
   listHeldTasks(): Promise<TaskEntity[]>;
   getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null>;

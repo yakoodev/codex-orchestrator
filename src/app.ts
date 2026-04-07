@@ -4,11 +4,15 @@ import multipart from "@fastify/multipart";
 import type { AppConfig } from "./config";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import type {
+  ArtifactEntity,
+  AuthContextEntity,
+  AuthContextType,
   AuthProfileEntity,
   EventPublisher,
   Persistence,
   StorageService,
-  TaskEntity
+  TaskEntity,
+  WorkerEntity
 } from "./runtime/contracts";
 import { isTaskStatus } from "./types";
 
@@ -17,8 +21,21 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /health/ready",
   "POST /api/tasks",
   "GET /api/tasks",
+  "GET /api/workers",
+  "POST /api/workers/{id}/restart",
+  "POST /api/workers/{id}/disable",
+  "GET /api/workers/{id}/logs",
+  "POST /api/auth-contexts",
+  "GET /api/auth-contexts",
+  "PATCH /api/auth-contexts/{id}",
+  "POST /api/auth-contexts/{id}/disable",
+  "GET /api/tasks/{id}/artifacts",
+  "GET /api/artifacts/{id}",
   "POST /api/auth-profiles/chatgpt/upload",
+  "GET /api/auth-profiles/chatgpt",
   "POST /api/auth-profiles/chatgpt/{id}/activate",
+  "POST /api/auth-profiles/chatgpt/{id}/deactivate",
+  "GET /api/auth-profiles/chatgpt/active",
   "GET /api/auth-profiles/chatgpt/switch-events",
   "GET /api/queue/held",
   "GET /api/custom-modules/{key}",
@@ -43,10 +60,30 @@ interface TaskCreateRequest {
   priority?: unknown;
 }
 
+interface AuthContextCreateRequest {
+  label?: unknown;
+  type?: unknown;
+  provider?: unknown;
+  usage_policy?: unknown;
+  limit_policy?: unknown;
+}
+
+interface AuthContextPatchRequest {
+  label?: unknown;
+  type?: unknown;
+  provider?: unknown;
+  usage_policy?: unknown;
+  limit_policy?: unknown;
+  is_enabled?: unknown;
+  notes?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
 }
+
+const AUTH_CONTEXT_TYPES = new Set<AuthContextType>(["apikey", "chatgpt", "chatgptAuthTokens"]);
 
 function sendError(reply: FastifyReply, statusCode: number, error: string, code: string): FastifyReply {
   return reply.code(statusCode).send({ error, code });
@@ -81,6 +118,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function isAuthContextType(value: string): value is AuthContextType {
+  return AUTH_CONTEXT_TYPES.has(value as AuthContextType);
+}
+
 function taskToResponse(task: TaskEntity): Record<string, unknown> {
   return {
     id: task.id,
@@ -91,6 +132,33 @@ function taskToResponse(task: TaskEntity): Record<string, unknown> {
     project_id: task.project_id,
     repo_id: task.repo_id,
     branch: task.branch
+  };
+}
+
+function workerToResponse(worker: WorkerEntity): Record<string, unknown> {
+  return {
+    id: worker.id,
+    status: worker.status,
+    runtime_mode: worker.runtime_mode,
+    current_task_id: worker.current_task_id
+  };
+}
+
+function authContextToResponse(authContext: AuthContextEntity): Record<string, unknown> {
+  return {
+    id: authContext.id,
+    label: authContext.label,
+    type: authContext.type,
+    is_enabled: authContext.is_enabled
+  };
+}
+
+function artifactToResponse(artifact: ArtifactEntity): Record<string, unknown> {
+  return {
+    id: artifact.id,
+    task_id: artifact.task_id,
+    type: artifact.type,
+    path: artifact.path
   };
 }
 
@@ -262,6 +330,174 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send({ items: tasks.map((task) => taskToResponse(task)) });
   });
 
+  app.get("/api/workers", async (_request, reply) => {
+    const workers = await persistence.listWorkers();
+    return reply.send({ items: workers.map((worker) => workerToResponse(worker)) });
+  });
+
+  app.post("/api/workers/:id/restart", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const exists = await persistence.workerExists(id);
+    if (!exists) {
+      return sendError(reply, 404, "Worker not found", "NOT_FOUND");
+    }
+
+    await persistence.setWorkerStatus(id, "READY");
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/workers/:id/disable", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const changed = await persistence.setWorkerStatus(id, "DISABLED");
+    if (!changed) {
+      return sendError(reply, 404, "Worker not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.get("/api/workers/:id/logs", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const exists = await persistence.workerExists(id);
+    if (!exists) {
+      return sendError(reply, 404, "Worker not found", "NOT_FOUND");
+    }
+
+    const lines = await persistence.getWorkerLogs(id);
+    return reply.send({ lines });
+  });
+
+  app.post("/api/auth-contexts", async (request, reply) => {
+    const body = request.body as AuthContextCreateRequest;
+    const label = asNonEmptyString(body.label);
+    const typeValue = asNonEmptyString(body.type);
+    const provider = asNonEmptyString(body.provider);
+
+    if (!label || !typeValue || !provider) {
+      return sendError(reply, 400, "label, type and provider are required", "VALIDATION_ERROR");
+    }
+
+    if (!isAuthContextType(typeValue)) {
+      return sendError(reply, 400, "Invalid auth context type", "VALIDATION_ERROR");
+    }
+
+    if (body.usage_policy != null && !isPlainObject(body.usage_policy)) {
+      return sendError(reply, 400, "usage_policy must be an object", "VALIDATION_ERROR");
+    }
+
+    if (body.limit_policy != null && !isPlainObject(body.limit_policy)) {
+      return sendError(reply, 400, "limit_policy must be an object", "VALIDATION_ERROR");
+    }
+
+    const created = await persistence.createAuthContext({
+      label,
+      type: typeValue,
+      provider,
+      usage_policy: isPlainObject(body.usage_policy) ? body.usage_policy : undefined,
+      limit_policy: isPlainObject(body.limit_policy) ? body.limit_policy : undefined
+    });
+
+    return reply.code(201).send(authContextToResponse(created));
+  });
+
+  app.get("/api/auth-contexts", async (_request, reply) => {
+    const authContexts = await persistence.listAuthContexts();
+    return reply.send({ items: authContexts.map((authContext) => authContextToResponse(authContext)) });
+  });
+
+  app.patch("/api/auth-contexts/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as AuthContextPatchRequest;
+
+    const patch: Parameters<Persistence["patchAuthContext"]>[1] = {};
+
+    if (body.label != null) {
+      const label = asNonEmptyString(body.label);
+      if (!label) {
+        return sendError(reply, 400, "label must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.label = label;
+    }
+
+    if (body.type != null) {
+      const typeValue = asNonEmptyString(body.type);
+      if (!typeValue || !isAuthContextType(typeValue)) {
+        return sendError(reply, 400, "Invalid auth context type", "VALIDATION_ERROR");
+      }
+      patch.type = typeValue;
+    }
+
+    if (body.provider != null) {
+      const provider = asNonEmptyString(body.provider);
+      if (!provider) {
+        return sendError(reply, 400, "provider must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.provider = provider;
+    }
+
+    if (body.usage_policy != null) {
+      if (!isPlainObject(body.usage_policy)) {
+        return sendError(reply, 400, "usage_policy must be an object", "VALIDATION_ERROR");
+      }
+      patch.usage_policy = body.usage_policy;
+    }
+
+    if (body.limit_policy != null) {
+      if (!isPlainObject(body.limit_policy)) {
+        return sendError(reply, 400, "limit_policy must be an object", "VALIDATION_ERROR");
+      }
+      patch.limit_policy = body.limit_policy;
+    }
+
+    if (body.is_enabled != null) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_enabled = body.is_enabled;
+    }
+
+    if (body.notes != null) {
+      const notes = asNonEmptyString(body.notes);
+      if (!notes) {
+        return sendError(reply, 400, "notes must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.notes = notes;
+    }
+
+    const updated = await persistence.patchAuthContext(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Auth context not found", "NOT_FOUND");
+    }
+
+    return reply.send(authContextToResponse(updated));
+  });
+
+  app.post("/api/auth-contexts/:id/disable", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const disabled = await persistence.disableAuthContext(id);
+    if (!disabled) {
+      return sendError(reply, 404, "Auth context not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.get("/api/tasks/:id/artifacts", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const artifacts = await persistence.listTaskArtifacts(id);
+    return reply.send({ items: artifacts.map((artifact) => artifactToResponse(artifact)) });
+  });
+
+  app.get("/api/artifacts/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const artifact = await persistence.getArtifactById(id);
+    if (!artifact) {
+      return sendError(reply, 404, "Artifact not found", "NOT_FOUND");
+    }
+
+    return reply.send(artifactToResponse(artifact));
+  });
+
   app.post("/api/auth-profiles/chatgpt/upload", async (request, reply) => {
     const traceId = getTraceId(request);
     const multipartFile = await request.file();
@@ -319,6 +555,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.code(201).send(authProfileToResponse(createdProfile));
   });
 
+  app.get("/api/auth-profiles/chatgpt", async (_request, reply) => {
+    const profiles = await persistence.listAuthProfiles();
+    return reply.send({ items: profiles.map((profile) => authProfileToResponse(profile)) });
+  });
+
   app.post("/api/auth-profiles/chatgpt/:id/activate", async (request, reply) => {
     const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
@@ -340,6 +581,25 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     });
 
     return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/auth-profiles/chatgpt/:id/deactivate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const deactivated = await persistence.deactivateAuthProfile(id);
+    if (!deactivated) {
+      return sendError(reply, 404, "Profile not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.get("/api/auth-profiles/chatgpt/active", async (_request, reply) => {
+    const activeProfile = await persistence.getActiveAuthProfile();
+    if (!activeProfile) {
+      return sendError(reply, 404, "Active profile not found", "NOT_FOUND");
+    }
+
+    return reply.send(authProfileToResponse(activeProfile));
   });
 
   app.get("/api/auth-profiles/chatgpt/switch-events", async (_request, reply) => {
