@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/module.execution.schema.json",
+  "title": "ModuleExecutionEvent",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "module.execution.started",
+            "module.execution.completed",
+            "module.execution.failed"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "module_key": { "type": "string" },
+            "status": { "type": "string", "enum": ["started", "completed", "failed"] },
+            "reason": { "type": "string" },
+            "duration_ms": { "type": ["integer", "null"], "minimum": 0 }
+          },
+          "required": ["module_key", "status", "reason"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type", "payload"]
+    }
+  ]
+}

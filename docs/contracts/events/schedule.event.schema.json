@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/schedule.event.schema.json",
+  "title": "ScheduleEvent",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "schedule.rule.created",
+            "schedule.rule.updated",
+            "schedule.rule.enabled",
+            "schedule.rule.disabled",
+            "schedule.run.started",
+            "schedule.run.completed",
+            "schedule.run.failed",
+            "schedule.run.skipped_due_to_overlap"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "rule_id": { "type": "string" },
+            "run_id": { "type": ["string", "null"] },
+            "scope": { "type": "string", "enum": ["global", "project"] },
+            "status": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"] }
+          },
+          "required": ["rule_id", "scope"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type", "payload"]
+    }
+  ]
+}

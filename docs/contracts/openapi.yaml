@@ -1,0 +1,1672 @@
+openapi: 3.1.0
+info:
+  title: Codex Orchestrator Bus API
+  version: 0.2.0
+  description: Canonical MVP v1.2 API contract for codex-orchestrator.
+servers:
+  - url: http://localhost:8080
+security:
+  - AdminToken: []
+tags:
+  - name: Tasks
+  - name: Agent Templates
+  - name: Workers
+  - name: Auth Contexts
+  - name: Artifacts
+  - name: Custom Modules
+  - name: ChatGPT Auth Profiles
+  - name: Queue
+  - name: Packs
+  - name: Delegation
+  - name: Schedules
+  - name: Health
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        "200":
+          description: Alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness check
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Dependencies are not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/tasks:
+    post:
+      tags: [Tasks]
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/TaskStatus"
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+                required: [items]
+
+  /api/tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get task by id
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/tasks/{id}/pause:
+    post:
+      tags: [Tasks]
+      summary: Pause task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}/resume:
+    post:
+      tags: [Tasks]
+      summary: Resume task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}/stop:
+    post:
+      tags: [Tasks]
+      summary: Stop task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}/replan:
+    post:
+      tags: [Tasks]
+      summary: Replan task
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+              required: [reason]
+      responses:
+        "202":
+          description: Replan accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+  /api/tasks/{id}/approve:
+    post:
+      tags: [Tasks]
+      summary: Approve pending transition
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+  /api/tasks/{id}/reject:
+    post:
+      tags: [Tasks]
+      summary: Reject pending transition
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /api/agents/templates:
+    post:
+      tags: [Agent Templates]
+      summary: Create agent template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentTemplateCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTemplate"
+    get:
+      tags: [Agent Templates]
+      summary: List agent templates
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentTemplate"
+                required: [items]
+
+  /api/agents/templates/{id}:
+    patch:
+      tags: [Agent Templates]
+      summary: Update agent template
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentTemplatePatchRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTemplate"
+    delete:
+      tags: [Agent Templates]
+      summary: Delete agent template
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "204":
+          description: Deleted
+
+  /api/workers:
+    get:
+      tags: [Workers]
+      summary: List workers
+      responses:
+        "200":
+          description: Workers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WorkerInstance"
+                required: [items]
+
+  /api/workers/{id}/restart:
+    post:
+      tags: [Workers]
+      summary: Restart worker
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/workers/{id}/disable:
+    post:
+      tags: [Workers]
+      summary: Disable worker
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/workers/{id}/logs:
+    get:
+      tags: [Workers]
+      summary: Worker logs
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lines:
+                    type: array
+                    items:
+                      type: string
+                required: [lines]
+
+  /api/auth-contexts:
+    post:
+      tags: [Auth Contexts]
+      summary: Create auth context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthContextCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthContext"
+    get:
+      tags: [Auth Contexts]
+      summary: List auth contexts
+      responses:
+        "200":
+          description: Auth contexts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuthContext"
+                required: [items]
+
+  /api/auth-contexts/{id}:
+    patch:
+      tags: [Auth Contexts]
+      summary: Update auth context
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthContext"
+
+  /api/auth-contexts/{id}/disable:
+    post:
+      tags: [Auth Contexts]
+      summary: Disable auth context
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/tasks/{id}/artifacts:
+    get:
+      tags: [Artifacts]
+      summary: List task artifacts
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Artifacts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Artifact"
+                required: [items]
+
+  /api/artifacts/{id}:
+    get:
+      tags: [Artifacts]
+      summary: Get artifact
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Artifact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Artifact"
+
+  /api/custom-modules:
+    get:
+      tags: [Custom Modules]
+      summary: List custom modules
+      responses:
+        "200":
+          description: Modules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomModuleConfig"
+                required: [items]
+
+  /api/custom-modules/{key}:
+    get:
+      tags: [Custom Modules]
+      summary: Get custom module config
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Module config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomModuleConfig"
+    patch:
+      tags: [Custom Modules]
+      summary: Update module config
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomModuleConfigPatchRequest"
+      responses:
+        "200":
+          description: Updated module config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomModuleConfig"
+
+  /api/custom-modules/{key}/executions:
+    get:
+      tags: [Custom Modules]
+      summary: Module execution logs
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Execution list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ModuleExecution"
+                required: [items]
+
+  /api/auth-profiles/chatgpt/upload:
+    post:
+      tags: [ChatGPT Auth Profiles]
+      summary: Upload ChatGPT auth profile ZIP
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+              required: [label, file]
+      responses:
+        "201":
+          description: Profile uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGptAuthProfile"
+
+  /api/auth-profiles/chatgpt:
+    get:
+      tags: [ChatGPT Auth Profiles]
+      summary: List profiles
+      responses:
+        "200":
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChatGptAuthProfile"
+                required: [items]
+
+  /api/auth-profiles/chatgpt/{id}/activate:
+    post:
+      tags: [ChatGPT Auth Profiles]
+      summary: Activate profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/auth-profiles/chatgpt/{id}/deactivate:
+    post:
+      tags: [ChatGPT Auth Profiles]
+      summary: Deactivate profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/auth-profiles/chatgpt/active:
+    get:
+      tags: [ChatGPT Auth Profiles]
+      summary: Get active profile
+      responses:
+        "200":
+          description: Active profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatGptAuthProfile"
+
+  /api/auth-profiles/chatgpt/switch-events:
+    get:
+      tags: [ChatGPT Auth Profiles]
+      summary: Get auth switch history (automatic flow in MVP)
+      responses:
+        "200":
+          description: Switch events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuthSwitchEvent"
+                required: [items]
+
+  /api/queue/held:
+    get:
+      tags: [Queue]
+      summary: List held tasks
+      responses:
+        "200":
+          description: Held tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+                required: [items]
+  /api/queue/held/release:
+    post:
+      tags: [Queue]
+      summary: Release held queue
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/packs:
+    post:
+      tags: [Packs]
+      summary: Register role/capability pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackRegistryCreateRequest"
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PackRegistryUploadRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackRegistryEntry"
+    get:
+      tags: [Packs]
+      summary: List packs
+      responses:
+        "200":
+          description: Packs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PackRegistryEntry"
+                required: [items]
+
+  /api/packs/{id}:
+    get:
+      tags: [Packs]
+      summary: Get pack
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackRegistryEntry"
+    patch:
+      tags: [Packs]
+      summary: Update pack status or rotate pinned version
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackRegistryPatchRequest"
+      responses:
+        "200":
+          description: Updated pack
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackRegistryEntry"
+
+  /api/packs/{id}/materialize:
+    post:
+      tags: [Packs]
+      summary: Materialize pack cache for selected version
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/delegation/capabilities:
+    get:
+      tags: [Delegation]
+      summary: List available capabilities and targets
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CapabilityDescriptor"
+                required: [items]
+
+  /api/delegation/dispatch:
+    post:
+      tags: [Delegation]
+      summary: Dispatch delegated subtask through bus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DelegationRequestCreate"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationRequest"
+
+  /api/delegation/{id}:
+    get:
+      tags: [Delegation]
+      summary: Get delegation status
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Delegation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationRequest"
+
+  /api/delegation/{id}/result:
+    get:
+      tags: [Delegation]
+      summary: Get delegation result summary
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Delegation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationResultResponse"
+
+  /api/schedules:
+    post:
+      tags: [Schedules]
+      summary: Create schedule rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledRuleCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledRule"
+    get:
+      tags: [Schedules]
+      summary: List schedule rules
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledRule"
+                required: [items]
+
+  /api/schedules/{id}:
+    get:
+      tags: [Schedules]
+      summary: Get schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledRule"
+    patch:
+      tags: [Schedules]
+      summary: Update schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledRulePatchRequest"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledRule"
+    delete:
+      tags: [Schedules]
+      summary: Delete schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "204":
+          description: Deleted
+
+  /api/schedules/{id}/enable:
+    post:
+      tags: [Schedules]
+      summary: Enable schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/schedules/{id}/disable:
+    post:
+      tags: [Schedules]
+      summary: Disable schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+
+  /api/schedules/{id}/evaluate:
+    post:
+      tags: [Schedules]
+      summary: Dry-run evaluate schedule rule
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledRuleEvaluateRequest"
+      responses:
+        "200":
+          description: Evaluation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledRuleEvaluateResponse"
+
+  /api/schedules/{id}/trigger:
+    post:
+      tags: [Schedules]
+      summary: Trigger schedule run now
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledRun"
+
+  /api/schedules/{id}/runs:
+    get:
+      tags: [Schedules]
+      summary: List schedule runs
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledRun"
+                required: [items]
+
+components:
+  securitySchemes:
+    AdminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+  parameters:
+    TaskId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+    GenericId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+      required: [ok, service]
+    AcceptedResponse:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+      required: [accepted]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+      required: [error, code]
+
+    TaskStatus:
+      type: string
+      enum:
+        - NEW
+        - QUEUED
+        - ASSIGNED
+        - STARTING
+        - RUNNING
+        - WAITING_APPROVAL
+        - WAITING_LIMIT
+        - DRAINING_ACTIVE
+        - SWITCHING_AUTH
+        - WAITING_USER
+        - INTERRUPTING
+        - INTERRUPTED
+        - REPLANNING
+        - BLOCKED
+        - FAILED_RETRYABLE
+        - FAILED_TERMINAL
+        - DONE
+        - ARCHIVED
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          $ref: "#/components/schemas/TaskStatus"
+        priority:
+          type: integer
+        project_id:
+          type: string
+        repo_id:
+          type: string
+        branch:
+          type: string
+      required: [id, title, status]
+    TaskCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        project_id:
+          type: string
+        repo_id:
+          type: string
+        branch:
+          type: string
+        priority:
+          type: integer
+      required: [title, description, project_id, repo_id]
+
+    AgentTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        model:
+          type: string
+        auth_context_id:
+          type: string
+        pack_registry_entry_id:
+          type: [string, "null"]
+        sandbox_policy:
+          type: string
+        approval_policy:
+          type: string
+        is_enabled:
+          type: boolean
+      required: [id, name, role, model, is_enabled]
+    AgentTemplateCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: string
+        model:
+          type: string
+        auth_context_id:
+          type: string
+        pack_registry_entry_id:
+          type: [string, "null"]
+        system_prompt:
+          type: string
+        instructions_md:
+          type: string
+        sandbox_policy:
+          type: string
+        approval_policy:
+          type: string
+        output_schema:
+          type: object
+          additionalProperties: true
+      required: [name, role, model, system_prompt, sandbox_policy, approval_policy]
+    AgentTemplatePatchRequest:
+      type: object
+      additionalProperties: true
+
+    WorkerInstance:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        runtime_mode:
+          type: string
+          enum: [ondemand, warm_pool, dedicated]
+        current_task_id:
+          type: [string, "null"]
+      required: [id, status, runtime_mode]
+
+    AuthContext:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum: [apikey, chatgpt, chatgptAuthTokens]
+        is_enabled:
+          type: boolean
+      required: [id, label, type, is_enabled]
+    AuthContextCreateRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        type:
+          type: string
+        provider:
+          type: string
+        usage_policy:
+          type: object
+          additionalProperties: true
+        limit_policy:
+          type: object
+          additionalProperties: true
+      required: [label, type, provider]
+
+    Artifact:
+      type: object
+      properties:
+        id:
+          type: string
+        task_id:
+          type: string
+        type:
+          type: string
+          enum: [diff, patch, log, test_report, screenshot, summary, trace]
+        path:
+          type: string
+      required: [id, task_id, type, path]
+
+    CustomModuleConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        module_key:
+          type: string
+        is_enabled:
+          type: boolean
+        scope:
+          type: string
+          enum: [global]
+        config_json:
+          type: object
+          additionalProperties: true
+      required: [id, module_key, is_enabled, scope, config_json]
+    CustomModuleConfigPatchRequest:
+      type: object
+      properties:
+        is_enabled:
+          type: boolean
+        config_json:
+          type: object
+          additionalProperties: true
+
+    ModuleExecution:
+      type: object
+      properties:
+        id:
+          type: string
+        module_key:
+          type: string
+        event_type:
+          type: string
+        status:
+          type: string
+          enum: [started, completed, failed]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+      required: [id, module_key, event_type, status, started_at]
+
+    ChatGptAuthProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, blocked]
+        checksum:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, label, status, checksum, created_at]
+
+    AuthSwitchEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        module_key:
+          type: string
+        from_auth_profile_id:
+          type: [string, "null"]
+        to_auth_profile_id:
+          type: [string, "null"]
+        reason:
+          type: string
+          description: "MVP emits automatic switch reasons; `manual` is reserved for future operator-triggered flows."
+          enum: [limit_pressure, manual]
+        status:
+          type: string
+          enum: [started, completed, failed, skipped]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+      required: [id, module_key, reason, status, started_at]
+
+    PackRegistryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        pack_id:
+          type: string
+        role:
+          type: string
+        capabilities_json:
+          type: object
+          additionalProperties: true
+        source_type:
+          type: string
+          enum: [git, zip]
+        source_ref:
+          type: string
+        pinned_version:
+          type: string
+        manifest_json:
+          type: object
+          additionalProperties: true
+        materialize_status:
+          type: string
+          enum: [registered, materialized, failed]
+        cached_path:
+          type: [string, "null"]
+        is_enabled:
+          type: boolean
+        registered_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - pack_id
+        - role
+        - capabilities_json
+        - source_type
+        - source_ref
+        - pinned_version
+        - manifest_json
+        - materialize_status
+        - is_enabled
+        - registered_by
+        - created_at
+        - updated_at
+
+    PackRegistryCreateRequest:
+      type: object
+      properties:
+        pack_id:
+          type: string
+        role:
+          type: string
+        capabilities_json:
+          type: object
+          additionalProperties: true
+        source_type:
+          type: string
+          enum: [git, zip]
+        source_ref:
+          type: string
+        pinned_version:
+          type: string
+        manifest_json:
+          type: object
+          additionalProperties: true
+      required: [pack_id, role, capabilities_json, source_type, source_ref, pinned_version, manifest_json]
+
+    PackRegistryUploadRequest:
+      type: object
+      properties:
+        pack_id:
+          type: string
+        role:
+          type: string
+        capabilities_json:
+          type: string
+          description: JSON-encoded capabilities.
+        pinned_version:
+          type: string
+        manifest_json:
+          type: string
+          description: JSON-encoded manifest object.
+        file:
+          type: string
+          format: binary
+      required: [pack_id, role, pinned_version, manifest_json, file]
+
+    PackRegistryPatchRequest:
+      type: object
+      properties:
+        pinned_version:
+          type: string
+        is_enabled:
+          type: boolean
+        source_ref:
+          type: string
+      additionalProperties: false
+
+    CapabilityDescriptor:
+      type: object
+      properties:
+        capability:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        agent_template_ids:
+          type: array
+          items:
+            type: string
+      required: [capability, roles, agent_template_ids]
+
+    DelegationRequestCreate:
+      type: object
+      properties:
+        requester_task_id:
+          type: string
+        requester_task_run_id:
+          type: [string, "null"]
+        capability:
+          type: string
+        target_selector:
+          type: object
+          additionalProperties: true
+        payload:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+      required: [requester_task_id, capability, target_selector, payload]
+
+    DelegationRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        requester_task_id:
+          type: string
+        requester_task_run_id:
+          type: [string, "null"]
+        capability:
+          type: string
+        target_selector:
+          type: object
+          additionalProperties: true
+        payload:
+          type: object
+          additionalProperties: true
+        priority:
+          type: integer
+        status:
+          type: string
+          enum: [requested, accepted, running, completed, failed, cancelled]
+        target_agent_template_id:
+          type: [string, "null"]
+        target_worker_instance_id:
+          type: [string, "null"]
+        result_summary:
+          type: [string, "null"]
+        trace_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: [string, "null"]
+          format: date-time
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+      required:
+        - id
+        - requester_task_id
+        - capability
+        - target_selector
+        - payload
+        - priority
+        - status
+        - trace_id
+        - created_at
+
+    DelegationResultResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        result_summary:
+          type: [string, "null"]
+        artifacts:
+          type: array
+          items:
+            type: string
+      required: [id, status]
+
+    RuleAst:
+      oneOf:
+        - $ref: "#/components/schemas/RuleAstAll"
+        - $ref: "#/components/schemas/RuleAstAny"
+        - $ref: "#/components/schemas/RuleAstNot"
+        - $ref: "#/components/schemas/RuleAstPredicate"
+
+    RuleAstAll:
+      type: object
+      properties:
+        all:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RuleAst"
+      required: [all]
+      additionalProperties: false
+
+    RuleAstAny:
+      type: object
+      properties:
+        any:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RuleAst"
+      required: [any]
+      additionalProperties: false
+
+    RuleAstNot:
+      type: object
+      properties:
+        not:
+          $ref: "#/components/schemas/RuleAst"
+      required: [not]
+      additionalProperties: false
+
+    RuleAstPredicate:
+      type: object
+      description: "Typed predicate. For `time.cron`, expression evaluation uses UTC."
+      properties:
+        predicate:
+          type: string
+          enum:
+            - time.cron
+            - event.type
+            - state.task_status
+            - state.module_enabled
+            - limit.weekly_remaining_lt
+            - limit.weekly_remaining_gt
+            - limit.five_hour_remaining_lt
+            - limit.reset_eta_hours_lt
+        operator:
+          type: string
+          enum: [eq, ne, lt, lte, gt, gte, in, contains]
+        value:
+          oneOf:
+            - type: string
+            - type: number
+            - type: integer
+            - type: boolean
+            - type: array
+              items: {}
+            - type: object
+              additionalProperties: true
+      required: [predicate, value]
+      additionalProperties: false
+
+    ScheduledRule:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scope:
+          type: string
+          enum: [global, project]
+        project_id:
+          type: [string, "null"]
+        is_enabled:
+          type: boolean
+        rule_ast:
+          $ref: "#/components/schemas/RuleAst"
+          description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
+        target_agent_template_id:
+          type: [string, "null"]
+        fallback_role:
+          type: [string, "null"]
+        overlap_policy:
+          type: string
+          enum: [one_active_skip]
+        misfire_policy:
+          type: string
+          enum: [recompute_due_on_restart]
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - scope
+        - is_enabled
+        - rule_ast
+        - overlap_policy
+        - misfire_policy
+        - created_by
+        - created_at
+        - updated_at
+
+    ScheduledRuleCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        scope:
+          type: string
+          enum: [global, project]
+        project_id:
+          type: [string, "null"]
+        rule_ast:
+          $ref: "#/components/schemas/RuleAst"
+          description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
+        target_agent_template_id:
+          type: [string, "null"]
+        fallback_role:
+          type: [string, "null"]
+        overlap_policy:
+          type: string
+          enum: [one_active_skip]
+        misfire_policy:
+          type: string
+          enum: [recompute_due_on_restart]
+      required: [name, scope, rule_ast, overlap_policy, misfire_policy]
+
+    ScheduledRulePatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        is_enabled:
+          type: boolean
+        rule_ast:
+          $ref: "#/components/schemas/RuleAst"
+          description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
+        target_agent_template_id:
+          type: [string, "null"]
+        fallback_role:
+          type: [string, "null"]
+        overlap_policy:
+          type: string
+          enum: [one_active_skip]
+        misfire_policy:
+          type: string
+          enum: [recompute_due_on_restart]
+      additionalProperties: false
+
+    ScheduledRuleEvaluateRequest:
+      type: object
+      properties:
+        dry_run_context:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+
+    ScheduledRuleEvaluateResponse:
+      type: object
+      properties:
+        rule_id:
+          type: string
+        matched:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: string
+      required: [rule_id, matched, reasons]
+
+    ScheduledRun:
+      type: object
+      properties:
+        id:
+          type: string
+        rule_id:
+          type: string
+        created_task_id:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [started, completed, failed, skipped_due_to_overlap]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+        skip_reason:
+          type: [string, "null"]
+        trace_id:
+          type: string
+        idempotency_key:
+          type: [string, "null"]
+        result_json:
+          type: [object, "null"]
+          additionalProperties: true
+      required: [id, rule_id, status, started_at, trace_id]
+

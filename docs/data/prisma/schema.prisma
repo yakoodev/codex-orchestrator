@@ -1,0 +1,464 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskStatus {
+  NEW
+  QUEUED
+  ASSIGNED
+  STARTING
+  RUNNING
+  WAITING_APPROVAL
+  WAITING_LIMIT
+  DRAINING_ACTIVE
+  SWITCHING_AUTH
+  WAITING_USER
+  INTERRUPTING
+  INTERRUPTED
+  REPLANNING
+  BLOCKED
+  FAILED_RETRYABLE
+  FAILED_TERMINAL
+  DONE
+  ARCHIVED
+}
+
+enum WorkerRuntimeMode {
+  ondemand
+  warm_pool
+  dedicated
+}
+
+enum WorkerStatus {
+  READY
+  BUSY
+  STOPPED
+  FAILED
+  DISABLED
+}
+
+enum AuthContextType {
+  apikey
+  chatgpt
+  chatgptAuthTokens
+}
+
+enum ArtifactType {
+  diff
+  patch
+  log
+  test_report
+  screenshot
+  summary
+  trace
+}
+
+enum InterventionType {
+  steer
+  interrupt
+  pause
+  resume
+  replan
+  approve
+  reject
+}
+
+enum LimitStatus {
+  NORMAL
+  DEGRADED
+  BLOCKED
+}
+
+enum ProfileStatus {
+  active
+  inactive
+  blocked
+}
+
+enum SwitchEventStatus {
+  started
+  completed
+  failed
+  skipped
+}
+
+enum ScheduleScope {
+  global
+  project
+}
+
+enum ScheduleOverlapPolicy {
+  one_active_skip
+}
+
+enum ScheduleMisfirePolicy {
+  recompute_due_on_restart
+}
+
+enum ScheduledRunStatus {
+  started
+  completed
+  failed
+  skipped_due_to_overlap
+}
+
+enum PackSourceType {
+  git
+  zip
+}
+
+enum PackMaterializeStatus {
+  registered
+  materialized
+  failed
+}
+
+enum DelegationStatus {
+  requested
+  accepted
+  running
+  completed
+  failed
+  cancelled
+}
+
+model AgentTemplate {
+  id                     String   @id @default(cuid())
+  name                   String
+  role                   String
+  description            String?
+  model                  String
+  auth_context_id        String?
+  pack_registry_entry_id String?
+  system_prompt          String
+  instructions_md        String?
+  sandbox_policy         String
+  approval_policy        String
+  cwd_policy             String?
+  input_schema           Json?
+  output_schema          Json?
+  is_enabled             Boolean  @default(true)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  pack_registry_entry PackRegistryEntry? @relation(fields: [pack_registry_entry_id], references: [id], onDelete: SetNull)
+  workers            WorkerInstance[]
+  scheduled_rules    ScheduledRule[]
+  delegation_targets DelegationRequest[]  @relation("delegation_target_template")
+}
+
+model WorkerInstance {
+  id                String            @id @default(cuid())
+  agent_template_id String
+  status            WorkerStatus
+  runtime_mode      WorkerRuntimeMode
+  codex_home_path   String
+  workspace_path    String
+  cwd               String?
+  thread_id         String?
+  current_task_id   String?
+  pid_or_container  String?
+  started_at        DateTime?
+  last_heartbeat_at DateTime?
+  stopped_at        DateTime?
+
+  agent_template AgentTemplate @relation(fields: [agent_template_id], references: [id], onDelete: Restrict)
+  task_runs       TaskRun[]
+  file_locks      FileLock[]
+  delegated_requests DelegationRequest[] @relation("delegation_target_worker")
+
+  @@index([status])
+  @@index([current_task_id])
+}
+
+model AuthContext {
+  id           String          @id @default(cuid())
+  label        String
+  type         AuthContextType
+  provider     String
+  usage_policy Json?
+  limit_policy Json?
+  is_enabled   Boolean         @default(true)
+  notes        String?
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+
+  limit_snapshots LimitSnapshot[]
+}
+
+model Task {
+  id                 String     @id @default(cuid())
+  title              String
+  description        String
+  source             String
+  project_id         String
+  repo_id            String
+  branch             String?
+  priority           Int        @default(100)
+  requested_pipeline String?
+  status             TaskStatus
+  hold_reason        String?
+  created_by         String
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+
+  subtasks      Subtask[]
+  task_runs     TaskRun[]
+  artifacts     Artifact[]
+  interventions Intervention[]
+  file_locks    FileLock[]
+  delegation_requests DelegationRequest[] @relation("delegation_requester_task")
+  scheduled_runs ScheduledRun[] @relation("scheduled_created_task")
+
+  @@index([status])
+  @@index([project_id, repo_id])
+}
+
+model Subtask {
+  id                  String   @id @default(cuid())
+  task_id             String
+  parent_subtask_id   String?
+  role_required       String
+  title               String
+  acceptance_criteria String?
+  depends_on          Json?
+  status              String
+  position            Int
+
+  task Task @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@index([task_id, position])
+}
+
+model TaskRun {
+  id                 String   @id @default(cuid())
+  task_id            String
+  subtask_id         String?
+  worker_instance_id String
+  thread_id          String?
+  turn_id            String?
+  status             String
+  input_summary      String?
+  result_summary     String?
+  started_at         DateTime?
+  ended_at           DateTime?
+  token_estimate     Int?
+  cost_estimate      Decimal? @db.Decimal(12, 4)
+
+  task            Task           @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  worker_instance WorkerInstance @relation(fields: [worker_instance_id], references: [id], onDelete: Restrict)
+  artifacts       Artifact[]
+  interventions   Intervention[]
+  delegation_requests DelegationRequest[] @relation("delegation_requester_run")
+
+  @@index([task_id, started_at])
+  @@index([worker_instance_id, started_at])
+}
+
+model Artifact {
+  id          String       @id @default(cuid())
+  task_id     String
+  task_run_id String?
+  type        ArtifactType
+  path        String
+  meta_json   Json?
+  created_at  DateTime     @default(now())
+
+  task     Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  task_run TaskRun? @relation(fields: [task_run_id], references: [id], onDelete: SetNull)
+
+  @@index([task_id, created_at])
+}
+
+model Intervention {
+  id          String   @id @default(cuid())
+  task_id     String
+  task_run_id String?
+  source      String
+  type        InterventionType
+  payload     Json?
+  created_by  String
+  created_at  DateTime @default(now())
+
+  task     Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  task_run TaskRun? @relation(fields: [task_run_id], references: [id], onDelete: SetNull)
+
+  @@index([task_id, created_at])
+}
+
+model LimitSnapshot {
+  id                   String      @id @default(cuid())
+  auth_context_id      String
+  model                String
+  used_percent         Decimal     @db.Decimal(5, 2)
+  weekly_remaining_pct Decimal?    @db.Decimal(5, 2)
+  five_hour_remaining_pct Decimal? @db.Decimal(5, 2)
+  window_duration_mins Int
+  resets_at            DateTime?
+  cooldown_until       DateTime?
+  status               LimitStatus
+  captured_at          DateTime    @default(now())
+
+  auth_context AuthContext @relation(fields: [auth_context_id], references: [id], onDelete: Cascade)
+
+  @@index([auth_context_id, captured_at])
+}
+
+model FileLock {
+  id                 String   @id @default(cuid())
+  project_id         String
+  repo_id            String
+  path_pattern       String
+  task_id            String
+  worker_instance_id String
+  created_at         DateTime @default(now())
+  expires_at         DateTime
+
+  task            Task           @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  worker_instance WorkerInstance @relation(fields: [worker_instance_id], references: [id], onDelete: Cascade)
+
+  @@index([project_id, repo_id, expires_at])
+}
+
+model CustomModuleConfig {
+  id         String   @id @default(cuid())
+  module_key String   @unique
+  is_enabled Boolean  @default(false)
+  scope      String
+  config_json Json
+  updated_by String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model ChatGptAuthProfile {
+  id           String        @id @default(cuid())
+  label        String
+  status       ProfileStatus
+  storage_path String
+  checksum     String
+  meta_json    Json?
+  uploaded_by  String
+  activated_by String?
+  created_at   DateTime      @default(now())
+  updated_at   DateTime      @updatedAt
+
+  switch_from_events AuthSwitchEvent[] @relation("switch_from")
+  switch_to_events   AuthSwitchEvent[] @relation("switch_to")
+
+  @@index([status])
+}
+
+model AuthSwitchEvent {
+  id                   String          @id @default(cuid())
+  module_key           String
+  from_auth_profile_id String?
+  to_auth_profile_id   String?
+  reason               String
+  switch_scope         String
+  status               SwitchEventStatus
+  details_json         Json?
+  started_at           DateTime
+  ended_at             DateTime?
+
+  from_auth_profile ChatGptAuthProfile? @relation("switch_from", fields: [from_auth_profile_id], references: [id], onDelete: SetNull)
+  to_auth_profile   ChatGptAuthProfile? @relation("switch_to", fields: [to_auth_profile_id], references: [id], onDelete: SetNull)
+
+  @@index([status, started_at])
+}
+
+model PackRegistryEntry {
+  id                 String                @id @default(cuid())
+  pack_id            String
+  role               String
+  capabilities_json  Json
+  source_type        PackSourceType
+  source_ref         String
+  pinned_version     String
+  manifest_json      Json
+  materialize_status PackMaterializeStatus @default(registered)
+  cached_path        String?
+  is_enabled         Boolean               @default(true)
+  registered_by      String
+  created_at         DateTime              @default(now())
+  updated_at         DateTime              @updatedAt
+
+  agent_templates AgentTemplate[]
+
+  @@unique([pack_id, pinned_version])
+  @@index([is_enabled, role])
+}
+
+model ScheduledRule {
+  id                       String               @id @default(cuid())
+  name                     String
+  scope                    ScheduleScope
+  project_id               String?
+  is_enabled               Boolean              @default(true)
+  rule_ast                 Json
+  target_agent_template_id String?
+  fallback_role            String?
+  overlap_policy           ScheduleOverlapPolicy
+  misfire_policy           ScheduleMisfirePolicy
+  created_by               String
+  created_at               DateTime             @default(now())
+  updated_at               DateTime             @updatedAt
+
+  target_agent_template AgentTemplate? @relation(fields: [target_agent_template_id], references: [id], onDelete: SetNull)
+  runs                  ScheduledRun[]
+
+  @@index([scope, is_enabled])
+  @@index([project_id, is_enabled])
+}
+
+model ScheduledRun {
+  id              String           @id @default(cuid())
+  rule_id         String
+  created_task_id String?
+  status          ScheduledRunStatus
+  started_at      DateTime
+  ended_at        DateTime?
+  skip_reason     String?
+  trace_id        String
+  idempotency_key String?
+  result_json     Json?
+
+  rule ScheduledRule @relation(fields: [rule_id], references: [id], onDelete: Cascade)
+  created_task Task? @relation("scheduled_created_task", fields: [created_task_id], references: [id], onDelete: SetNull)
+
+  @@index([rule_id, started_at])
+  @@index([created_task_id])
+  @@unique([rule_id, idempotency_key])
+}
+
+model DelegationRequest {
+  id                       String           @id @default(cuid())
+  requester_task_id        String
+  requester_task_run_id    String?
+  capability               String
+  target_selector_json     Json
+  payload_json             Json
+  priority                 Int              @default(100)
+  status                   DelegationStatus
+  target_agent_template_id String?
+  target_worker_instance_id String?
+  result_summary           String?
+  trace_id                 String
+  created_at               DateTime         @default(now())
+  started_at               DateTime?
+  ended_at                 DateTime?
+
+  requester_task         Task          @relation("delegation_requester_task", fields: [requester_task_id], references: [id], onDelete: Cascade)
+  requester_task_run     TaskRun?      @relation("delegation_requester_run", fields: [requester_task_run_id], references: [id], onDelete: SetNull)
+  target_agent_template  AgentTemplate? @relation("delegation_target_template", fields: [target_agent_template_id], references: [id], onDelete: SetNull)
+  target_worker_instance WorkerInstance? @relation("delegation_target_worker", fields: [target_worker_instance_id], references: [id], onDelete: SetNull)
+
+  @@index([status, created_at])
+  @@index([requester_task_id, created_at])
+  @@index([target_agent_template_id, status])
+}

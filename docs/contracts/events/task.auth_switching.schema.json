@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/task.auth_switching.schema.json",
+  "title": "TaskAuthSwitchingEvent",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "const": "task.auth_switching"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "task_id": { "type": "string" },
+            "status_before": { "type": "string" },
+            "status_after": { "type": "string" },
+            "reason": { "type": "string" }
+          },
+          "required": ["task_id", "status_before", "status_after", "reason"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type", "payload"]
+    }
+  ]
+}

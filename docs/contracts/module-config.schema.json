@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/module-config.schema.json",
+  "title": "CustomModuleConfig",
+  "type": "object",
+  "properties": {
+    "module_key": {
+      "type": "string",
+      "const": "switch_chatgpt_auth_on_limit"
+    },
+    "is_enabled": {
+      "type": "boolean"
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["global"]
+    },
+    "thresholds": {
+      "type": "object",
+      "properties": {
+        "weekly_remaining_percent_lt": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 5
+        },
+        "five_hour_remaining_percent_lt": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 10
+        },
+        "reset_guard_hours": {
+          "type": "number",
+          "minimum": 0,
+          "default": 3
+        }
+      },
+      "required": [
+        "weekly_remaining_percent_lt",
+        "five_hour_remaining_percent_lt",
+        "reset_guard_hours"
+      ],
+      "additionalProperties": false
+    },
+    "notifications": {
+      "type": "object",
+      "properties": {
+        "web_enabled": { "type": "boolean", "default": true },
+        "telegram_enabled": { "type": "boolean", "default": true }
+      },
+      "required": ["web_enabled", "telegram_enabled"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["module_key", "is_enabled", "scope", "thresholds", "notifications"],
+  "additionalProperties": false
+}

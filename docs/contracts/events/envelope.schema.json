@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/envelope.schema.json",
+  "title": "EventEnvelope",
+  "type": "object",
+  "properties": {
+    "event_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": ["string", "null"] },
+    "worker_id": { "type": ["string", "null"] },
+    "idempotency_key": { "type": ["string", "null"] },
+    "version": { "type": "string", "default": "1.0" },
+    "payload": { "type": "object", "additionalProperties": true }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "timestamp",
+    "trace_id",
+    "version",
+    "payload"
+  ],
+  "additionalProperties": false
+}

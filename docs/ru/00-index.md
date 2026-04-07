@@ -1,0 +1,13 @@
+# Индекс документации (RU)
+
+## Основные разделы
+- [Схемы (канон проверки)](/docs/schemas/00-index.md)
+- [Архитектура](/docs/ru/01-architecture.md)
+- [API и события](/docs/ru/02-api-events.md)
+- [Data + Runtime](/docs/ru/03-data-runtime.md)
+- [Docker + Ops](/docs/ru/04-docker-ops.md)
+- [Security + Threat model lite](/docs/ru/05-security-threat-model-lite.md)
+- [OSS процесс](/docs/ru/06-oss-process.md)
+- [Матрица трассировки](/docs/ru/07-traceability-matrix.md)
+- [Чеклист приемки docs](/docs/ru/08-acceptance-review-checklist.md)
+- [Telegram протокол и операции](/docs/ru/09-telegram.md)

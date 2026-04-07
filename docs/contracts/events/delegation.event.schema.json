@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/delegation.event.schema.json",
+  "title": "DelegationEvent",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "agent.delegation.requested",
+            "agent.delegation.accepted",
+            "agent.delegation.completed",
+            "agent.delegation.failed"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "delegation_id": { "type": "string" },
+            "requester_task_id": { "type": "string" },
+            "capability": { "type": "string" },
+            "status": {
+              "type": "string",
+              "enum": ["requested", "accepted", "running", "completed", "failed", "cancelled"]
+            },
+            "target_agent_template_id": { "type": ["string", "null"] },
+            "target_worker_instance_id": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"] }
+          },
+          "required": ["delegation_id", "requester_task_id", "capability", "status"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type", "payload"]
+    }
+  ]
+}

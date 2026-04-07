@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codex-orchestrator.dev/schemas/events/pack.event.schema.json",
+  "title": "PackEvent",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "pack.registered",
+            "pack.validated",
+            "pack.materialized",
+            "pack.rotated"
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "pack_id": { "type": "string" },
+            "source_type": { "type": "string", "enum": ["git", "zip"] },
+            "pinned_version": { "type": "string" },
+            "materialize_status": {
+              "type": ["string", "null"],
+              "enum": ["registered", "materialized", "failed", null]
+            },
+            "reason": { "type": ["string", "null"] }
+          },
+          "required": ["pack_id", "source_type", "pinned_version"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["event_type", "payload"]
+    }
+  ]
+}
