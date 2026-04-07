@@ -254,6 +254,40 @@ function isScheduleMisfirePolicy(value: string): value is ScheduleMisfirePolicy 
   return SCHEDULE_MISFIRE_POLICIES.has(value as ScheduleMisfirePolicy);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function withRetry<T>(options: {
+  operationName: string;
+  maxAttempts: number;
+  initialDelayMs: number;
+  fn: () => Promise<T>;
+  onRetry: (ctx: { operationName: string; attempt: number; error: unknown; nextDelayMs: number }) => void;
+}): Promise<T> {
+  const { operationName, maxAttempts, initialDelayMs, fn, onRetry } = options;
+
+  let attempt = 0;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt >= maxAttempts) {
+        throw error;
+      }
+
+      const nextDelayMs = initialDelayMs * 2 ** (attempt - 1);
+      onRetry({ operationName, attempt, error, nextDelayMs });
+      await sleep(nextDelayMs);
+    }
+  }
+
+  throw new Error(`${operationName} failed after ${maxAttempts} attempts`);
+}
+
 function taskToResponse(task: TaskEntity): Record<string, unknown> {
   return {
     id: task.id,
@@ -1766,6 +1800,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const startedAt = new Date();
     const startedIdempotencyKey = `${key}:${traceId}:started`;
     const completedIdempotencyKey = `${key}:${traceId}:completed`;
+    const failedIdempotencyKey = `${key}:${traceId}:failed`;
 
     const moduleConfig = await ensureCustomModuleConfig(persistence, config, key);
     if (!moduleConfig) {
@@ -1817,11 +1852,78 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       ended_at: null
     });
 
-    const updated = await persistence.updateCustomModuleConfig(key, {
-      is_enabled: typeof body.is_enabled === "boolean" ? body.is_enabled : undefined,
-      config_json: isPlainObject(body.config_json) ? body.config_json : undefined,
-      updated_by: "admin"
-    });
+    let updated: Awaited<ReturnType<Persistence["updateCustomModuleConfig"]>>;
+    try {
+      updated = await withRetry({
+        operationName: "module_config_update",
+        maxAttempts: 3,
+        initialDelayMs: 50,
+        onRetry: ({ operationName, attempt, error, nextDelayMs }) => {
+          app.log.warn(
+            {
+              operation: operationName,
+              attempt,
+              nextDelayMs,
+              err: error,
+              module_key: key,
+              trace_id: traceId
+            },
+            "Retrying module config update"
+          );
+        },
+        fn: async () =>
+          persistence.updateCustomModuleConfig(key, {
+            is_enabled: typeof body.is_enabled === "boolean" ? body.is_enabled : undefined,
+            config_json: isPlainObject(body.config_json) ? body.config_json : undefined,
+            updated_by: "admin"
+          })
+      });
+    } catch (error) {
+      app.log.error(
+        { err: error, module_key: key, trace_id: traceId },
+        "Module config update failed after retries"
+      );
+
+      try {
+        await publisher.publish({
+          eventType: "module.execution.failed",
+          traceId,
+          idempotencyKey: failedIdempotencyKey,
+          payload: {
+            module_key: key,
+            status: "failed",
+            reason: "config_update_failed"
+          }
+        });
+      } catch (publishError) {
+        app.log.error(
+          { err: publishError, module_key: key, trace_id: traceId },
+          "Failed to publish module.execution.failed event"
+        );
+      }
+
+      try {
+        await persistence.createModuleExecution({
+          module_key: key,
+          event_type: "module.execution.failed",
+          status: "failed",
+          trace_id: traceId,
+          idempotency_key: failedIdempotencyKey,
+          details_json: {
+            reason: "config_update_failed"
+          },
+          started_at: startedAt,
+          ended_at: new Date()
+        });
+      } catch (persistError) {
+        app.log.error(
+          { err: persistError, module_key: key, trace_id: traceId },
+          "Failed to persist module.execution.failed"
+        );
+      }
+
+      return sendError(reply, 500, "Module execution failed", "MODULE_EXECUTION_FAILED");
+    }
 
     if (!updated) {
       return sendError(reply, 404, "Module config not found", "NOT_FOUND");

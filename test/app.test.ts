@@ -70,6 +70,8 @@ class FakePersistence implements Persistence {
   private scheduleRunCounter = 1;
 
   public dbReady = true;
+  public moduleUpdateFailuresRemaining = 0;
+  public moduleUpdateAttempts = 0;
 
   public async pingDb(): Promise<void> {
     if (!this.dbReady) {
@@ -746,6 +748,12 @@ class FakePersistence implements Persistence {
       updated_by: string;
     }
   ): Promise<CustomModuleConfigEntity | null> {
+    this.moduleUpdateAttempts += 1;
+    if (this.moduleUpdateFailuresRemaining > 0) {
+      this.moduleUpdateFailuresRemaining -= 1;
+      throw new Error("module config update transient failure");
+    }
+
     const moduleConfig = this.modules.find((module) => module.module_key === key);
     if (!moduleConfig) {
       return null;
@@ -1589,6 +1597,73 @@ describe("smoke-core API", () => {
     expect(
       publisher.events.filter((event) => event.eventType === "module.execution.completed")
     ).toHaveLength(1);
+  });
+
+  it("retries module patch after transient failure", async () => {
+    await app.inject({
+      method: "GET",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    persistence.moduleUpdateFailuresRemaining = 1;
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-retry-1" },
+      payload: {
+        is_enabled: false,
+        config_json: { threshold: 55 }
+      }
+    });
+
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().config_json).toEqual({ threshold: 55 });
+    expect(persistence.moduleUpdateAttempts).toBe(2);
+    expect(
+      publisher.events.filter((event) => event.eventType === "module.execution.completed")
+    ).toHaveLength(1);
+  });
+
+  it("returns 500 and records failed execution when module patch retries exhausted", async () => {
+    await app.inject({
+      method: "GET",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    persistence.moduleUpdateFailuresRemaining = 5;
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-fail-1" },
+      payload: {
+        is_enabled: false,
+        config_json: { threshold: 99 }
+      }
+    });
+
+    expect(patchResponse.statusCode).toBe(500);
+    expect(patchResponse.json().code).toBe("MODULE_EXECUTION_FAILED");
+    expect(persistence.moduleUpdateAttempts).toBe(3);
+    expect(
+      publisher.events.filter((event) => event.eventType === "module.execution.failed")
+    ).toHaveLength(1);
+
+    const executionsResponse = await app.inject({
+      method: "GET",
+      url: `/api/custom-modules/${SWITCH_MODULE_KEY}/executions`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(executionsResponse.statusCode).toBe(200);
+    expect(executionsResponse.json().items).toHaveLength(2);
+    expect(
+      executionsResponse
+        .json()
+        .items.some((item: { status: string }) => item.status === "failed")
+    ).toBe(true);
   });
 
   it("lists custom modules", async () => {
