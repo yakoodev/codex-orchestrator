@@ -7,6 +7,7 @@ Open-source orchestrator bus for Codex workers with limit-aware scheduling, dete
 - English docs: [`docs/en/00-index.md`](/docs/en/00-index.md)
 - Contracts: [`docs/contracts`](/docs/contracts)
 - Docker/Ops: [`docs/docker`](/docs/docker)
+- PR1 status tracker: [`docs/ops/pr1-progress.md`](/docs/ops/pr1-progress.md)
 
 ## Quickstart (Root UX)
 ```bash

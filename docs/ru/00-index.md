@@ -6,6 +6,7 @@
 - [API и события](/docs/ru/02-api-events.md)
 - [Data + Runtime](/docs/ru/03-data-runtime.md)
 - [Docker + Ops](/docs/ru/04-docker-ops.md)
+- [Статус реализации PR1](/docs/ops/pr1-progress.md)
 - [Security + Threat model lite](/docs/ru/05-security-threat-model-lite.md)
 - [OSS процесс](/docs/ru/06-oss-process.md)
 - [Матрица трассировки](/docs/ru/07-traceability-matrix.md)
