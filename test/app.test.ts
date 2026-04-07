@@ -2230,11 +2230,22 @@ describe("smoke-core API", () => {
     const releaseResponse = await app.inject({
       method: "POST",
       url: "/api/queue/held/release",
-      headers: { "x-admin-token": config.adminToken }
+      headers: {
+        "x-admin-token": config.adminToken,
+        "x-trace-id": "trace-queue-release-1"
+      }
     });
 
     expect(releaseResponse.statusCode).toBe(202);
     expect(releaseResponse.json()).toEqual({ accepted: true });
+    expect(
+      publisher.events.some(
+        (event) =>
+          event.eventType === "queue.hold_released" &&
+          event.payload["reason"] === "manual_release" &&
+          event.payload["held_count"] === 1
+      )
+    ).toBe(true);
 
     const heldAfterRelease = await app.inject({
       method: "GET",

@@ -44,6 +44,7 @@
 - [x] Публикуются обязательные события для реализованных действий, включая:
   - `auth_profile.uploaded`, `auth_profile.activated`
   - `auth_profile.switch.started/retried/completed/skipped` (manual activate/deactivate + retry/no-op)
+  - `queue.hold_released` (manual queue release endpoint)
   - `module.execution.started/completed/failed`
   - `agent.delegation.requested/accepted/completed/failed`
   - `schedule.rule.*`, `schedule.run.*`

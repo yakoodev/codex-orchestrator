@@ -2742,8 +2742,20 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     });
   });
 
-  app.post("/api/queue/held/release", async (_request, reply) => {
-    await persistence.releaseHeldQueue();
+  app.post("/api/queue/held/release", async (request, reply) => {
+    const traceId = getTraceId(request);
+    const releasedCount = await persistence.releaseHeldQueue();
+
+    await publisher.publish({
+      eventType: "queue.hold_released",
+      traceId,
+      idempotencyKey: `queue_hold_release:${traceId}`,
+      payload: {
+        reason: "manual_release",
+        held_count: releasedCount
+      }
+    });
+
     return reply.code(202).send({ accepted: true });
   });
 
