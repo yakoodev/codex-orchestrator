@@ -37,6 +37,12 @@ npm run logs:check
 ```
 The script verifies API health/events, `docker compose logs` for `bus`, Redis Streams (`orchestrator.events`), and optional Loki readiness.
 
+Best-effort limits probe for one or many `CODEX_HOME` profiles:
+```bash
+npm run limits:check -- --home="$HOME/.codex"
+```
+The script reads local sqlite logs for `codex.rate_limits` snapshots and usage-limit errors, and can run optional live probe (`--probe`).
+
 Real Codex delegation runtime:
 - `bus` image includes `@openai/codex` CLI.
 - Runtime mode is controlled by `.env`:

@@ -85,6 +85,31 @@ curl http://localhost:${LOKI_PORT:-3100}/ready
 ```
 If port `3100` is busy on host, change `LOKI_PORT` in root `.env` before starting `--profile observability`.
 
+## Limits retrieval (best-effort)
+To inspect available usage-limit signals for one or many `CODEX_HOME` directories:
+```bash
+npm run limits:check -- --home="$HOME/.codex"
+```
+
+For multiple homes (example, PowerShell):
+```powershell
+npm run limits:check -- --home "C:\Users\Yakoo\1.codex" --home "C:\Users\Yakoo\2.codex" --home "C:\Users\Yakoo\22.codex" --home "C:\Users\Yakoo\.codex"
+```
+
+Optional live probe (`codex exec`) per home:
+```bash
+npm run limits:check -- --home="$HOME/.codex" --probe --probe-timeout=90
+```
+
+JSON output for automation:
+```bash
+npm run limits:check -- --home="$HOME/.codex" --json
+```
+
+Notes:
+- Exact current percentages are available only when a recent `codex.rate_limits` event exists in local sqlite logs.
+- If no `codex.rate_limits` event is present, tool still reports latest explicit `usage limit` hits (if any) and live-probe availability status.
+
 ## Web operator panel
 - Open `http://localhost:8080/ui/`.
 - Save `X-Admin-Token` from root `.env` in the Connection section.
