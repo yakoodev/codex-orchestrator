@@ -63,6 +63,7 @@
 - [x] Расширенный API слой (agents templates, auth contexts, workers, artifacts, packs, delegation, schedules).
 - [x] Route coverage check против OpenAPI (`npm run contract-routes`).
 - [x] Schedule rule AST evaluator (`all/any/not`, typed predicates, UTC `time.cron`, legacy `conditions`).
+- [x] Идемпотентность `POST /api/schedules/{id}/trigger` по `trace_id` (повтор возвращает существующий run).
 - [x] Delegation lifecycle и timeout-retry semantics (до 3 попыток с terminal `failed`).
 - [x] Retry/backoff и идемпотентность для `PATCH /api/custom-modules/{key}`.
 
@@ -75,4 +76,3 @@
 - [x] `npm run typecheck`
 - [x] `npm run test`
 - [x] `npm run contracts:check`
-

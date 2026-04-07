@@ -2276,6 +2276,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     const now = new Date();
+    const idempotencyKey = `${id}:${traceId}`;
+    const existingRun = await persistence.getScheduledRunByIdempotency(id, idempotencyKey);
+    if (existingRun) {
+      return reply.code(202).send(scheduledRunToResponse(existingRun));
+    }
 
     if (!rule.is_enabled) {
       const failedRun = await persistence.createScheduledRun({
@@ -2285,7 +2290,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: now,
         skip_reason: "rule_disabled",
         trace_id: traceId,
-        idempotency_key: `${id}:${traceId}`,
+        idempotency_key: idempotencyKey,
         result_json: { reason: "rule_disabled" }
       });
 
@@ -2314,7 +2319,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ended_at: now,
         skip_reason: "active_run_exists",
         trace_id: traceId,
-        idempotency_key: `${id}:${traceId}`,
+        idempotency_key: idempotencyKey,
         result_json: { active_run_id: activeRun.id }
       });
 
@@ -2341,7 +2346,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       ended_at: null,
       skip_reason: null,
       trace_id: traceId,
-      idempotency_key: `${id}:${traceId}`,
+      idempotency_key: idempotencyKey,
       result_json: null
     });
 

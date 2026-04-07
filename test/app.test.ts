@@ -495,6 +495,17 @@ class FakePersistence implements Persistence {
     return run;
   }
 
+  public async getScheduledRunByIdempotency(
+    ruleId: string,
+    idempotencyKey: string
+  ): Promise<ScheduledRunEntity | null> {
+    return (
+      this.scheduledRuns.find(
+        (run) => run.rule_id === ruleId && run.idempotency_key === idempotencyKey
+      ) ?? null
+    );
+  }
+
   public async getActiveScheduledRun(ruleId: string): Promise<ScheduledRunEntity | null> {
     return (
       this.scheduledRuns.find(
@@ -1706,6 +1717,53 @@ describe("smoke-core API", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().matched).toBe(true);
+  });
+
+  it("returns existing scheduled run on trigger retry with same trace id", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "idempotent trigger",
+        scope: "global",
+        project_id: null,
+        rule_ast: {
+          predicate: "event.type",
+          value: "manual.trigger"
+        },
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart"
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const ruleId = createResponse.json().id as string;
+
+    const firstTrigger = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/trigger`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-idem-1" }
+    });
+    expect(firstTrigger.statusCode).toBe(202);
+    expect(firstTrigger.json().status).toBe("started");
+    const firstRunId = firstTrigger.json().id as string;
+
+    const secondTrigger = await app.inject({
+      method: "POST",
+      url: `/api/schedules/${ruleId}/trigger`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-idem-1" }
+    });
+    expect(secondTrigger.statusCode).toBe(202);
+    expect(secondTrigger.json().id).toBe(firstRunId);
+    expect(secondTrigger.json().status).toBe("started");
+
+    const runsResponse = await app.inject({
+      method: "GET",
+      url: `/api/schedules/${ruleId}/runs`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(runsResponse.statusCode).toBe(200);
+    expect(runsResponse.json().items).toHaveLength(1);
   });
 
   it("returns held queue tasks from WAITING_LIMIT", async () => {

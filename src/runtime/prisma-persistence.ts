@@ -739,6 +739,23 @@ export class PrismaPersistence implements Persistence {
     return toScheduledRunEntity(created);
   }
 
+  public async getScheduledRunByIdempotency(
+    ruleId: string,
+    idempotencyKey: string
+  ): Promise<ScheduledRunEntity | null> {
+    const run = await this.prisma.scheduledRun.findFirst({
+      where: {
+        rule_id: ruleId,
+        idempotency_key: idempotencyKey
+      }
+    });
+    if (!run) {
+      return null;
+    }
+
+    return toScheduledRunEntity(run);
+  }
+
   public async getActiveScheduledRun(ruleId: string): Promise<ScheduledRunEntity | null> {
     const run = await this.prisma.scheduledRun.findFirst({
       where: {
