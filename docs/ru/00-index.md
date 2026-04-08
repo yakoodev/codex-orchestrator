@@ -7,6 +7,7 @@
 - [Data + Runtime](/docs/ru/03-data-runtime.md)
 - [Docker + Ops](/docs/ru/04-docker-ops.md)
 - [Статус реализации PR1](/docs/ops/pr1-progress.md)
+- [Roadmap (post-PR1)](/docs/ops/roadmap.md)
 - [Ручные тест-сценарии (UI + API)](/docs/ops/manual-test-scenarios.md)
 - [Security + Threat model lite](/docs/ru/05-security-threat-model-lite.md)
 - [OSS процесс](/docs/ru/06-oss-process.md)
