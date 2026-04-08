@@ -54,6 +54,7 @@ docker compose exec bus printenv TG_ENABLED TG_ALLOWED_CHAT_IDS TG_ALLOWED_USER_
 Notes:
 - Adapter runs in fail-safe mode: Telegram/API connectivity errors do not stop Web/API control path.
 - Incoming updates are deduplicated by `update_id`; last processed offset is persisted in `TG_STATE_FILE_PATH`.
+- Adapter also bridges key Redis Stream events into Telegram (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) with debounce.
 - `/say` command is reserved and currently returns explicit "not supported" response.
 
 ## Health checks

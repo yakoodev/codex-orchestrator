@@ -66,6 +66,7 @@ Telegram adapter (MVP long polling):
 - Enable in `.env`: `TG_ENABLED=true`, `TG_BOT_TOKEN=...`, and whitelist (`TG_ALLOWED_CHAT_IDS` and/or `TG_ALLOWED_USER_IDS`)
 - Optional proxy: `TG_PROXY_URL=socks5://...` or `http(s)://...`
 - Supported commands: `/help`, `/tasks`, `/task`, `/pause`, `/resume`, `/stop`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`
+- System notifications are bridged from Redis Streams with debounce (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`)
 
 Optional observability profile:
 ```bash

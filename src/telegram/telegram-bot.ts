@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
+import Redis from "ioredis";
 import { ProxyAgent } from "proxy-agent";
 import type { AppConfig } from "../config";
 
@@ -53,7 +54,23 @@ interface TelegramTransport {
 
 interface TelegramStatePayload {
   last_update_id: number;
+  last_stream_id?: string;
 }
+
+interface EventEnvelope {
+  event_type?: string;
+  timestamp?: string;
+  trace_id?: string;
+  payload?: Record<string, unknown>;
+}
+
+const TELEGRAM_NOTIFICATION_TOPICS = new Set<string>([
+  "queue.hold_started",
+  "auth_profile.switch.started",
+  "auth_profile.switch.completed",
+  "auth_profile.switch.skipped",
+  "queue.hold_released"
+]);
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -143,6 +160,46 @@ function formatDateTimeMskFromAny(value: unknown): string {
   }).format(date);
 }
 
+function parseStreamFieldsToRecord(fields: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (let index = 0; index < fields.length; index += 2) {
+    const key = fields[index];
+    const value = fields[index + 1];
+    if (typeof key === "string" && typeof value === "string") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function buildNotificationTextFromEnvelope(envelope: EventEnvelope): string | null {
+  const eventType = asString(envelope.event_type);
+  if (!eventType || !TELEGRAM_NOTIFICATION_TOPICS.has(eventType)) {
+    return null;
+  }
+
+  const payload = asObject(envelope.payload) ?? {};
+  const at = formatDateTimeMskFromAny(envelope.timestamp);
+
+  if (eventType === "queue.hold_started") {
+    return `queue: hold_started\nheld_count=${asNumber(payload["held_count"]) ?? "n/a"}\n${at}`;
+  }
+  if (eventType === "queue.hold_released") {
+    return `queue: hold_released\nheld_count=${asNumber(payload["held_count"]) ?? "n/a"}\n${at}`;
+  }
+  if (eventType === "auth_profile.switch.started") {
+    return `switch: started\nto=${toRecordId(payload["to_profile_id"]) ?? "n/a"}\n${at}`;
+  }
+  if (eventType === "auth_profile.switch.completed") {
+    return `switch: completed\nto=${toRecordId(payload["to_profile_id"]) ?? "n/a"}\n${at}`;
+  }
+  if (eventType === "auth_profile.switch.skipped") {
+    return `switch: skipped\nreason=${asString(payload["reason"]) ?? "n/a"}\n${at}`;
+  }
+
+  return null;
+}
+
 function toRecordId(value: unknown): string | null {
   const direct = asString(value);
   if (direct) {
@@ -157,27 +214,40 @@ function toRecordId(value: unknown): string | null {
   return null;
 }
 
-async function readTelegramState(filePath: string): Promise<number> {
+async function readTelegramState(filePath: string): Promise<{
+  lastUpdateId: number;
+  lastStreamId: string;
+}> {
   try {
     const content = await fs.readFile(filePath, "utf8");
     const parsed = JSON.parse(content) as TelegramStatePayload;
     const updateId = asNumber(parsed?.last_update_id);
-    if (updateId == null) {
-      return 0;
-    }
-    return Math.max(0, Math.trunc(updateId));
+    const normalizedUpdateId =
+      updateId == null ? 0 : Math.max(0, Math.trunc(updateId));
+    const streamId = asString(parsed?.last_stream_id) ?? "$";
+    return {
+      lastUpdateId: normalizedUpdateId,
+      lastStreamId: streamId
+    };
   } catch {
-    return 0;
+    return {
+      lastUpdateId: 0,
+      lastStreamId: "$"
+    };
   }
 }
 
-async function writeTelegramState(filePath: string, lastUpdateId: number): Promise<void> {
+async function writeTelegramState(
+  filePath: string,
+  state: { lastUpdateId: number; lastStreamId: string }
+): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
 
   const tempPath = `${filePath}.tmp`;
   const payload: TelegramStatePayload = {
-    last_update_id: Math.max(0, Math.trunc(lastUpdateId))
+    last_update_id: Math.max(0, Math.trunc(state.lastUpdateId)),
+    last_stream_id: state.lastStreamId
   };
   await fs.writeFile(tempPath, JSON.stringify(payload, null, 2), "utf8");
   await fs.rename(tempPath, filePath);
@@ -648,9 +718,14 @@ class TelegramBotRunner {
   private readonly transport: TelegramTransport;
   private readonly allowedChatIds: Set<string>;
   private readonly allowedUserIds: Set<string>;
+  private readonly notificationDebounceMs = 5000;
   private running = false;
-  private loopPromise: Promise<void> | null = null;
+  private updatesLoopPromise: Promise<void> | null = null;
+  private notificationsLoopPromise: Promise<void> | null = null;
   private lastUpdateId = 0;
+  private lastStreamId = "$";
+  private readonly lastNotificationByTopic = new Map<string, number>();
+  private redis: Redis | null = null;
 
   public constructor(private readonly deps: TelegramBotRunnerDeps) {
     this.transport = new TelegramHttpTransport(
@@ -681,12 +756,35 @@ class TelegramBotRunner {
       return;
     }
 
-    this.lastUpdateId = await readTelegramState(this.deps.config.telegramStateFilePath);
+    const persistedState = await readTelegramState(this.deps.config.telegramStateFilePath);
+    this.lastUpdateId = persistedState.lastUpdateId;
+    this.lastStreamId = persistedState.lastStreamId;
     this.running = true;
-    this.loopPromise = this.pollLoop();
+    this.updatesLoopPromise = this.pollLoop();
+
+    try {
+      this.redis = new Redis(this.deps.config.redisUrl, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1
+      });
+      await this.redis.connect();
+      this.notificationsLoopPromise = this.pollNotificationsLoop();
+    } catch (error) {
+      this.deps.app.log.error(
+        { err: error },
+        "Telegram notifications bridge is unavailable; command polling stays active"
+      );
+      if (this.redis) {
+        await this.redis.quit().catch(() => undefined);
+      }
+      this.redis = null;
+      this.notificationsLoopPromise = null;
+    }
+
     this.deps.app.log.info(
       {
         last_update_id: this.lastUpdateId,
+        last_stream_id: this.lastStreamId,
         polling_timeout_sec: this.deps.config.telegramPollingTimeoutSec
       },
       "Telegram adapter started"
@@ -695,9 +793,17 @@ class TelegramBotRunner {
 
   public async stop(): Promise<void> {
     this.running = false;
-    if (this.loopPromise) {
-      await this.loopPromise;
-      this.loopPromise = null;
+    if (this.updatesLoopPromise) {
+      await this.updatesLoopPromise;
+      this.updatesLoopPromise = null;
+    }
+    if (this.notificationsLoopPromise) {
+      await this.notificationsLoopPromise;
+      this.notificationsLoopPromise = null;
+    }
+    if (this.redis) {
+      await this.redis.quit().catch(() => undefined);
+      this.redis = null;
     }
   }
 
@@ -731,14 +837,12 @@ class TelegramBotRunner {
           }
 
           this.lastUpdateId = update.update_id;
-          await writeTelegramState(this.deps.config.telegramStateFilePath, this.lastUpdateId).catch(
-            (error: unknown) => {
-              this.deps.app.log.error(
-                { err: error, update_id: this.lastUpdateId },
-                "Failed to persist telegram update offset"
-              );
-            }
-          );
+          await this.persistTelegramState().catch((error: unknown) => {
+            this.deps.app.log.error(
+              { err: error, update_id: this.lastUpdateId },
+              "Failed to persist telegram update offset"
+            );
+          });
         }
 
         currentBackoff = minBackoff;
@@ -751,6 +855,114 @@ class TelegramBotRunner {
         currentBackoff = Math.min(maxBackoff, currentBackoff * 2);
       }
     }
+  }
+
+  private async pollNotificationsLoop(): Promise<void> {
+    if (!this.redis) {
+      return;
+    }
+    if (this.allowedChatIds.size === 0) {
+      this.deps.app.log.info(
+        "Telegram notifications bridge is disabled because TG_ALLOWED_CHAT_IDS is empty"
+      );
+      return;
+    }
+
+    const minBackoff = Math.max(200, this.deps.config.telegramBackoffMinMs);
+    const maxBackoff = Math.max(minBackoff, this.deps.config.telegramBackoffMaxMs);
+    let currentBackoff = minBackoff;
+
+    while (this.running && this.redis) {
+      try {
+        const xreadResult = (await this.redis.xread(
+          "COUNT",
+          50,
+          "BLOCK",
+          10000,
+          "STREAMS",
+          this.deps.config.redisStreamKey,
+          this.lastStreamId
+        )) as [string, [string, string[]][]][] | null;
+
+        if (!xreadResult || xreadResult.length === 0) {
+          continue;
+        }
+
+        for (const [, entries] of xreadResult) {
+          for (const [entryId, fields] of entries) {
+            this.lastStreamId = entryId;
+            await this.persistTelegramState().catch((error: unknown) => {
+              this.deps.app.log.error(
+                { err: error, stream_id: this.lastStreamId },
+                "Failed to persist telegram stream offset"
+              );
+            });
+
+            const fieldRecord = parseStreamFieldsToRecord(fields);
+            const eventJson = fieldRecord["event"];
+            if (!eventJson) {
+              continue;
+            }
+
+            let envelope: EventEnvelope;
+            try {
+              envelope = JSON.parse(eventJson) as EventEnvelope;
+            } catch {
+              continue;
+            }
+
+            const eventType = asString(envelope.event_type);
+            if (!eventType || !TELEGRAM_NOTIFICATION_TOPICS.has(eventType)) {
+              continue;
+            }
+
+            if (!this.shouldSendTopicNotification(eventType)) {
+              continue;
+            }
+
+            const text = buildNotificationTextFromEnvelope(envelope);
+            if (!text) {
+              continue;
+            }
+            await this.broadcastToAllowedChats(text);
+          }
+        }
+
+        currentBackoff = minBackoff;
+      } catch (error) {
+        this.deps.app.log.error(
+          { err: error, backoff_ms: currentBackoff },
+          "Telegram notifications polling failed; continuing with backoff"
+        );
+        await sleep(currentBackoff);
+        currentBackoff = Math.min(maxBackoff, currentBackoff * 2);
+      }
+    }
+  }
+
+  private shouldSendTopicNotification(topic: string): boolean {
+    const now = Date.now();
+    const lastSentAt = this.lastNotificationByTopic.get(topic);
+    if (lastSentAt != null && now - lastSentAt < this.notificationDebounceMs) {
+      return false;
+    }
+
+    this.lastNotificationByTopic.set(topic, now);
+    return true;
+  }
+
+  private async broadcastToAllowedChats(text: string): Promise<void> {
+    const messages = [...this.allowedChatIds].map(async (chatId) => {
+      try {
+        await this.transport.sendMessage(chatId, text);
+      } catch (error) {
+        this.deps.app.log.error(
+          { err: error, chat_id: chatId },
+          "Failed to send telegram notification"
+        );
+      }
+    });
+    await Promise.all(messages);
   }
 
   private async processUpdate(update: TelegramUpdate): Promise<void> {
@@ -786,6 +998,13 @@ class TelegramBotRunner {
     });
 
     await this.transport.sendMessage(chatId, reply);
+  }
+
+  private async persistTelegramState(): Promise<void> {
+    await writeTelegramState(this.deps.config.telegramStateFilePath, {
+      lastUpdateId: this.lastUpdateId,
+      lastStreamId: this.lastStreamId
+    });
   }
 
   private async callApi(
@@ -853,5 +1072,6 @@ export function createTelegramBotController(deps: TelegramBotRunnerDeps): Telegr
 }
 
 export const telegramCommandInternals = {
-  normalizeCommand
+  normalizeCommand,
+  buildNotificationTextFromEnvelope
 };

@@ -95,4 +95,17 @@ describe("telegram command handler", () => {
 
     expect(response).toContain("/say пока не поддерживается");
   });
+
+  it("formats redis stream notification envelopes", () => {
+    const text = telegramCommandInternals.buildNotificationTextFromEnvelope({
+      event_type: "queue.hold_started",
+      timestamp: "2026-04-08T10:00:00.000Z",
+      payload: {
+        held_count: 3
+      }
+    });
+
+    expect(text).toContain("queue: hold_started");
+    expect(text).toContain("held_count=3");
+  });
 });

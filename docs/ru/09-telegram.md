@@ -31,6 +31,7 @@
 ## Текущий статус реализации
 - Реализован long polling адаптер с whitelist (`TG_ALLOWED_CHAT_IDS` / `TG_ALLOWED_USER_IDS`), дедупликацией `update_id`, persisted offset (`TG_STATE_FILE_PATH`) и exponential backoff.
 - Реализована поддержка proxy через `TG_PROXY_URL` (`socks5://`, `http://`, `https://`).
+- Реализован bridge системных уведомлений из Redis Streams (`hold_started`, `switch_started`, `switch_completed`, `switch_skipped`, `hold_released`) с debounce.
 - Все перечисленные команды, кроме `/say`, подключены к рабочему API слою.
 - `/say` пока возвращает явный ответ "не поддерживается в текущем контуре".
 
