@@ -680,6 +680,11 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.agent-card-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .task-card-selected,
 .agent-card-selected {
   border-color: var(--line-strong) !important;
@@ -699,6 +704,17 @@ summary:focus-visible {
   font-size: 0.84rem;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.agent-card-head code,
+.agent-card-meta {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.agent-card-head code {
+  display: block;
+  max-width: 100%;
 }
 
 .mono-box {
@@ -863,6 +879,16 @@ summary:focus-visible {
   .cards-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.agents-layout .board-column {
+  grid-template-rows: auto auto;
+}
+
+.agents-layout .card-list {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 @media (max-width: 1120px) {
