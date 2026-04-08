@@ -1212,7 +1212,7 @@ describe("smoke-core API", () => {
     const uiResponse = await app.inject({ method: "GET", url: "/ui/" });
     expect(uiResponse.statusCode).toBe(200);
     expect(uiResponse.headers["content-type"]).toContain("text/html");
-    expect(uiResponse.body).toContain("Codex Orchestrator Control Panel");
+    expect(uiResponse.body).toContain('data-i18n="entry_title"');
     expect(uiResponse.body).toContain('id="open-console"');
 
     const consoleResponse = await app.inject({ method: "GET", url: "/ui/console.html" });

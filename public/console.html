@@ -17,13 +17,13 @@
         </div>
 
         <nav class="route-nav" aria-label="Console routes">
-          <a href="#/dashboard" class="route-link" data-route-link="dashboard" data-i18n="route_dashboard">Dashboard</a>
-          <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Tasks</a>
-          <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Agents</a>
-          <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Accounts</a>
-          <a href="#/memory" class="route-link" data-route-link="memory" data-i18n="route_memory">Memory</a>
-          <a href="#/system" class="route-link" data-route-link="system" data-i18n="route_system">System</a>
-          <a href="#/logs" class="route-link" data-route-link="logs" data-i18n="route_logs">Logs</a>
+          <a href="#/dashboard" class="route-link" data-route-link="dashboard" data-i18n="route_dashboard">Обзор</a>
+          <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Задачи</a>
+          <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Агенты</a>
+          <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Аккаунты</a>
+          <a href="#/memory" class="route-link" data-route-link="memory" data-i18n="route_memory">Память</a>
+          <a href="#/system" class="route-link" data-route-link="system" data-i18n="route_system">Система</a>
+          <a href="#/logs" class="route-link" data-route-link="logs" data-i18n="route_logs">Логи</a>
         </nav>
 
         <section class="sidebar-tools">
@@ -65,17 +65,17 @@
       <div class="console-main">
         <header class="quickbar">
           <div>
-            <p id="quickbar-route" class="eyebrow">DASHBOARD</p>
-            <h2 id="quickbar-title">Dashboard</h2>
+            <p id="quickbar-route" class="eyebrow">ОБЗОР</p>
+            <h2 id="quickbar-title">Обзор</h2>
             <p id="quickbar-subtitle" class="meta-note"></p>
           </div>
           <div class="quickbar-actions">
             <button id="quick-refresh-route" class="button-ghost" data-i18n="refresh_current">Обновить экран</button>
-            <button id="quick-refresh-all" data-i18n="refresh_all">Полный refresh</button>
+            <button id="quick-refresh-all" data-i18n="refresh_all">Обновить всё</button>
           </div>
         </header>
 
-        <section class="kpi-strip" aria-label="Main indicators">
+        <section id="kpi-strip" class="kpi-strip" aria-label="Main indicators">
           <article class="kpi-card">
             <p class="tiny-label" data-i18n="stats_tasks">Задачи</p>
             <p id="stat-tasks" class="kpi-value">0</p>
@@ -471,7 +471,7 @@
                     </select>
                   </div>
                   <div>
-                    <label for="log-filter-scope" data-i18n="logs_filter_scope">Scope</label>
+                    <label for="log-filter-scope" data-i18n="logs_filter_scope">Область</label>
                     <select id="log-filter-scope">
                       <option value="all" data-i18n="logs_filter_all">Все</option>
                       <option value="ui">ui</option>
