@@ -33,9 +33,14 @@ const I18N = {
     table_priority: "Приоритет",
     held_title: "Удержанная очередь",
     release: "Освободить",
+    agent_cards_title: "Карточки агентов",
+    agent_preparing: "Готовятся",
+    agent_running: "Запущены",
+    agent_recent: "Недавние",
+    accounts_title: "Аккаунты",
     profiles_title: "Auth-профили",
     profile_label_label: "Метка",
-    profile_zip_label: "ZIP файл",
+    profile_json_label: "Файл auth.json",
     upload_profile: "Загрузить профиль",
     table_label: "Метка",
     table_state: "Состояние",
@@ -54,6 +59,10 @@ const I18N = {
     no_tasks: "Задач пока нет.",
     no_held: "Нет задач в WAITING_LIMIT.",
     no_profiles: "Профили ещё не загружены.",
+    no_accounts: "Карточек аккаунтов пока нет.",
+    no_preparing_agents: "Нет агентов в состоянии подготовки.",
+    no_running_agents: "Нет запущенных агентов.",
+    no_recent_agents: "Нет завершенных/ошибочных запусков.",
     no_switch_events: "Событий переключения пока нет.",
     no_executions: "Исполнений модуля пока нет.",
     held_summary_count: "{count} задач(а/и) удержано guard-политикой.",
@@ -75,9 +84,11 @@ const I18N = {
     log_held_refreshed: "Удержанная очередь обновлена.",
     log_held_released: "Удержанная очередь освобождена.",
     log_profiles_refreshed: "Профили обновлены.",
-    log_upload_requirements: "Для upload нужны label и ZIP файл.",
+    log_upload_requirements: "Для upload нужны label и файл auth.json.",
     log_profile_uploaded: "Профиль загружен",
     log_profile_action_accepted: "Операция по профилю принята",
+    log_agent_cards_refreshed: "Карточки агентов обновлены.",
+    log_account_fleet_refreshed: "Карточки аккаунтов обновлены.",
     log_events_refreshed: "Switch events обновлены.",
     log_module_refreshed: "Конфиг модуля обновлен.",
     log_module_json_invalid: "Не удалось применить модуль: config_json должен быть валидным JSON.",
@@ -116,9 +127,14 @@ const I18N = {
     table_priority: "Priority",
     held_title: "Held Queue",
     release: "Release",
+    agent_cards_title: "Agent Runtime Cards",
+    agent_preparing: "Preparing",
+    agent_running: "Running",
+    agent_recent: "Recent",
+    accounts_title: "Account Fleet",
     profiles_title: "Auth Profiles",
     profile_label_label: "Label",
-    profile_zip_label: "ZIP file",
+    profile_json_label: "auth.json file",
     upload_profile: "Upload profile",
     table_label: "Label",
     table_state: "State",
@@ -137,6 +153,10 @@ const I18N = {
     no_tasks: "No tasks yet.",
     no_held: "No tasks in WAITING_LIMIT.",
     no_profiles: "No profiles uploaded yet.",
+    no_accounts: "No account cards yet.",
+    no_preparing_agents: "No agents in preparing state.",
+    no_running_agents: "No running agents.",
+    no_recent_agents: "No recent completed/failed agents.",
     no_switch_events: "No switch events yet.",
     no_executions: "No module executions yet.",
     held_summary_count: "{count} task(s) are currently held by guard policy.",
@@ -158,9 +178,11 @@ const I18N = {
     log_held_refreshed: "Held queue refreshed.",
     log_held_released: "Held queue released.",
     log_profiles_refreshed: "Profiles refreshed.",
-    log_upload_requirements: "Upload requires label and ZIP file.",
+    log_upload_requirements: "Upload requires label and auth.json file.",
     log_profile_uploaded: "Profile uploaded",
     log_profile_action_accepted: "Profile action accepted",
+    log_agent_cards_refreshed: "Agent cards refreshed.",
+    log_account_fleet_refreshed: "Account cards refreshed.",
     log_events_refreshed: "Switch events refreshed.",
     log_module_refreshed: "Module config refreshed.",
     log_module_json_invalid: "Module patch failed: config_json must be valid JSON.",
@@ -184,6 +206,10 @@ const ui = {
   taskForm: document.getElementById("task-form"),
   refreshTasks: document.getElementById("refresh-tasks"),
   tasksBody: document.getElementById("tasks-body"),
+  refreshAgentCards: document.getElementById("refresh-agent-cards"),
+  agentsPreparing: document.getElementById("agents-preparing"),
+  agentsRunning: document.getElementById("agents-running"),
+  agentsRecent: document.getElementById("agents-recent"),
   refreshHeld: document.getElementById("refresh-held"),
   releaseHeld: document.getElementById("release-held"),
   heldSummary: document.getElementById("held-summary"),
@@ -194,6 +220,8 @@ const ui = {
   profilesBody: document.getElementById("profiles-body"),
   refreshSwitchEvents: document.getElementById("refresh-switch-events"),
   switchEvents: document.getElementById("switch-events"),
+  refreshAccountFleet: document.getElementById("refresh-account-fleet"),
+  accountFleet: document.getElementById("account-fleet"),
   moduleForm: document.getElementById("module-form"),
   moduleEnabled: document.getElementById("module-enabled"),
   moduleConfig: document.getElementById("module-config"),
@@ -211,8 +239,10 @@ const ui = {
 const appState = {
   lang: "ru",
   tasks: [],
+  agentCards: { preparing: [], running: [], recent: [] },
   held: [],
   profiles: [],
+  accountFleet: [],
   activeProfile: null,
   switchEvents: [],
   executions: [],
@@ -327,8 +357,10 @@ function applyI18n() {
   });
 
   renderTasks(appState.tasks);
+  renderAgentCards(appState.agentCards);
   renderHeld(appState.held);
   renderProfiles(appState.profiles);
+  renderAccountFleet(appState.accountFleet);
   renderSwitchEvents(appState.switchEvents);
   renderExecutions(appState.executions);
   applyHealthState();
@@ -407,6 +439,82 @@ function renderTasks(items) {
   updateStats();
 }
 
+function renderAgentCards(cards) {
+  const nextCards =
+    cards && typeof cards === "object"
+      ? {
+          preparing: Array.isArray(cards.preparing) ? cards.preparing : [],
+          running: Array.isArray(cards.running) ? cards.running : [],
+          recent: Array.isArray(cards.recent) ? cards.recent : []
+        }
+      : { preparing: [], running: [], recent: [] };
+  appState.agentCards = nextCards;
+
+  const renderBucket = (node, items, emptyKey) => {
+    if (!Array.isArray(items) || items.length === 0) {
+      node.innerHTML = `<li class="muted">${escapeHtml(t(emptyKey))}</li>`;
+      return;
+    }
+
+    node.innerHTML = items
+      .slice(0, 12)
+      .map((item) => {
+        const templatePart = item.target_template
+          ? `${escapeHtml(item.target_template.name)} (${escapeHtml(item.target_template.model)})`
+          : "n/a";
+        const accountPart = item.account
+          ? `${escapeHtml(item.account.label)} [${escapeHtml(item.account.status)}]`
+          : "n/a";
+        const promptPart = item.prompt ? escapeHtml(item.prompt) : "n/a";
+        const logPart = item.log_preview ? escapeHtml(item.log_preview) : "n/a";
+
+        return `<li>
+          <div><span class="pill">${escapeHtml(item.status)}</span> <code>${escapeHtml(item.id)}</code></div>
+          <div class="account-meta">capability=${escapeHtml(item.capability)} template=${templatePart}</div>
+          <div class="account-meta">account=${accountPart}</div>
+          <div class="account-meta">prompt=${promptPart}</div>
+          <div class="account-meta">log=${logPart}</div>
+        </li>`;
+      })
+      .join("");
+  };
+
+  renderBucket(ui.agentsPreparing, nextCards.preparing, "no_preparing_agents");
+  renderBucket(ui.agentsRunning, nextCards.running, "no_running_agents");
+  renderBucket(ui.agentsRecent, nextCards.recent, "no_recent_agents");
+}
+
+function renderAccountFleet(items) {
+  appState.accountFleet = Array.isArray(items) ? items : [];
+
+  if (appState.accountFleet.length === 0) {
+    ui.accountFleet.innerHTML = `<p class="muted">${escapeHtml(t("no_accounts"))}</p>`;
+    return;
+  }
+
+  ui.accountFleet.innerHTML = appState.accountFleet
+    .map((item) => {
+      const primary = item.primary_remaining_percent == null ? "n/a" : `${item.primary_remaining_percent}%`;
+      const secondary =
+        item.secondary_remaining_percent == null ? "n/a" : `${item.secondary_remaining_percent}%`;
+      const primaryReset = item.primary_resets_at_utc ?? "n/a";
+      const secondaryReset = item.secondary_resets_at_utc ?? "n/a";
+      const limitSource = item.limits_error ? `error=${escapeHtml(item.limits_error)}` : "live";
+
+      return `<article class="account-card">
+        <div class="account-header">
+          <div class="account-title">${escapeHtml(item.label)}</div>
+          <span class="pill">${escapeHtml(item.status)}</span>
+        </div>
+        <div class="account-meta"><code>${escapeHtml(item.id)}</code></div>
+        <div class="account-meta">5h remaining=${escapeHtml(primary)} reset=${escapeHtml(primaryReset)}</div>
+        <div class="account-meta">week remaining=${escapeHtml(secondary)} reset=${escapeHtml(secondaryReset)}</div>
+        <div class="account-meta">limits_source=${limitSource}</div>
+      </article>`;
+    })
+    .join("");
+}
+
 function renderHeld(items) {
   appState.held = Array.isArray(items) ? items : [];
 
@@ -447,7 +555,7 @@ function renderProfiles(items) {
 
   ui.profilesBody.innerHTML = appState.profiles
     .map((item) => {
-      const state = item.is_active
+      const state = item.status === "active"
         ? `<span class="pill pill-active">${escapeHtml(t("profile_state_active"))}</span>`
         : `<span class="pill">${escapeHtml(t("profile_state_inactive"))}</span>`;
       return `
@@ -532,6 +640,11 @@ async function refreshTasks() {
   renderTasks(response.items);
 }
 
+async function refreshAgentCards() {
+  const response = await requestJson("/api/delegation/cards");
+  renderAgentCards(response);
+}
+
 async function refreshHeld() {
   const response = await requestJson("/api/queue/held");
   renderHeld(response.items);
@@ -542,7 +655,7 @@ async function refreshProfiles() {
 
   const activeResponse = await requestRaw("/api/auth-profiles/chatgpt/active");
   if (activeResponse.ok) {
-    appState.activeProfile = activeResponse.payload.profile ?? null;
+    appState.activeProfile = activeResponse.payload ?? null;
   } else if (activeResponse.status === 404) {
     appState.activeProfile = null;
   } else {
@@ -553,6 +666,57 @@ async function refreshProfiles() {
   }
 
   renderProfiles(profilesResponse.items);
+}
+
+async function refreshAccountFleet() {
+  const profilesResponse = await requestJson("/api/auth-profiles/chatgpt");
+  const profiles = Array.isArray(profilesResponse.items) ? profilesResponse.items : [];
+
+  const fleet = await Promise.all(
+    profiles.map(async (profile) => {
+      const limitsResponse = await requestRaw(`/api/auth-profiles/chatgpt/${profile.id}/limits`);
+      if (!limitsResponse.ok) {
+        const payload = limitsResponse.payload;
+        const message =
+          payload && typeof payload === "object" && "error" in payload
+            ? String(payload.error)
+            : `HTTP ${limitsResponse.status}`;
+        return {
+          id: profile.id,
+          label: profile.label,
+          status: profile.status,
+          primary_remaining_percent: null,
+          secondary_remaining_percent: null,
+          primary_resets_at_utc: null,
+          secondary_resets_at_utc: null,
+          limits_error: message
+        };
+      }
+
+      const payload = limitsResponse.payload ?? {};
+      const rateLimits = payload.rate_limits && typeof payload.rate_limits === "object" ? payload.rate_limits : {};
+      const primary = rateLimits.primary && typeof rateLimits.primary === "object" ? rateLimits.primary : {};
+      const secondary =
+        rateLimits.secondary && typeof rateLimits.secondary === "object" ? rateLimits.secondary : {};
+
+      return {
+        id: profile.id,
+        label: profile.label,
+        status: profile.status,
+        primary_remaining_percent:
+          typeof primary.remaining_percent === "number" ? primary.remaining_percent : null,
+        secondary_remaining_percent:
+          typeof secondary.remaining_percent === "number" ? secondary.remaining_percent : null,
+        primary_resets_at_utc:
+          typeof primary.resets_at_utc === "string" ? primary.resets_at_utc : null,
+        secondary_resets_at_utc:
+          typeof secondary.resets_at_utc === "string" ? secondary.resets_at_utc : null,
+        limits_error: null
+      };
+    })
+  );
+
+  renderAccountFleet(fleet);
 }
 
 async function refreshSwitchEvents() {
@@ -579,8 +743,10 @@ async function refreshProtectedPanels() {
 
   const jobs = [
     ["tasks", refreshTasks],
+    ["agent-cards", refreshAgentCards],
     ["held", refreshHeld],
     ["profiles", refreshProfiles],
+    ["account-fleet", refreshAccountFleet],
     ["switch-events", refreshSwitchEvents],
     ["module", refreshModule],
     ["executions", refreshExecutions]
@@ -656,6 +822,16 @@ function installHandlers() {
     }
   });
 
+  ui.refreshAgentCards.addEventListener("click", async () => {
+    try {
+      await refreshAgentCards();
+      updateLastRefresh();
+      log(t("log_agent_cards_refreshed"));
+    } catch (error) {
+      log("agent cards refresh failed", { message: error.message, payload: error.payload });
+    }
+  });
+
   ui.taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(ui.taskForm);
@@ -701,7 +877,7 @@ function installHandlers() {
 
   ui.refreshProfiles.addEventListener("click", async () => {
     try {
-      await Promise.all([refreshProfiles(), refreshSwitchEvents()]);
+      await Promise.all([refreshProfiles(), refreshAccountFleet(), refreshSwitchEvents()]);
       updateLastRefresh();
       log(t("log_profiles_refreshed"));
     } catch (error) {
@@ -732,7 +908,7 @@ function installHandlers() {
       });
       log(t("log_profile_uploaded"), { id: response.id, checksum_sha256: response.checksum_sha256 });
       ui.uploadForm.reset();
-      await refreshProfiles();
+      await Promise.all([refreshProfiles(), refreshAccountFleet()]);
       updateLastRefresh();
     } catch (error) {
       log("profile upload failed", { message: error.message, payload: error.payload });
@@ -759,10 +935,26 @@ function installHandlers() {
     try {
       const response = await requestJson(route, { method: "POST" });
       log(t("log_profile_action_accepted"), { action, id, accepted: response.accepted });
-      await Promise.all([refreshProfiles(), refreshHeld(), refreshSwitchEvents(), refreshTasks()]);
+      await Promise.all([
+        refreshProfiles(),
+        refreshAccountFleet(),
+        refreshHeld(),
+        refreshSwitchEvents(),
+        refreshTasks()
+      ]);
       updateLastRefresh();
     } catch (error) {
       log(`profile ${action} failed`, { message: error.message, payload: error.payload });
+    }
+  });
+
+  ui.refreshAccountFleet.addEventListener("click", async () => {
+    try {
+      await refreshAccountFleet();
+      updateLastRefresh();
+      log(t("log_account_fleet_refreshed"));
+    } catch (error) {
+      log("account fleet refresh failed", { message: error.message, payload: error.payload });
     }
   });
 

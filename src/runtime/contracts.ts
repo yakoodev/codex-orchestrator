@@ -193,6 +193,11 @@ export interface DelegationRequestEntity {
   target_agent_template_id: string | null;
   target_worker_instance_id: string | null;
   result_summary: string | null;
+  input_prompt: string | null;
+  selected_auth_profile_id: string | null;
+  execution_mode: string | null;
+  execution_log: string | null;
+  execution_meta_json: Record<string, unknown> | null;
   trace_id: string;
   created_at: Date;
   started_at: Date | null;
@@ -302,6 +307,7 @@ export interface CreateDelegationRequestInput {
   target_selector: Record<string, unknown>;
   payload: Record<string, unknown>;
   priority?: number;
+  input_prompt?: string | null;
   trace_id: string;
 }
 
@@ -415,6 +421,10 @@ export interface Persistence {
   materializePack(id: string): Promise<boolean>;
   createDelegationRequest(input: CreateDelegationRequestInput): Promise<DelegationRequestEntity>;
   getDelegationRequest(id: string): Promise<DelegationRequestEntity | null>;
+  listDelegationRequests(options?: {
+    statuses?: DelegationRequestEntity["status"][];
+    limit?: number;
+  }): Promise<DelegationRequestEntity[]>;
   updateDelegationRequest(
     id: string,
     patch: {
@@ -422,6 +432,11 @@ export interface Persistence {
       target_agent_template_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
+      input_prompt?: string | null;
+      selected_auth_profile_id?: string | null;
+      execution_mode?: string | null;
+      execution_log?: string | null;
+      execution_meta_json?: Record<string, unknown> | null;
       started_at?: Date | null;
       ended_at?: Date | null;
     }

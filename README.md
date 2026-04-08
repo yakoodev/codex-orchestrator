@@ -62,6 +62,9 @@ Built-in web control panel:
 - Save `X-Admin-Token` from your `.env`
 - Select language (`RU/EN`) in header if needed
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
+- Monitor runtime with new operator cards:
+  - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview
+  - `Account Fleet` cards with per-profile live limits (5h/weekly remaining + reset timestamps)
 
 Telegram adapter (MVP long polling):
 - Enable in `.env`: `TG_ENABLED=true`, `TG_BOT_TOKEN=...`, and optionally whitelist (`TG_ALLOWED_CHAT_IDS` and/or `TG_ALLOWED_USER_IDS`)

@@ -101,15 +101,17 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Добавлен Telegram bridge системных уведомлений из Redis Streams (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) с debounce-защитой от штормов.
 - [x] Добавлен task steering endpoint `POST /api/tasks/{id}/say` с persistence в `Intervention` (`type=steer`) и интеграцией в Telegram команду `/say`.
 - [x] Добавлен безопасный Telegram discovery-режим: при пустом whitelist адаптер стартует, не исполняет команды и логирует `chat_id/user_id` для первичной настройки.
+- [x] Добавлен API endpoint `GET /api/delegation/cards` для operator-visible карточек делегаций (`preparing/running/recent`) с prompt/account/log preview.
+- [x] Встроенная Web panel расширена карточками активных агентов и account fleet (лимиты 5h/weekly по каждому профилю).
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
 - [~] Telegram интерфейс (long polling команды и системные push-уведомления реализованы; webhook-режим остается следующим шагом).
 
 ## Planned After PR1 (зафиксировано в roadmap)
-- [ ] Карточки запущенных/готовящихся агентов с prompt, активным аккаунтом и логом рассуждения/выполнения.
+- [~] Карточки запущенных/готовящихся агентов с prompt, активным аккаунтом и логом рассуждения/выполнения (базовые карточки и API готовы; остается streaming/drill-down).
 - [ ] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI.
-- [ ] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий.
+- [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

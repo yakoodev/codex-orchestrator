@@ -51,6 +51,22 @@ API-проверка:
 
 Ожидаемо: везде `200`.
 
+## 3.1 Сценарий A1: Operator cards (agents + account fleet)
+
+1. В UI открой блок `Agent Runtime Cards` и нажми `Обновить`.
+2. Убедись, что видны три секции: `Preparing`, `Running`, `Recent`.
+3. Запусти любую делегацию (например из сценария F), затем снова обнови блок.
+4. Проверь, что карточка показывает:
+   - `status`, `capability`, `template/model`;
+   - `prompt`;
+   - `account` (label + status);
+   - `log` preview.
+5. В UI открой блок `Account Fleet` и нажми `Обновить`.
+6. Проверь, что по профилям отображаются:
+   - `label`, `status`, `id`;
+   - `5h remaining`, `weekly remaining`;
+   - reset timestamps.
+
 ## 4. Сценарий B: Security boundary
 
 ```powershell

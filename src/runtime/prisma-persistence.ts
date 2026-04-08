@@ -1,6 +1,7 @@
 import {
   AuthContextType as PrismaAuthContextType,
   ArtifactType as PrismaArtifactType,
+  DelegationStatus as PrismaDelegationStatus,
   InterventionType as PrismaInterventionType,
   ModuleExecutionStatus as PrismaModuleExecutionStatus,
   Prisma,
@@ -199,6 +200,11 @@ function toDelegationRequestEntity(entity: {
   target_agent_template_id: string | null;
   target_worker_instance_id: string | null;
   result_summary: string | null;
+  input_prompt: string | null;
+  selected_auth_profile_id: string | null;
+  execution_mode: string | null;
+  execution_log: string | null;
+  execution_meta_json: Prisma.JsonValue | null;
   trace_id: string;
   created_at: Date;
   started_at: Date | null;
@@ -216,6 +222,11 @@ function toDelegationRequestEntity(entity: {
     target_agent_template_id: entity.target_agent_template_id,
     target_worker_instance_id: entity.target_worker_instance_id,
     result_summary: entity.result_summary,
+    input_prompt: entity.input_prompt,
+    selected_auth_profile_id: entity.selected_auth_profile_id,
+    execution_mode: entity.execution_mode,
+    execution_log: entity.execution_log,
+    execution_meta_json: entity.execution_meta_json as Record<string, unknown> | null,
     trace_id: entity.trace_id,
     created_at: entity.created_at,
     started_at: entity.started_at,
@@ -607,6 +618,7 @@ export class PrismaPersistence implements Persistence {
         payload_json: input.payload as Prisma.InputJsonValue,
         priority: input.priority ?? 100,
         status: "requested",
+        input_prompt: input.input_prompt ?? null,
         trace_id: input.trace_id
       }
     });
@@ -626,6 +638,24 @@ export class PrismaPersistence implements Persistence {
     return toDelegationRequestEntity(delegation);
   }
 
+  public async listDelegationRequests(options?: {
+    statuses?: DelegationRequestEntity["status"][];
+    limit?: number;
+  }): Promise<DelegationRequestEntity[]> {
+    const statuses = options?.statuses?.length
+      ? (options.statuses as PrismaDelegationStatus[])
+      : undefined;
+    const take = Math.max(1, Math.min(options?.limit ?? 50, 200));
+
+    const delegations = await this.prisma.delegationRequest.findMany({
+      where: statuses ? { status: { in: statuses } } : undefined,
+      orderBy: { created_at: "desc" },
+      take
+    });
+
+    return delegations.map((delegation) => toDelegationRequestEntity(delegation));
+  }
+
   public async updateDelegationRequest(
     id: string,
     patch: {
@@ -633,6 +663,11 @@ export class PrismaPersistence implements Persistence {
       target_agent_template_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
+      input_prompt?: string | null;
+      selected_auth_profile_id?: string | null;
+      execution_mode?: string | null;
+      execution_log?: string | null;
+      execution_meta_json?: Record<string, unknown> | null;
       started_at?: Date | null;
       ended_at?: Date | null;
     }
@@ -651,6 +686,16 @@ export class PrismaPersistence implements Persistence {
         target_agent_template_id: patch.target_agent_template_id,
         target_worker_instance_id: patch.target_worker_instance_id,
         result_summary: patch.result_summary,
+        input_prompt: patch.input_prompt,
+        selected_auth_profile_id: patch.selected_auth_profile_id,
+        execution_mode: patch.execution_mode,
+        execution_log: patch.execution_log,
+        execution_meta_json:
+          patch.execution_meta_json === undefined
+            ? undefined
+            : ((patch.execution_meta_json ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput),
         started_at: patch.started_at,
         ended_at: patch.ended_at
       }

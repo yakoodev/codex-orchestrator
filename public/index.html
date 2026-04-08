@@ -130,6 +130,27 @@
 
         <article class="card reveal">
           <div class="section-head">
+            <h2 data-i18n="agent_cards_title">Agent Runtime Cards</h2>
+            <button id="refresh-agent-cards" class="ghost" data-i18n="refresh">Обновить</button>
+          </div>
+          <div class="agent-columns">
+            <section>
+              <p class="tiny-label" data-i18n="agent_preparing">Preparing</p>
+              <ul id="agents-preparing" class="line-list"></ul>
+            </section>
+            <section>
+              <p class="tiny-label" data-i18n="agent_running">Running</p>
+              <ul id="agents-running" class="line-list"></ul>
+            </section>
+            <section>
+              <p class="tiny-label" data-i18n="agent_recent">Recent</p>
+              <ul id="agents-recent" class="line-list"></ul>
+            </section>
+          </div>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
             <h2 data-i18n="held_title">Held Queue</h2>
             <div class="actions">
               <button id="refresh-held" class="ghost" data-i18n="refresh">Обновить</button>
@@ -148,8 +169,8 @@
           <form id="upload-form" class="row-form compact">
             <label for="profile-label" data-i18n="profile_label_label">Label</label>
             <input id="profile-label" name="label" required />
-            <label for="profile-file" data-i18n="profile_zip_label">ZIP file</label>
-            <input id="profile-file" name="file" type="file" accept=".zip,application/zip" required />
+            <label for="profile-file" data-i18n="profile_json_label">auth.json file</label>
+            <input id="profile-file" name="file" type="file" accept=".json,application/json,text/json" required />
             <button type="submit" data-i18n="upload_profile">Upload profile</button>
           </form>
           <p class="muted" id="active-profile">Active profile: unknown</p>
@@ -174,6 +195,14 @@
             <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
           </div>
           <ul id="switch-events" class="line-list"></ul>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
+            <h2 data-i18n="accounts_title">Account Fleet</h2>
+            <button id="refresh-account-fleet" class="ghost" data-i18n="refresh">Обновить</button>
+          </div>
+          <div id="account-fleet" class="account-grid"></div>
         </article>
 
         <article class="card reveal">

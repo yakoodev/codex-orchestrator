@@ -376,6 +376,11 @@ class FakePersistence implements Persistence {
       target_agent_template_id: null,
       target_worker_instance_id: null,
       result_summary: null,
+      input_prompt: input.input_prompt ?? null,
+      selected_auth_profile_id: null,
+      execution_mode: null,
+      execution_log: null,
+      execution_meta_json: null,
       trace_id: input.trace_id,
       created_at: now,
       started_at: null,
@@ -390,6 +395,21 @@ class FakePersistence implements Persistence {
     return this.delegations.find((delegation) => delegation.id === id) ?? null;
   }
 
+  public async listDelegationRequests(options?: {
+    statuses?: DelegationRequestEntity["status"][];
+    limit?: number;
+  }): Promise<DelegationRequestEntity[]> {
+    const statuses = options?.statuses;
+    const limit = Math.max(1, Math.min(options?.limit ?? 50, 200));
+    const sorted = [...this.delegations].sort(
+      (a, b) => b.created_at.getTime() - a.created_at.getTime()
+    );
+    const filtered = statuses?.length
+      ? sorted.filter((delegation) => statuses.includes(delegation.status))
+      : sorted;
+    return filtered.slice(0, limit);
+  }
+
   public async updateDelegationRequest(
     id: string,
     patch: {
@@ -397,6 +417,11 @@ class FakePersistence implements Persistence {
       target_agent_template_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
+      input_prompt?: string | null;
+      selected_auth_profile_id?: string | null;
+      execution_mode?: string | null;
+      execution_log?: string | null;
+      execution_meta_json?: Record<string, unknown> | null;
       started_at?: Date | null;
       ended_at?: Date | null;
     }
@@ -417,6 +442,21 @@ class FakePersistence implements Persistence {
     }
     if (patch.result_summary !== undefined) {
       delegation.result_summary = patch.result_summary;
+    }
+    if (patch.input_prompt !== undefined) {
+      delegation.input_prompt = patch.input_prompt;
+    }
+    if (patch.selected_auth_profile_id !== undefined) {
+      delegation.selected_auth_profile_id = patch.selected_auth_profile_id;
+    }
+    if (patch.execution_mode !== undefined) {
+      delegation.execution_mode = patch.execution_mode;
+    }
+    if (patch.execution_log !== undefined) {
+      delegation.execution_log = patch.execution_log;
+    }
+    if (patch.execution_meta_json !== undefined) {
+      delegation.execution_meta_json = patch.execution_meta_json;
     }
     if (patch.started_at !== undefined) {
       delegation.started_at = patch.started_at;
@@ -2311,6 +2351,105 @@ describe("smoke-core API", () => {
     expect(
       publisher.events.some((event) => event.eventType === "agent.delegation.completed")
     ).toBe(true);
+  });
+
+  it("returns delegation runtime cards grouped by lifecycle state", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "ops-account-1",
+      status: "active",
+      checksum: "checksum-ops-account-1",
+      storage_path: "auth-profiles/ops-account-1/auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const template = await persistence.createAgentTemplate({
+      name: "reviewer-template",
+      role: "reviewer",
+      model: "gpt-5.4",
+      system_prompt: "review",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const preparing = await persistence.createDelegationRequest({
+      requester_task_id: "task-preparing",
+      requester_task_run_id: null,
+      capability: "reviewer",
+      target_selector: { role: "reviewer" },
+      payload: { prompt: "prepare summary" },
+      priority: 100,
+      input_prompt: "prepare summary",
+      trace_id: "trace-preparing"
+    });
+    await persistence.updateDelegationRequest(preparing.id, {
+      status: "accepted",
+      target_agent_template_id: template.id,
+      selected_auth_profile_id: profile.id,
+      started_at: new Date("2026-04-08T10:00:00.000Z")
+    });
+
+    const running = await persistence.createDelegationRequest({
+      requester_task_id: "task-running",
+      requester_task_run_id: null,
+      capability: "reviewer",
+      target_selector: { role: "reviewer" },
+      payload: { prompt: "run checks" },
+      priority: 100,
+      input_prompt: "run checks",
+      trace_id: "trace-running"
+    });
+    await persistence.updateDelegationRequest(running.id, {
+      status: "running",
+      target_agent_template_id: template.id,
+      selected_auth_profile_id: profile.id,
+      started_at: new Date("2026-04-08T10:01:00.000Z"),
+      execution_log: "running-log"
+    });
+
+    const recent = await persistence.createDelegationRequest({
+      requester_task_id: "task-recent",
+      requester_task_run_id: null,
+      capability: "reviewer",
+      target_selector: { role: "reviewer" },
+      payload: { prompt: "completed work" },
+      priority: 100,
+      input_prompt: "completed work",
+      trace_id: "trace-recent"
+    });
+    await persistence.updateDelegationRequest(recent.id, {
+      status: "completed",
+      target_agent_template_id: template.id,
+      selected_auth_profile_id: profile.id,
+      execution_mode: "codex_exec",
+      execution_log: "completed-log",
+      result_summary: "completed-summary",
+      started_at: new Date("2026-04-08T09:59:00.000Z"),
+      ended_at: new Date("2026-04-08T10:02:00.000Z")
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/delegation/cards",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().preparing).toHaveLength(1);
+    expect(response.json().running).toHaveLength(1);
+    expect(response.json().recent).toHaveLength(1);
+    expect(response.json().running[0]).toMatchObject({
+      id: running.id,
+      prompt: "run checks",
+      account: {
+        id: profile.id,
+        label: profile.label
+      },
+      target_template: {
+        id: template.id,
+        name: template.name
+      }
+    });
   });
 
   it("uses injected delegation executor and stores returned summary", async () => {

@@ -523,6 +523,11 @@ model DelegationRequest {
   target_agent_template_id String?
   target_worker_instance_id String?
   result_summary           String?
+  input_prompt             String?
+  selected_auth_profile_id String?
+  execution_mode           String?
+  execution_log            String?
+  execution_meta_json      Json?
   trace_id                 String
   created_at               DateTime         @default(now())
   started_at               DateTime?

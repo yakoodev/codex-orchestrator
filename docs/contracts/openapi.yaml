@@ -841,6 +841,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/DelegationRequest"
 
+  /api/delegation/cards:
+    get:
+      tags: [Delegation]
+      summary: Get operator cards for preparing/running/recent delegations
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Delegation runtime cards
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DelegationCardsResponse"
+
   /api/delegation/{id}:
     get:
       tags: [Delegation]
@@ -1598,6 +1617,17 @@ components:
           type: [string, "null"]
         result_summary:
           type: [string, "null"]
+        input_prompt:
+          type: [string, "null"]
+        selected_auth_profile_id:
+          type: [string, "null"]
+        execution_mode:
+          type: [string, "null"]
+        execution_log:
+          type: [string, "null"]
+        execution_meta_json:
+          type: [object, "null"]
+          additionalProperties: true
         trace_id:
           type: string
         created_at:
@@ -1634,6 +1664,89 @@ components:
           items:
             type: string
       required: [id, status]
+
+    DelegationRuntimeAccount:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+      required: [id, label, status]
+
+    DelegationRuntimeTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        model:
+          type: string
+      required: [id, name, role, model]
+
+    DelegationRuntimeCard:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [requested, accepted, running, completed, failed, cancelled]
+        capability:
+          type: string
+        prompt:
+          type: [string, "null"]
+        trace_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: [string, "null"]
+          format: date-time
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+        target_template:
+          oneOf:
+            - $ref: "#/components/schemas/DelegationRuntimeTemplate"
+            - type: "null"
+        account:
+          oneOf:
+            - $ref: "#/components/schemas/DelegationRuntimeAccount"
+            - type: "null"
+        execution_mode:
+          type: [string, "null"]
+        log_preview:
+          type: [string, "null"]
+      required:
+        - id
+        - status
+        - capability
+        - trace_id
+        - created_at
+
+    DelegationCardsResponse:
+      type: object
+      properties:
+        preparing:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegationRuntimeCard"
+        running:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegationRuntimeCard"
+        recent:
+          type: array
+          items:
+            $ref: "#/components/schemas/DelegationRuntimeCard"
+      required: [preparing, running, recent]
 
     RuleAst:
       oneOf:

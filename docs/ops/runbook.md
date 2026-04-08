@@ -143,6 +143,9 @@ Service integration (uploaded auth profiles):
   - upload ChatGPT `auth.json` profile;
   - activate/deactivate profile (triggers hold -> switch -> release flow);
   - inspect switch-events and held queue.
+- Use operator visibility panels:
+  - `Agent Runtime Cards`: watch `preparing/running/recent` delegations with prompt, target template/model, selected account, and log preview.
+  - `Account Fleet`: inspect all uploaded profiles with live 5h/weekly limits and reset timestamps.
 
 Notes:
 - `GET /api/auth-profiles/chatgpt/active` may return `404` when no active profile is selected; panel treats it as normal "no active profile" state.

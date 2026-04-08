@@ -81,6 +81,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/packs/{id}/materialize",
   "GET /api/delegation/capabilities",
   "POST /api/delegation/dispatch",
+  "GET /api/delegation/cards",
   "GET /api/delegation/{id}",
   "GET /api/delegation/{id}/result",
   "POST /api/schedules",
@@ -229,6 +230,8 @@ const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_sk
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
 const DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT = 3;
 const DEFAULT_AUTH_SWITCH_RETRY_LIMIT = 3;
+const MAX_DELEGATION_PROMPT_LENGTH = 4_000;
+const MAX_DELEGATION_LOG_LENGTH = 12_000;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -326,6 +329,23 @@ function getErrorMessage(error: unknown): string {
     return error;
   }
   return "unknown_error";
+}
+
+function trimToLimit(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 3)}...`;
+}
+
+function extractDelegationPrompt(payload: Record<string, unknown>): string | null {
+  const prompt = asNonEmptyString(payload["prompt"]) ?? asNonEmptyString(payload["task"]);
+  if (!prompt) {
+    return null;
+  }
+
+  return trimToLimit(prompt, MAX_DELEGATION_PROMPT_LENGTH);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -1139,10 +1159,120 @@ function delegationToResponse(delegation: DelegationRequestEntity): Record<strin
     target_agent_template_id: delegation.target_agent_template_id,
     target_worker_instance_id: delegation.target_worker_instance_id,
     result_summary: delegation.result_summary,
+    input_prompt: delegation.input_prompt,
+    selected_auth_profile_id: delegation.selected_auth_profile_id,
+    execution_mode: delegation.execution_mode,
+    execution_log: delegation.execution_log,
+    execution_meta_json: delegation.execution_meta_json,
     trace_id: delegation.trace_id,
     created_at: delegation.created_at,
     started_at: delegation.started_at,
     ended_at: delegation.ended_at
+  };
+}
+
+async function buildDelegationCardsResponse(options: {
+  persistence: Persistence;
+  limit: number;
+}): Promise<{
+  preparing: Record<string, unknown>[];
+  running: Record<string, unknown>[];
+  recent: Record<string, unknown>[];
+}> {
+  const [delegations, templates, fallbackActiveProfile] = await Promise.all([
+    options.persistence.listDelegationRequests({ limit: options.limit }),
+    options.persistence.listAgentTemplates(),
+    options.persistence.getActiveAuthProfile()
+  ]);
+
+  const templateMap = new Map(templates.map((template) => [template.id, template]));
+
+  const profileIds = new Set<string>();
+  for (const delegation of delegations) {
+    const profileId = delegation.selected_auth_profile_id;
+    if (profileId) {
+      profileIds.add(profileId);
+    }
+  }
+
+  const profileMap = new Map<
+    string,
+    Awaited<ReturnType<Persistence["getAuthProfileRuntimeById"]>>
+  >();
+  await Promise.all(
+    Array.from(profileIds).map(async (profileId) => {
+      const profile = await options.persistence.getAuthProfileRuntimeById(profileId);
+      if (profile) {
+        profileMap.set(profileId, profile);
+      }
+    })
+  );
+
+  const toCard = (delegation: DelegationRequestEntity): Record<string, unknown> => {
+    const targetTemplate = delegation.target_agent_template_id
+      ? templateMap.get(delegation.target_agent_template_id) ?? null
+      : null;
+
+    const selectedProfileId = delegation.selected_auth_profile_id;
+    const selectedProfile = selectedProfileId ? profileMap.get(selectedProfileId) ?? null : null;
+    const fallbackProfile =
+      !selectedProfile && fallbackActiveProfile
+        ? {
+            id: fallbackActiveProfile.id,
+            label: fallbackActiveProfile.label,
+            status: fallbackActiveProfile.status
+          }
+        : null;
+    const account = selectedProfile ?? fallbackProfile;
+
+    const prompt = delegation.input_prompt ?? extractDelegationPrompt(delegation.payload);
+    const rawLog = delegation.execution_log ?? delegation.result_summary ?? null;
+    const logPreview = rawLog ? trimToLimit(rawLog, MAX_DELEGATION_LOG_LENGTH) : null;
+
+    return {
+      id: delegation.id,
+      status: delegation.status,
+      capability: delegation.capability,
+      prompt,
+      trace_id: delegation.trace_id,
+      created_at: delegation.created_at,
+      started_at: delegation.started_at,
+      ended_at: delegation.ended_at,
+      target_template: targetTemplate
+        ? {
+            id: targetTemplate.id,
+            name: targetTemplate.name,
+            role: targetTemplate.role,
+            model: targetTemplate.model
+          }
+        : null,
+      account: account
+        ? {
+            id: account.id,
+            label: account.label,
+            status: account.status
+          }
+        : null,
+      execution_mode: delegation.execution_mode,
+      log_preview: logPreview
+    };
+  };
+
+  const preparingStatuses: DelegationRequestEntity["status"][] = ["requested", "accepted"];
+  const runningStatuses: DelegationRequestEntity["status"][] = ["running"];
+  const recentStatuses: DelegationRequestEntity["status"][] = ["completed", "failed", "cancelled"];
+
+  return {
+    preparing: delegations
+      .filter((delegation) => preparingStatuses.includes(delegation.status))
+      .map((delegation) => toCard(delegation)),
+    running: delegations
+      .filter((delegation) => runningStatuses.includes(delegation.status))
+      .map((delegation) => toCard(delegation)),
+    recent: delegations
+      .filter((delegation) => recentStatuses.includes(delegation.status))
+      .slice(0, 20)
+      .map((delegation) => toCard(delegation))
   };
 }
 
@@ -2759,6 +2889,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const priority = typeof body.priority === "number" ? body.priority : 100;
     const targetSelector = body.target_selector;
     const payload = body.payload;
+    const inputPrompt = extractDelegationPrompt(payload);
 
     const delegation = await persistence.createDelegationRequest({
       requester_task_id: requesterTaskId,
@@ -2767,6 +2898,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       target_selector: targetSelector,
       payload,
       priority,
+      input_prompt: inputPrompt,
       trace_id: traceId
     });
 
@@ -2804,6 +2936,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
         status: "failed",
         result_summary: failedSummary,
+        execution_log: failedSummary,
+        execution_mode: "none",
+        execution_meta_json: { reason: "no_capability_target" },
         ended_at: new Date()
       });
       if (!failedDelegation) {
@@ -2828,10 +2963,12 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return reply.code(202).send(delegationToResponse(failedDelegation));
     }
 
+    const selectedAuthProfile = await persistence.getActiveAuthProfile();
     const acceptedAt = new Date();
     const acceptedDelegation = await persistence.updateDelegationRequest(delegation.id, {
       status: "accepted",
       target_agent_template_id: targetTemplate.id,
+      selected_auth_profile_id: selectedAuthProfile?.id ?? null,
       started_at: acceptedAt,
       ended_at: null
     });
@@ -2937,6 +3074,13 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
           status: "failed",
           result_summary: failedSummary,
+          execution_log: trimToLimit(executionError.message, MAX_DELEGATION_LOG_LENGTH),
+          execution_mode: "failed",
+          execution_meta_json: {
+            code: executionError.code,
+            attempt,
+            reason: failureReason
+          },
           ended_at: new Date()
         });
         if (!failedDelegation) {
@@ -2953,6 +3097,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       const completedDelegation = await persistence.updateDelegationRequest(delegation.id, {
         status: "completed",
         result_summary: executionResult.result_summary,
+        execution_mode: executionResult.execution_mode,
+        execution_log: trimToLimit(executionResult.output_text, MAX_DELEGATION_LOG_LENGTH),
+        execution_meta_json: executionResult.metadata ?? null,
         ended_at: new Date()
       });
       if (!completedDelegation) {
@@ -2979,6 +3126,19 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return sendError(reply, 500, "Delegation execution failed", "DELEGATION_EXECUTION_FAILED");
+  });
+
+  app.get("/api/delegation/cards", async (request, reply) => {
+    const query = request.query as { limit?: unknown };
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 50;
+
+    const cards = await buildDelegationCardsResponse({
+      persistence,
+      limit
+    });
+
+    return reply.send(cards);
   });
 
   app.get("/api/delegation/:id", async (request, reply) => {
