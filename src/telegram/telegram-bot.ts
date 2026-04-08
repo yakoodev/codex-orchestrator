@@ -40,7 +40,7 @@ interface ApiCallResult {
   body: unknown;
 }
 
-type ApiCallMethod = "GET" | "POST";
+type ApiCallMethod = "GET" | "POST" | "PATCH";
 
 interface TelegramBotRunnerDeps {
   config: AppConfig;
@@ -451,7 +451,11 @@ export async function executeTelegramCommand(options: {
       "/limit",
       "/switch-status",
       "/held",
-      "/switch-history"
+      "/switch-history",
+      "/memory <project_id> <agent_role> [active|inactive|all]",
+      "/memory-add <project_id> <agent_role> <title> || <content>",
+      "/memory-enable <memory_id>",
+      "/memory-disable <memory_id>"
     ].join("\n");
   }
 
@@ -629,6 +633,102 @@ export async function executeTelegramCommand(options: {
       .slice(0, 20)
       .map((line) => (typeof line === "string" ? line : JSON.stringify(line)));
     return printable.join("\n");
+  }
+
+  if (command === "/memory") {
+    const projectId = args[0];
+    const agentRole = args[1];
+    const stateArg = (args[2] ?? "active").toLowerCase();
+    if (!projectId || !agentRole) {
+      return "Использование: /memory <project_id> <agent_role> [active|inactive|all]";
+    }
+    if (stateArg !== "active" && stateArg !== "inactive" && stateArg !== "all") {
+      return "Использование: /memory <project_id> <agent_role> [active|inactive|all]";
+    }
+
+    const params = new URLSearchParams();
+    params.set("project_id", projectId);
+    params.set("agent_role", agentRole);
+    params.set("limit", "20");
+    if (stateArg !== "all") {
+      params.set("is_active", stateArg === "active" ? "true" : "false");
+    }
+
+    const response = await callApi("GET", `/api/memory/entries?${params.toString()}`);
+    if (response.statusCode !== 200) {
+      return `Ошибка /memory: HTTP ${response.statusCode}`;
+    }
+
+    const items = asArray(asObject(response.body)?.["items"]) ?? [];
+    if (items.length === 0) {
+      return `Память пуста для project=${projectId}, role=${agentRole}, state=${stateArg}.`;
+    }
+
+    const lines = items.slice(0, 10).map((item) => {
+      const entry = asObject(item);
+      if (!entry) {
+        return "- invalid_memory_entry";
+      }
+      const id = toRecordId(entry["id"]) ?? "n/a";
+      const title = asString(entry["title"]) ?? "без заголовка";
+      const isActive = entry["is_active"] === true ? "active" : "inactive";
+      return `- ${id} | ${isActive} | ${title}`;
+    });
+
+    return [
+      `Memory entries: ${items.length} (project=${projectId}, role=${agentRole}, state=${stateArg})`,
+      ...lines
+    ].join("\n");
+  }
+
+  if (command === "/memory-add") {
+    const projectId = args[0];
+    const agentRole = args[1];
+    const tail = args.slice(2).join(" ").trim();
+    if (!projectId || !agentRole || !tail.includes("||")) {
+      return "Использование: /memory-add <project_id> <agent_role> <title> || <content>";
+    }
+
+    const delimiterIndex = tail.indexOf("||");
+    const title = tail.slice(0, delimiterIndex).trim();
+    const content = tail.slice(delimiterIndex + 2).trim();
+    if (!title || !content) {
+      return "Использование: /memory-add <project_id> <agent_role> <title> || <content>";
+    }
+
+    const response = await callApi("POST", "/api/memory/entries", {
+      project_id: projectId,
+      agent_role: agentRole,
+      title,
+      content
+    });
+
+    if (response.statusCode !== 201) {
+      return `Ошибка /memory-add: HTTP ${response.statusCode}`;
+    }
+
+    const created = asObject(response.body);
+    const id = toRecordId(created?.["id"]) ?? "n/a";
+    return `OK: /memory-add ${id}`;
+  }
+
+  if (command === "/memory-enable" || command === "/memory-disable") {
+    const memoryId = args[0];
+    if (!memoryId) {
+      return `Использование: ${command} <memory_id>`;
+    }
+
+    const isActive = command === "/memory-enable";
+    const response = await callApi("PATCH", `/api/memory/entries/${encodeURIComponent(memoryId)}`, {
+      is_active: isActive
+    });
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return `OK: ${command} ${memoryId}`;
+    }
+    if (response.statusCode === 404) {
+      return `Память ${memoryId} не найдена.`;
+    }
+    return `Ошибка ${command}: HTTP ${response.statusCode}`;
   }
 
   if (command === "/held") {

@@ -34,6 +34,90 @@ describe("telegram command handler", () => {
     expect(response).toContain("WAITING_LIMIT");
   });
 
+  it("formats /memory list", async () => {
+    const response = await executeTelegramCommand({
+      text: "/memory web-ui reviewer all",
+      callApi: async (method, url) => {
+        expect(method).toBe("GET");
+        expect(url).toBe("/api/memory/entries?project_id=web-ui&agent_role=reviewer&limit=20");
+        return {
+          statusCode: 200,
+          body: {
+            items: [
+              { id: "memory-1", title: "GUI summary", is_active: true },
+              { id: "memory-2", title: "Footer note", is_active: false }
+            ]
+          }
+        };
+      }
+    });
+
+    expect(response).toContain("Memory entries: 2");
+    expect(response).toContain("memory-1");
+    expect(response).toContain("active");
+    expect(response).toContain("inactive");
+  });
+
+  it("routes /memory-add to create endpoint", async () => {
+    const calls: Array<{ method: string; url: string; payload: unknown }> = [];
+
+    const response = await executeTelegramCommand({
+      text: "/memory-add web-ui reviewer GUI note || Always validate sticky header",
+      callApi: async (method, url, payload) => {
+        calls.push({ method, url, payload });
+        return { statusCode: 201, body: { id: "memory-55" } };
+      }
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        url: "/api/memory/entries",
+        payload: {
+          project_id: "web-ui",
+          agent_role: "reviewer",
+          title: "GUI note",
+          content: "Always validate sticky header"
+        }
+      }
+    ]);
+    expect(response).toBe("OK: /memory-add memory-55");
+  });
+
+  it("routes /memory-enable and /memory-disable", async () => {
+    const calls: Array<{ method: string; url: string; payload: unknown }> = [];
+
+    const enableResponse = await executeTelegramCommand({
+      text: "/memory-enable memory-1",
+      callApi: async (method, url, payload) => {
+        calls.push({ method, url, payload });
+        return { statusCode: 200, body: { id: "memory-1" } };
+      }
+    });
+    const disableResponse = await executeTelegramCommand({
+      text: "/memory-disable memory-1",
+      callApi: async (method, url, payload) => {
+        calls.push({ method, url, payload });
+        return { statusCode: 200, body: { id: "memory-1" } };
+      }
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "PATCH",
+        url: "/api/memory/entries/memory-1",
+        payload: { is_active: true }
+      },
+      {
+        method: "PATCH",
+        url: "/api/memory/entries/memory-1",
+        payload: { is_active: false }
+      }
+    ]);
+    expect(enableResponse).toBe("OK: /memory-enable memory-1");
+    expect(disableResponse).toBe("OK: /memory-disable memory-1");
+  });
+
   it("returns limits based on active profile", async () => {
     const calls: string[] = [];
 

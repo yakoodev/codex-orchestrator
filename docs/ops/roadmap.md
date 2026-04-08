@@ -102,9 +102,10 @@
   - добавлен API памяти: `POST/GET/PATCH /api/memory/entries`;
   - добавлена Prisma-модель `AgentMemoryEntry` + миграция;
   - память по `project_id + role` автоматически подмешивается в prompt делегации при `POST /api/delegation/dispatch`;
-  - в `/ui/` добавлен блок Agent Memory (создание, просмотр, enable/disable записей).
+  - в `/ui/` добавлен блок Agent Memory (создание, просмотр, enable/disable записей);
+  - в Telegram добавлены memory-команды (`/memory`, `/memory-add`, `/memory-enable`, `/memory-disable`) для role-aware работы с проектной памятью без UI.
 - Остается:
-  - добавить role-aware память в Telegram workflow;
+  - [x] добавить role-aware память в Telegram workflow;
   - добавить richer editor/версионирование памяти и историю изменений.
 
 ## Planned: Account Fleet Cards

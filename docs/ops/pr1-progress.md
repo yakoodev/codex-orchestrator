@@ -97,7 +97,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Добавлен multi-channel механизм операционного съема логов: `npm run logs:check` (API + Docker logs + Redis Streams + optional Loki readiness) и обновлен runbook с диагностическими командами.
 - [x] Добавлен механизм съема точных лимитов для нескольких `CODEX_HOME`: `npm run limits:check` использует `codex app-server` RPC `account/rateLimits/read` как primary source, считает и выводит `used_percent` + `remaining_percent` (остаток), плюс fallback-диагностику из sqlite и optional live probe.
 - [x] Механизм точных лимитов интегрирован в API: `GET /api/auth-profiles/chatgpt/{id}/limits` возвращает live snapshot (`used_percent` + `remaining_percent`) через `codex app-server` для загруженного профиля.
-- [x] Добавлен Telegram long-polling адаптер с whitelist + offset persistence + exponential backoff + proxy support (`TG_PROXY_URL`) и MVP-командами управления через существующий API (`/tasks`, `/task`, `/say`, `/pause`, `/resume`, `/stop`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`).
+- [x] Добавлен Telegram long-polling адаптер с whitelist + offset persistence + exponential backoff + proxy support (`TG_PROXY_URL`) и MVP-командами управления через существующий API (`/tasks`, `/task`, `/say`, `/pause`, `/resume`, `/stop`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`, `/memory`, `/memory-add`, `/memory-enable`, `/memory-disable`).
 - [x] Добавлен Telegram bridge системных уведомлений из Redis Streams (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) с debounce-защитой от штормов.
 - [x] Добавлен task steering endpoint `POST /api/tasks/{id}/say` с persistence в `Intervention` (`type=steer`) и интеграцией в Telegram команду `/say`.
 - [x] Добавлен безопасный Telegram discovery-режим: при пустом whitelist адаптер стартует, не исполняет команды и логирует `chat_id/user_id` для первичной настройки.
@@ -175,7 +175,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 
 ## Planned After PR1 (зафиксировано в roadmap)
 - [~] Карточки запущенных/готовящихся агентов с prompt, активным аккаунтом и логом рассуждения/выполнения (базовые карточки и API готовы; остается streaming/drill-down).
-- [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
+- [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch + Telegram integration готовы; остается versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).

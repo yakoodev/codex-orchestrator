@@ -460,12 +460,18 @@ docker compose logs --tail=80 bus
 - `/held`
 - `/switch-status`
 - `/limit`
+- `/memory web-ui reviewer all`
+- `/memory-add web-ui reviewer Telegram note || Проверять sticky-header и breadcrumbs`
+- `/memory web-ui reviewer all`
+- `/memory-disable <memory_id>`
+- `/memory-enable <memory_id>`
 
 Ожидаемо:
 - ответы приходят в Telegram;
 - команды читают текущее состояние сервиса через API;
 - `/say` возвращает `OK` и пишет steering-intervention по задаче;
 - при неактивном профиле `/limit` возвращает понятный empty-state.
+- memory-команды создают и переключают `is_active` для записей памяти без использования UI.
 - при активации/деактивации профиля в UI/API в Telegram приходят системные уведомления `switch_*` и `hold_*` (с debounce, без спама).
 
 ## 10. Очистка артефактов теста
