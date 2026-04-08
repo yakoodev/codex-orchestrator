@@ -163,6 +163,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - в `/ui/console.html` добавлен отдельный экран `Projects` (list/create/edit + summary);
   - в `public/app.js` добавлен route/state/render/action flow для `#/projects` с API-интеграцией `POST/GET/PATCH /api/projects` и `GET /api/projects/{key}/summary`;
   - селекты `project_id` в `Tasks` и `Memory`, а также фильтр задач по проекту теперь синхронизируются с реестром проектов (active/all), а не со свободным вводом.
+- [x] Исправлена загрузка данных при навигации по sidebar в `/ui/console.html`: при переходе между hash-экранами теперь выполняется `refreshCurrentRoute()` без необходимости вручную нажимать `Обновить`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -175,6 +176,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
+- [~] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача добавлена в `docs/ops/roadmap.md`).
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

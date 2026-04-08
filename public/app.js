@@ -1536,9 +1536,8 @@ function wireConsoleHandlers() {
   ui.routeLinks.forEach((link) => link.addEventListener("click", async (event) => {
     event.preventDefault()
     const route = link.dataset.routeLink ?? "dashboard"
-    const current = state.route
     setRoute(route, { persist: true, writeHash: true, log: true })
-    if (current === route) await refreshCurrentRoute()
+    await refreshCurrentRoute()
   }))
 
   window.addEventListener("hashchange", async () => {
