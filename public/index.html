@@ -58,6 +58,11 @@
         </div>
       </section>
 
+      <section class="card reveal tab-intro-shell">
+        <p id="tab-intro-title" class="tiny-label">Операционный сценарий</p>
+        <p id="tab-intro-text" class="muted">Подключи токен и проверь состояние сервиса перед запуском операций.</p>
+      </section>
+
       <section class="card reveal" data-tab-content="overview">
         <div class="section-head">
           <h2 data-i18n="connection_title">Connection</h2>
@@ -123,18 +128,28 @@
             </div>
             <button type="submit" data-i18n="create_task">Create task</button>
           </form>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th data-i18n="table_title">Title</th>
-                  <th data-i18n="table_status">Status</th>
-                  <th data-i18n="table_priority">Priority</th>
-                </tr>
-              </thead>
-              <tbody id="tasks-body"></tbody>
-            </table>
+          <div class="task-board">
+            <section class="task-column task-column-waiting">
+              <div class="task-column-head">
+                <p class="tiny-label" data-i18n="task_board_waiting">Ожидает запуска</p>
+                <span id="tasks-waiting-count" class="count-pill">0</span>
+              </div>
+              <ul id="tasks-waiting" class="line-list"></ul>
+            </section>
+            <section class="task-column task-column-running">
+              <div class="task-column-head">
+                <p class="tiny-label" data-i18n="task_board_running">Запущена</p>
+                <span id="tasks-running-count" class="count-pill">0</span>
+              </div>
+              <ul id="tasks-running" class="line-list"></ul>
+            </section>
+            <section class="task-column task-column-completed">
+              <div class="task-column-head">
+                <p class="tiny-label" data-i18n="task_board_completed">Выполнена</p>
+                <span id="tasks-completed-count" class="count-pill">0</span>
+              </div>
+              <ul id="tasks-completed" class="line-list"></ul>
+            </section>
           </div>
         </article>
 
@@ -157,31 +172,6 @@
               <ul id="agents-recent" class="line-list"></ul>
             </section>
           </div>
-        </article>
-
-        <article class="card reveal" data-tab-content="agents">
-          <div class="section-head">
-            <h2 data-i18n="memory_title">Agent Memory</h2>
-            <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
-          </div>
-          <form id="memory-form" class="row-form compact">
-            <div class="split">
-              <div>
-                <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
-                <input id="memory-project" name="project_id" value="web-ui" required />
-              </div>
-              <div>
-                <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>
-                <input id="memory-role" name="agent_role" value="reviewer" required />
-              </div>
-            </div>
-            <label for="memory-title" data-i18n="memory_note_title_label">Memory title</label>
-            <input id="memory-title" name="title" required />
-            <label for="memory-content" data-i18n="memory_note_content_label">Memory content</label>
-            <textarea id="memory-content" name="content" rows="3" required></textarea>
-            <button type="submit" data-i18n="create_memory_note">Save memory</button>
-          </form>
-          <ul id="memory-list" class="line-list"></ul>
         </article>
 
         <article class="card reveal" data-tab-content="tasks">
@@ -209,19 +199,7 @@
             <button type="submit" data-i18n="upload_profile">Upload profile</button>
           </form>
           <p class="muted" id="active-profile">Active profile: unknown</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th data-i18n="table_label">Label</th>
-                  <th data-i18n="table_state">State</th>
-                  <th data-i18n="table_actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="profiles-body"></tbody>
-            </table>
-          </div>
+          <div id="profiles-body" class="profile-grid"></div>
         </article>
 
         <article class="card reveal" data-tab-content="accounts">
@@ -258,6 +236,39 @@
             <button type="submit" data-i18n="patch_module">Patch module</button>
           </form>
           <ul id="executions-list" class="line-list"></ul>
+        </article>
+
+        <article class="card reveal" data-tab-content="system">
+          <details class="manual-memory-panel">
+            <summary>
+              <span data-i18n="memory_manual_title">Ручная правка памяти (fallback)</span>
+            </summary>
+            <p class="muted" data-i18n="memory_manual_hint">
+              Память подмешивается в задачи автоматически. Этот блок нужен только для ручной коррекции.
+            </p>
+            <div class="section-head">
+              <h2 data-i18n="memory_title">Agent Memory</h2>
+              <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
+            <form id="memory-form" class="row-form compact">
+              <div class="split">
+                <div>
+                  <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
+                  <input id="memory-project" name="project_id" value="web-ui" required />
+                </div>
+                <div>
+                  <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>
+                  <input id="memory-role" name="agent_role" value="reviewer" required />
+                </div>
+              </div>
+              <label for="memory-title" data-i18n="memory_note_title_label">Memory title</label>
+              <input id="memory-title" name="title" required />
+              <label for="memory-content" data-i18n="memory_note_content_label">Memory content</label>
+              <textarea id="memory-content" name="content" rows="3" required></textarea>
+              <button type="submit" data-i18n="create_memory_note">Save memory</button>
+            </form>
+            <ul id="memory-list" class="line-list"></ul>
+          </details>
         </article>
       </section>
 

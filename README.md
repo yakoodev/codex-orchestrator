@@ -63,10 +63,13 @@ Built-in web control panel:
 - Save `X-Admin-Token` from your `.env`
 - Select language (`RU/EN`) in header if needed
 - Use tabbed IA to avoid long single-page scroll: `Overview`, `Tasks & Queue`, `Agents`, `Accounts & Limits`, `System`
+- Follow tab-specific intro hints (each tab now has its own operator context block)
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 - Monitor runtime with new operator cards:
   - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview
-  - `Agent Memory` panel: create/update per `project_id + agent_role` notes and toggle them on/off
+  - `Tasks & Queue` as task-tracker board (`waiting / running / completed`)
+  - `Auth Profiles` as action cards (`activate/deactivate`) with explicit active-profile mark
+  - `Agent Memory` manual override is hidden in `System` (fallback/admin correction)
   - `Account Fleet` cards with per-profile live limits (5h/weekly remaining + reset timestamps)
 
 Telegram adapter (MVP long polling):

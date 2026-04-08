@@ -185,6 +185,14 @@ p {
 
 .tabs-shell {
   padding: 10px 12px;
+  position: sticky;
+  top: 8px;
+  z-index: 3;
+}
+
+.tab-intro-shell {
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 .tabs {
@@ -400,6 +408,69 @@ tbody tr:last-child td {
   background: rgba(255, 255, 255, 0.73);
 }
 
+.task-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-column {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 8px;
+  min-height: 220px;
+}
+
+.task-column-waiting {
+  background: linear-gradient(180deg, rgba(15, 138, 157, 0.1), rgba(255, 255, 255, 0.6));
+}
+
+.task-column-running {
+  background: linear-gradient(180deg, rgba(241, 143, 1, 0.1), rgba(255, 255, 255, 0.6));
+}
+
+.task-column-completed {
+  background: linear-gradient(180deg, rgba(2, 122, 72, 0.1), rgba(255, 255, 255, 0.6));
+}
+
+.task-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(15, 36, 56, 0.12);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.task-card {
+  display: grid;
+  gap: 5px;
+}
+
+.task-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-card-title {
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .agent-columns {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -426,6 +497,11 @@ tbody tr:last-child td {
   gap: 6px;
 }
 
+.account-card-active {
+  border-color: rgba(2, 122, 72, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(2, 122, 72, 0.2);
+}
+
 .account-header {
   display: flex;
   justify-content: space-between;
@@ -442,6 +518,49 @@ tbody tr:last-child td {
   font-size: 0.82rem;
   color: var(--muted);
   font-family: "Consolas", "Lucida Console", monospace;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.profile-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  display: grid;
+  gap: 8px;
+}
+
+.profile-card-active {
+  border-color: rgba(2, 122, 72, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(2, 122, 72, 0.2);
+}
+
+.profile-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.profile-card-title {
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.profile-card-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.profile-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .memory-item {
@@ -469,6 +588,31 @@ tbody tr:last-child td {
 .memory-item-content {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.manual-memory-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.manual-memory-panel > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+  list-style: none;
+}
+
+.manual-memory-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.manual-memory-panel > summary::before {
+  content: "▸ ";
+  color: var(--accent);
+}
+
+.manual-memory-panel[open] > summary::before {
+  content: "▾ ";
 }
 
 .log {
@@ -499,6 +643,7 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .task-board,
   .agent-columns,
   .account-grid {
     grid-template-columns: 1fr;

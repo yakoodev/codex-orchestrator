@@ -26,6 +26,16 @@ const I18N = {
     tab_agents: "Агенты",
     tab_accounts: "Аккаунты и лимиты",
     tab_system: "Система",
+    tab_intro_overview_title: "Операционный сценарий",
+    tab_intro_overview_text: "Подключи токен и проверь состояние сервиса перед запуском операций.",
+    tab_intro_tasks_title: "Работа с задачами",
+    tab_intro_tasks_text: "Создавай задачи и контролируй их жизненный цикл по колонкам статусов.",
+    tab_intro_agents_title: "Контроль делегаций",
+    tab_intro_agents_text: "Отслеживай preparing/running/recent агентов и проверяй prompt/account/log.",
+    tab_intro_accounts_title: "Управление аккаунтами",
+    tab_intro_accounts_text: "Загружай профили, переключай активный аккаунт и мониторь live-лимиты.",
+    tab_intro_system_title: "Системные override-инструменты",
+    tab_intro_system_text: "Модульные настройки и ручные fallback-действия для восстановления потока.",
     health_title: "Health",
     refresh: "Обновить",
     tasks_title: "Задачи",
@@ -33,6 +43,9 @@ const I18N = {
     task_description_label: "Описание",
     task_project_label: "Project ID",
     task_repo_label: "Repo ID",
+    task_board_waiting: "Ожидает запуска",
+    task_board_running: "Запущена",
+    task_board_completed: "Выполнена",
     create_task: "Создать задачу",
     table_title: "Заголовок",
     table_status: "Статус",
@@ -49,6 +62,9 @@ const I18N = {
     memory_note_title_label: "Заголовок памяти",
     memory_note_content_label: "Содержимое памяти",
     create_memory_note: "Сохранить память",
+    memory_manual_title: "Ручная правка памяти (fallback)",
+    memory_manual_hint:
+      "Память подмешивается автоматически. Этот блок нужен только для ручной коррекции.",
     accounts_title: "Аккаунты",
     profiles_title: "Auth-профили",
     profile_label_label: "Метка",
@@ -69,6 +85,9 @@ const I18N = {
     status_not_ready: "не готов",
     status_ok: "200 OK",
     no_tasks: "Задач пока нет.",
+    no_tasks_waiting: "Нет задач в ожидании запуска.",
+    no_tasks_running: "Нет запущенных задач.",
+    no_tasks_completed: "Нет завершенных задач.",
     no_held: "Нет задач в WAITING_LIMIT.",
     no_profiles: "Профили ещё не загружены.",
     no_accounts: "Карточек аккаунтов пока нет.",
@@ -83,6 +102,7 @@ const I18N = {
     active_profile_value: "Активный профиль: {label} ({id})",
     profile_state_active: "активен",
     profile_state_inactive: "неактивен",
+    active_now: "активный сейчас",
     action_activate: "Активировать",
     action_deactivate: "Деактивировать",
     action_enable: "Включить",
@@ -139,6 +159,16 @@ const I18N = {
     tab_agents: "Agents",
     tab_accounts: "Accounts & Limits",
     tab_system: "System",
+    tab_intro_overview_title: "Operational flow",
+    tab_intro_overview_text: "Set admin token first and verify service health before running operations.",
+    tab_intro_tasks_title: "Task operations",
+    tab_intro_tasks_text: "Create tasks and track lifecycle transitions through status columns.",
+    tab_intro_agents_title: "Delegation monitoring",
+    tab_intro_agents_text: "Follow preparing/running/recent agents and inspect prompt/account/log context.",
+    tab_intro_accounts_title: "Account operations",
+    tab_intro_accounts_text: "Upload profiles, switch active account, and monitor live usage limits.",
+    tab_intro_system_title: "System overrides",
+    tab_intro_system_text: "Use module controls and manual fallback actions for recovery scenarios.",
     health_title: "Health",
     refresh: "Refresh",
     tasks_title: "Tasks",
@@ -146,6 +176,9 @@ const I18N = {
     task_description_label: "Description",
     task_project_label: "Project ID",
     task_repo_label: "Repo ID",
+    task_board_waiting: "Waiting",
+    task_board_running: "Running",
+    task_board_completed: "Completed",
     create_task: "Create task",
     table_title: "Title",
     table_status: "Status",
@@ -162,6 +195,9 @@ const I18N = {
     memory_note_title_label: "Memory title",
     memory_note_content_label: "Memory content",
     create_memory_note: "Save memory",
+    memory_manual_title: "Manual Memory Override (fallback)",
+    memory_manual_hint:
+      "Memory is injected automatically. Use this block only for manual correction.",
     accounts_title: "Account Fleet",
     profiles_title: "Auth Profiles",
     profile_label_label: "Label",
@@ -182,6 +218,9 @@ const I18N = {
     status_not_ready: "not ready",
     status_ok: "200 OK",
     no_tasks: "No tasks yet.",
+    no_tasks_waiting: "No tasks waiting to start.",
+    no_tasks_running: "No running tasks.",
+    no_tasks_completed: "No completed tasks.",
     no_held: "No tasks in WAITING_LIMIT.",
     no_profiles: "No profiles uploaded yet.",
     no_accounts: "No account cards yet.",
@@ -196,6 +235,7 @@ const I18N = {
     active_profile_value: "Active profile: {label} ({id})",
     profile_state_active: "active",
     profile_state_inactive: "inactive",
+    active_now: "active now",
     action_activate: "Activate",
     action_deactivate: "Deactivate",
     action_enable: "Enable",
@@ -235,6 +275,8 @@ const I18N = {
 
 const ui = {
   langSelect: document.getElementById("lang-select"),
+  tabIntroTitle: document.getElementById("tab-intro-title"),
+  tabIntroText: document.getElementById("tab-intro-text"),
   tabButtons: Array.from(document.querySelectorAll(".tab-button")),
   tabPanels: Array.from(document.querySelectorAll("[data-tab-content]")),
   tokenForm: document.getElementById("token-form"),
@@ -246,7 +288,12 @@ const ui = {
   readyStatus: document.getElementById("ready-status"),
   taskForm: document.getElementById("task-form"),
   refreshTasks: document.getElementById("refresh-tasks"),
-  tasksBody: document.getElementById("tasks-body"),
+  tasksWaiting: document.getElementById("tasks-waiting"),
+  tasksRunning: document.getElementById("tasks-running"),
+  tasksCompleted: document.getElementById("tasks-completed"),
+  tasksWaitingCount: document.getElementById("tasks-waiting-count"),
+  tasksRunningCount: document.getElementById("tasks-running-count"),
+  tasksCompletedCount: document.getElementById("tasks-completed-count"),
   refreshAgentCards: document.getElementById("refresh-agent-cards"),
   agentsPreparing: document.getElementById("agents-preparing"),
   agentsRunning: document.getElementById("agents-running"),
@@ -294,6 +341,29 @@ const appState = {
   executions: [],
   healthLive: { ok: null, textKey: "status_unknown" },
   healthReady: { ok: null, textKey: "status_unknown" }
+};
+
+const TAB_INTRO_KEYS = {
+  overview: {
+    title: "tab_intro_overview_title",
+    text: "tab_intro_overview_text"
+  },
+  tasks: {
+    title: "tab_intro_tasks_title",
+    text: "tab_intro_tasks_text"
+  },
+  agents: {
+    title: "tab_intro_agents_title",
+    text: "tab_intro_agents_text"
+  },
+  accounts: {
+    title: "tab_intro_accounts_title",
+    text: "tab_intro_accounts_text"
+  },
+  system: {
+    title: "tab_intro_system_title",
+    text: "tab_intro_system_text"
+  }
 };
 
 function t(key, vars) {
@@ -367,6 +437,16 @@ function getSavedTab() {
     : "overview";
 }
 
+function updateTabIntro() {
+  const intro = TAB_INTRO_KEYS[appState.activeTab] ?? TAB_INTRO_KEYS.overview;
+  if (ui.tabIntroTitle) {
+    ui.tabIntroTitle.textContent = t(intro.title);
+  }
+  if (ui.tabIntroText) {
+    ui.tabIntroText.textContent = t(intro.text);
+  }
+}
+
 function applyTabState() {
   const activeTab = appState.activeTab;
 
@@ -380,6 +460,8 @@ function applyTabState() {
     const target = panel.getAttribute("data-tab-content");
     panel.hidden = target !== activeTab;
   });
+
+  updateTabIntro();
 }
 
 function setActiveTab(tabId, options = {}) {
@@ -505,24 +587,83 @@ async function requestJson(route, options = {}) {
 function renderTasks(items) {
   appState.tasks = Array.isArray(items) ? items : [];
 
-  if (appState.tasks.length === 0) {
-    ui.tasksBody.innerHTML = `<tr><td colspan="4" class="muted">${escapeHtml(t("no_tasks"))}</td></tr>`;
-    updateStats();
-    return;
+  const waitingStatuses = new Set([
+    "NEW",
+    "QUEUED",
+    "WAITING_LIMIT",
+    "WAITING_APPROVAL",
+    "DRAINING_ACTIVE",
+    "SWITCHING_AUTH"
+  ]);
+  const runningStatuses = new Set([
+    "ASSIGNED",
+    "STARTING",
+    "RUNNING",
+    "WAITING_USER",
+    "INTERRUPTING",
+    "INTERRUPTED",
+    "REPLANNING",
+    "BLOCKED",
+    "FAILED_RETRYABLE"
+  ]);
+  const completedStatuses = new Set(["DONE", "FAILED_TERMINAL", "ARCHIVED"]);
+
+  const buckets = {
+    waiting: [],
+    running: [],
+    completed: []
+  };
+
+  for (const item of appState.tasks) {
+    if (completedStatuses.has(item.status)) {
+      buckets.completed.push(item);
+      continue;
+    }
+    if (runningStatuses.has(item.status)) {
+      buckets.running.push(item);
+      continue;
+    }
+    if (waitingStatuses.has(item.status)) {
+      buckets.waiting.push(item);
+      continue;
+    }
+
+    buckets.running.push(item);
   }
 
-  ui.tasksBody.innerHTML = appState.tasks
-    .map(
-      (item) => `
-      <tr>
-        <td><code>${escapeHtml(item.id)}</code></td>
-        <td>${escapeHtml(item.title)}</td>
-        <td><span class="pill">${escapeHtml(item.status)}</span></td>
-        <td>${escapeHtml(item.priority)}</td>
-      </tr>
-    `
-    )
-    .join("");
+  const renderBucket = (node, list, emptyKey) => {
+    if (!Array.isArray(list) || list.length === 0) {
+      node.innerHTML = `<li class="muted">${escapeHtml(t(emptyKey))}</li>`;
+      return;
+    }
+
+    node.innerHTML = list
+      .slice(0, 40)
+      .map(
+        (item) => `<li class="task-card">
+          <div class="task-card-head">
+            <span class="pill">${escapeHtml(item.status)}</span>
+            <span class="account-meta">p${escapeHtml(item.priority)}</span>
+          </div>
+          <div class="task-card-title">${escapeHtml(item.title)}</div>
+          <div class="account-meta"><code>${escapeHtml(item.id)}</code></div>
+        </li>`
+      )
+      .join("");
+  };
+
+  renderBucket(ui.tasksWaiting, buckets.waiting, "no_tasks_waiting");
+  renderBucket(ui.tasksRunning, buckets.running, "no_tasks_running");
+  renderBucket(ui.tasksCompleted, buckets.completed, "no_tasks_completed");
+  if (ui.tasksWaitingCount) {
+    ui.tasksWaitingCount.textContent = String(buckets.waiting.length);
+  }
+  if (ui.tasksRunningCount) {
+    ui.tasksRunningCount.textContent = String(buckets.running.length);
+  }
+  if (ui.tasksCompletedCount) {
+    ui.tasksCompletedCount.textContent = String(buckets.completed.length);
+  }
   updateStats();
 }
 
@@ -617,11 +758,19 @@ function renderAccountFleet(items) {
       const primaryReset = item.primary_resets_at_utc ?? "n/a";
       const secondaryReset = item.secondary_resets_at_utc ?? "n/a";
       const limitSource = item.limits_error ? `error=${escapeHtml(item.limits_error)}` : "live";
+      const isCurrent = appState.activeProfile && appState.activeProfile.id === item.id;
+      const statusBadge = `<span class="pill">${escapeHtml(item.status)}</span>`;
+      const currentBadge = isCurrent
+        ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>`
+        : "";
 
-      return `<article class="account-card">
+      return `<article class="account-card${isCurrent ? " account-card-active" : ""}">
         <div class="account-header">
           <div class="account-title">${escapeHtml(item.label)}</div>
-          <span class="pill">${escapeHtml(item.status)}</span>
+          <div class="actions">
+            ${currentBadge}
+            ${statusBadge}
+          </div>
         </div>
         <div class="account-meta"><code>${escapeHtml(item.id)}</code></div>
         <div class="account-meta">5h remaining=${escapeHtml(primary)} reset=${escapeHtml(primaryReset)}</div>
@@ -665,27 +814,36 @@ function renderProfiles(items) {
   }
 
   if (appState.profiles.length === 0) {
-    ui.profilesBody.innerHTML = `<tr><td colspan="4" class="muted">${escapeHtml(t("no_profiles"))}</td></tr>`;
+    ui.profilesBody.innerHTML = `<p class="muted">${escapeHtml(t("no_profiles"))}</p>`;
     updateStats();
     return;
   }
 
   ui.profilesBody.innerHTML = appState.profiles
     .map((item) => {
-      const state = item.status === "active"
+      const isActive = item.status === "active";
+      const isCurrent = appState.activeProfile && appState.activeProfile.id === item.id;
+      const state = isActive
         ? `<span class="pill pill-active">${escapeHtml(t("profile_state_active"))}</span>`
         : `<span class="pill">${escapeHtml(t("profile_state_inactive"))}</span>`;
-      return `
-        <tr>
-          <td><code>${escapeHtml(item.id)}</code></td>
-          <td>${escapeHtml(item.label)}</td>
-          <td>${state}</td>
-          <td class="actions">
-            <button type="button" data-action="activate" data-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button>
-            <button type="button" data-action="deactivate" data-id="${escapeHtml(item.id)}" class="ghost">${escapeHtml(t("action_deactivate"))}</button>
-          </td>
-        </tr>
-      `;
+      const current = isCurrent
+        ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>`
+        : "";
+
+      return `<article class="profile-card${isCurrent ? " profile-card-active" : ""}">
+        <div class="profile-card-head">
+          <div class="profile-card-title">${escapeHtml(item.label)}</div>
+          <div class="actions">
+            ${current}
+            ${state}
+          </div>
+        </div>
+        <div class="profile-card-meta"><code>${escapeHtml(item.id)}</code></div>
+        <div class="profile-card-actions">
+          <button type="button" data-action="activate" data-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button>
+          <button type="button" data-action="deactivate" data-id="${escapeHtml(item.id)}" class="ghost">${escapeHtml(t("action_deactivate"))}</button>
+        </div>
+      </article>`;
     })
     .join("");
   updateStats();

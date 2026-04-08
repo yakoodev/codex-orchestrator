@@ -105,6 +105,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Встроенная Web panel расширена карточками активных агентов и account fleet (лимиты 5h/weekly по каждому профилю).
 - [x] Добавлена baseline система памяти агентов: `POST/GET/PATCH /api/memory/entries`, Prisma-модель `AgentMemoryEntry`, UI-блок Agent Memory и авто-подмешивание `project_id + role` памяти в prompt делегации.
 - [x] Встроенная `/ui/` переведена на логические вкладки (Overview, Tasks & Queue, Agents, Accounts & Limits, System), чтобы убрать длинный single-page скролл.
+- [x] Вкладка `Tasks & Queue` переведена на task-tracker board (колонки `ожидает запуска / запущена / выполнена`) вместо общего списка.
+- [x] Ручное управление памятью скрыто в `System` как fallback/admin override (основной сценарий памяти остается автоматическим).
+- [x] Улучшена навигационная логика `/ui/`: добавлен контекстный intro-блок текущей вкладки с явным операционным сценарием.
+- [x] `Auth Profiles` в `/ui/` переведены с таблицы на карточки с быстрыми действиями `activate/deactivate` и явной пометкой активного профиля.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -115,7 +119,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Редизайн админки `/ui/`: вкладки и новая IA внедрены; остаются визуальная полировка, сокращение таблиц и UX-pass по mobile.
+- [~] Редизайн админки `/ui/`: вкладки + task board + скрытый fallback memory-control + tab-intro + profile-cards внедрены; остаются action-panel компактность и UX-pass по mobile.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`
