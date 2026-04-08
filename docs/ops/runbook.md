@@ -33,16 +33,28 @@ docker compose up -d
 docker compose --profile observability up -d
 ```
 
-## Startup with Telegram proxy
-1. Set `TG_PROXY_URL` in root `.env` (see examples in root `.env.example`).
+## Startup with Telegram adapter (long polling)
+1. Set Telegram variables in root `.env`:
+- `TG_ENABLED=true`
+- `TG_BOT_TOKEN=<telegram_bot_token>`
+- `TG_ALLOWED_CHAT_IDS=<chat_id_1,chat_id_2>`
+- Optional: `TG_ALLOWED_USER_IDS=<user_id_1,user_id_2>`
+- Optional proxy: `TG_PROXY_URL=socks5://host:port` (or `http(s)://`)
 2. Start or restart bus service:
 ```bash
 docker compose up -d bus
 ```
-3. Confirm the variable is visible in the container:
+3. Confirm variables are visible in container:
 ```bash
 docker compose exec bus printenv TG_PROXY_URL
+docker compose exec bus printenv TG_ENABLED TG_ALLOWED_CHAT_IDS TG_ALLOWED_USER_IDS
 ```
+4. In Telegram, open chat with your bot and use `/help`.
+
+Notes:
+- Adapter runs in fail-safe mode: Telegram/API connectivity errors do not stop Web/API control path.
+- Incoming updates are deduplicated by `update_id`; last processed offset is persisted in `TG_STATE_FILE_PATH`.
+- `/say` command is reserved and currently returns explicit "not supported" response.
 
 ## Health checks
 - Bus liveness: `GET /health/live`

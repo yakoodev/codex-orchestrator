@@ -28,6 +28,12 @@
 - `/held`
 - `/switch-history`
 
+## Текущий статус реализации
+- Реализован long polling адаптер с whitelist (`TG_ALLOWED_CHAT_IDS` / `TG_ALLOWED_USER_IDS`), дедупликацией `update_id`, persisted offset (`TG_STATE_FILE_PATH`) и exponential backoff.
+- Реализована поддержка proxy через `TG_PROXY_URL` (`socks5://`, `http://`, `https://`).
+- Все перечисленные команды, кроме `/say`, подключены к рабочему API слою.
+- `/say` пока возвращает явный ответ "не поддерживается в текущем контуре".
+
 ## Безопасность
 - Все команды администрирования требуют соответствия single-admin политике.
 - Команды принимаются только от whitelisted Telegram user IDs/chat IDs.

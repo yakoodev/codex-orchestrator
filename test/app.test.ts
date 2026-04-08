@@ -1005,7 +1005,17 @@ describe("smoke-core API", () => {
     delegationExecutorMode: "mock",
     codexCommand: "codex",
     workerRuntimeDir: path.resolve(process.cwd(), ".runtime", "workers-test"),
-    delegationExecutionTimeoutMs: 60_000
+    delegationExecutionTimeoutMs: 60_000,
+    telegramEnabled: false,
+    telegramBotToken: null,
+    telegramProxyUrl: null,
+    telegramApiBaseUrl: "https://api.telegram.org",
+    telegramAllowedChatIds: [],
+    telegramAllowedUserIds: [],
+    telegramPollingTimeoutSec: 30,
+    telegramBackoffMinMs: 1_000,
+    telegramBackoffMaxMs: 30_000,
+    telegramStateFilePath: path.resolve(process.cwd(), ".runtime", "telegram-test", "state.json")
   };
 
   beforeEach(async () => {

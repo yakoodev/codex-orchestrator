@@ -1,6 +1,6 @@
 # Manual Test Scenarios (UI + API)
 
-Обновлено: 2026-04-07
+Обновлено: 2026-04-08
 
 Этот документ даёт точные ручные сценарии, которые можно прогонять после каждого `git pull`.
 
@@ -258,7 +258,41 @@ $dispatch | ConvertTo-Json -Depth 8
 - `status = completed`;
 - `result_summary` содержит ответ модели (например `READY`), а не mock-строку вида `Delegation completed by template ...`.
 
-## 9. Очистка артефактов теста
+## 9. Сценарий G: Telegram long polling команды
+
+Подготовка `.env`:
+
+```powershell
+(Get-Content .env) `
+  -replace "^TG_ENABLED=.*$", "TG_ENABLED=true" `
+  -replace "^TG_BOT_TOKEN=.*$", "TG_BOT_TOKEN=<YOUR_BOT_TOKEN>" `
+  -replace "^TG_ALLOWED_CHAT_IDS=.*$", "TG_ALLOWED_CHAT_IDS=<YOUR_CHAT_ID>" `
+  | Set-Content .env
+
+docker compose up -d --build bus
+```
+
+Проверка старта адаптера:
+
+```powershell
+docker compose logs --tail=80 bus
+```
+
+Ожидаемо: в логах есть `Telegram adapter started`.
+
+Дальше в чате с ботом отправь команды:
+- `/help`
+- `/tasks`
+- `/held`
+- `/switch-status`
+- `/limit`
+
+Ожидаемо:
+- ответы приходят в Telegram;
+- команды читают текущее состояние сервиса через API;
+- при неактивном профиле `/limit` возвращает понятный empty-state.
+
+## 10. Очистка артефактов теста
 
 ```powershell
 Remove-Item -LiteralPath "$PWD\auth.json" -ErrorAction SilentlyContinue

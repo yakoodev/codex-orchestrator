@@ -1,6 +1,7 @@
 import { loadConfig } from "./config";
 import { createApp } from "./app";
 import { createRuntimeDependencies } from "./runtime/create-runtime-dependencies";
+import { createTelegramBotController } from "./telegram/telegram-bot";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -12,10 +13,15 @@ async function main(): Promise<void> {
     storage: runtime.storage,
     delegationExecutor: runtime.delegationExecutor
   });
+  const telegram = createTelegramBotController({
+    config,
+    app
+  });
+  await telegram.start();
 
   const shutdown = async (): Promise<void> => {
     app.log.info("Shutting down");
-    await Promise.allSettled([app.close(), runtime.close()]);
+    await Promise.allSettled([telegram.stop(), app.close(), runtime.close()]);
     process.exit(0);
   };
 

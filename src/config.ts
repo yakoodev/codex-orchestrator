@@ -23,6 +23,16 @@ export interface AppConfig {
   codexCommand: string;
   workerRuntimeDir: string;
   delegationExecutionTimeoutMs: number;
+  telegramEnabled: boolean;
+  telegramBotToken: string | null;
+  telegramProxyUrl: string | null;
+  telegramApiBaseUrl: string;
+  telegramAllowedChatIds: string[];
+  telegramAllowedUserIds: string[];
+  telegramPollingTimeoutSec: number;
+  telegramBackoffMinMs: number;
+  telegramBackoffMaxMs: number;
+  telegramStateFilePath: string;
 }
 
 function readInt(value: string | undefined, fallback: number): number {
@@ -47,6 +57,26 @@ function readBool(value: string | undefined, fallback: boolean): boolean {
   return normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
+function readCsv(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function readOptionalUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed;
+}
+
 function required(value: string | undefined, key: string): string {
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -67,6 +97,11 @@ function readDelegationExecutorMode(
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const workerRuntimeDir =
+    env["WORKER_RUNTIME_DIR"]?.trim() ||
+    path.resolve(process.cwd(), ".runtime", "workers");
+  const telegramBotToken = env["TG_BOT_TOKEN"]?.trim() || null;
+
   return {
     nodeEnv: env["NODE_ENV"] ?? "development",
     serviceName: env["SERVICE_NAME"] ?? "bus",
@@ -90,9 +125,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml"),
     delegationExecutorMode: readDelegationExecutorMode(env["DELEGATION_EXECUTOR_MODE"]),
     codexCommand: env["CODEX_COMMAND"]?.trim() || "codex",
-    workerRuntimeDir:
-      env["WORKER_RUNTIME_DIR"]?.trim() ||
-      path.resolve(process.cwd(), ".runtime", "workers"),
-    delegationExecutionTimeoutMs: readInt(env["DELEGATION_EXECUTION_TIMEOUT_MS"], 180000)
+    workerRuntimeDir,
+    delegationExecutionTimeoutMs: readInt(env["DELEGATION_EXECUTION_TIMEOUT_MS"], 180000),
+    telegramEnabled: readBool(env["TG_ENABLED"], Boolean(telegramBotToken)),
+    telegramBotToken,
+    telegramProxyUrl: readOptionalUrl(env["TG_PROXY_URL"]),
+    telegramApiBaseUrl: env["TG_API_BASE_URL"]?.trim() || "https://api.telegram.org",
+    telegramAllowedChatIds: readCsv(env["TG_ALLOWED_CHAT_IDS"]),
+    telegramAllowedUserIds: readCsv(env["TG_ALLOWED_USER_IDS"]),
+    telegramPollingTimeoutSec: readInt(env["TG_POLLING_TIMEOUT_SEC"], 30),
+    telegramBackoffMinMs: readInt(env["TG_BACKOFF_MIN_MS"], 1000),
+    telegramBackoffMaxMs: readInt(env["TG_BACKOFF_MAX_MS"], 30000),
+    telegramStateFilePath:
+      env["TG_STATE_FILE_PATH"]?.trim() ||
+      path.resolve(workerRuntimeDir, "..", "telegram", "state.json")
   };
 }

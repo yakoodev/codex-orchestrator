@@ -38,6 +38,7 @@
     "fastify": "^5.6.1",
     "ioredis": "^5.8.2",
     "jszip": "^3.10.1",
+    "proxy-agent": "^6.5.0",
     "yaml": "^2.8.1"
   },
   "devDependencies": {

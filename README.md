@@ -62,6 +62,11 @@ Built-in web control panel:
 - Select language (`RU/EN`) in header if needed
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 
+Telegram adapter (MVP long polling):
+- Enable in `.env`: `TG_ENABLED=true`, `TG_BOT_TOKEN=...`, and whitelist (`TG_ALLOWED_CHAT_IDS` and/or `TG_ALLOWED_USER_IDS`)
+- Optional proxy: `TG_PROXY_URL=socks5://...` or `http(s)://...`
+- Supported commands: `/help`, `/tasks`, `/task`, `/pause`, `/resume`, `/stop`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`
+
 Optional observability profile:
 ```bash
 docker compose --profile observability up -d

@@ -28,6 +28,12 @@
 - `/held`
 - `/switch-history`
 
+## Current implementation status
+- Long polling adapter is implemented with whitelist (`TG_ALLOWED_CHAT_IDS` / `TG_ALLOWED_USER_IDS`), `update_id` deduplication, persisted offset (`TG_STATE_FILE_PATH`), and exponential backoff.
+- Proxy routing is implemented via `TG_PROXY_URL` (`socks5://`, `http://`, `https://`).
+- All listed commands except `/say` are wired to the live API layer.
+- `/say` currently returns an explicit "not supported in current scope" response.
+
 ## Security
 - Admin command handling must respect single-admin access policy.
 - Accept updates only from whitelisted Telegram user IDs/chat IDs.
