@@ -23,7 +23,8 @@ docker compose up -d
 Health endpoints:
 - `GET http://localhost:8080/health/live`
 - `GET http://localhost:8080/health/ready`
-- Web control panel: `http://localhost:8080/ui/`
+- Web control panel entry: `http://localhost:8080/ui/`
+- Web operator console: `http://localhost:8080/ui/console.html#/dashboard`
 
 Local smoke path (after `docker compose up -d`):
 ```bash
@@ -59,20 +60,21 @@ Real Codex delegation runtime:
 - You can override mode per request with `payload.execution_mode` (`mock` or `codex_exec`).
 
 Built-in web control panel:
-- Open `http://localhost:8080/ui/`
-- Save `X-Admin-Token` from your `.env`
-- Select language (`RU/EN`) in header if needed
-- Use tabbed IA to avoid long single-page scroll: `Overview`, `Tasks & Queue`, `Agents`, `Accounts & Limits`, `System`
-- Follow tab-specific intro hints (each tab now has its own operator context block)
-- Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
-- Monitor runtime with new operator cards:
-  - `Agent Runtime Cards` (`preparing/running/recent`) with compact cards + dedicated inspector for full prompt/log
-  - `Tasks & Queue` as task-tracker board (`waiting / running / completed`) with client-side filters and `Task Details` panel
-  - `Auth Profiles` as action cards (`activate/deactivate`) with explicit active-profile mark
-  - `Accounts & Limits` with inner tabs (`Profiles / Limits / History`) and filtered switch-history
-  - panel state badges (`loading/success/error`) + optional auto-refresh toggles (default off) for key operational panes
-  - `Agent Memory` manual override is hidden in `System` (fallback/admin correction)
-  - `Account Fleet` cards with per-profile live limits (5h/weekly remaining + reset timestamps)
+- Open `http://localhost:8080/ui/` and press `Открыть консоль`.
+- Main console route map:
+  - `#/dashboard` (health + KPI + latest signals)
+  - `#/tasks` (create/filter/board/details + held queue)
+  - `#/agents` (preparing/running/recent + inspector)
+  - `#/accounts` (profiles/limits/history sections)
+  - `#/memory` (agent memory create/list/toggle)
+  - `#/system` (custom module config + executions)
+  - `#/logs` (centralized UI/API log with filters)
+- Save `X-Admin-Token` in the sidebar (`/api/*` only).
+- Theme and language:
+  - dark theme is default; light theme is available from selector;
+  - RU/EN switch is available in both entry and console.
+- Client state persisted in browser `localStorage`:
+  - token, lang, theme, last route, page filters, auto-refresh toggles.
 
 Telegram adapter (MVP long polling):
 - Enable in `.env`: `TG_ENABLED=true`, `TG_BOT_TOKEN=...`, and optionally whitelist (`TG_ALLOWED_CHAT_IDS` and/or `TG_ALLOWED_USER_IDS`)
@@ -87,7 +89,7 @@ docker compose --profile observability up -d
 ```
 
 ## Scope
-- MVP stack: Fastify + TypeScript, Next.js, Prisma + SQL migrations, Redis Streams, OpenAPI 3.1.
+- MVP stack: Fastify + TypeScript + vanilla JS/CSS UI, Prisma + SQL migrations, Redis Streams, OpenAPI 3.1.
 - Module runtime: TypeScript-first with optional PowerShell adapter.
 - Auth mode MVP: single admin token.
 - Delivery mode: Docker Compose-first.

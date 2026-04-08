@@ -117,6 +117,22 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `Accounts & Limits` разделены на внутренние подтабы `Profiles/Limits/History`, добавлены фильтры для switch-history.
 - [x] Добавлены UI panel states (`loading/success/error`) и toggle автообновления (default off) для `Tasks`, `Agents`, `Switch History`.
 - [x] Вкладка `System`: ручная память выделена как `Advanced/fallback` блок с явным warning.
+- [x] UI Redesign v2 выполнен с нуля в `hybrid`-архитектуре:
+  - `/ui/` теперь отдельная entry-страница;
+  - `/ui/console.html` — основная операционная консоль с hash-router (`#/dashboard|tasks|agents|accounts|memory|system|logs`).
+- [x] Полностью заменен app-shell: `sidebar + quickbar + screen-host`, старые табы/DOM удалены, сохранены только data/API-операции.
+- [x] В новой консоли реализован полный parity текущих операций:
+  - `Tasks`: create/list/filter/select/details/release-held;
+  - `Agents`: preparing/running/recent + inspector;
+  - `Accounts`: profiles upload/activate/deactivate + limits + history filters;
+  - `Memory`: create/list/enable-disable;
+  - `System`: module get/patch + executions;
+  - `Logs`: отдельный экран UI/API activity log.
+- [x] Введен единый client-side kernel:
+  - hash-router + восстановление последнего экрана;
+  - единый store для `token/lang/theme/route/filters/autorefresh`;
+  - dark-first тема + light switch, RU default + EN toggle, persistence в `localStorage`.
+- [x] Обновлены smoke/test проверки UI-статики под новую структуру: `scripts/smoke-local.mjs`, `test/app.test.ts`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -127,7 +143,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Редизайн админки `/ui/`: вкладки + task board + filters/details + agent inspector + accounts subtabs + panel states + hidden fallback memory-control внедрены; остаются визуальная полировка и финальный mobile/a11y pass.
+- [~] Следующий UI-цикл после Redesign v2: визуальная полировка (контраст/типографика), расширенный mobile UX-pass и финальный accessibility pass.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

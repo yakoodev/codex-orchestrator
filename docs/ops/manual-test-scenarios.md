@@ -37,17 +37,25 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
 ## 3. Сценарий A: UI доступен и локализация работает
 
 1. Открой `http://localhost:8080/ui/`.
-2. В шапке переключи язык `RU -> EN -> RU`.
-3. Проверь, что заголовки и названия вкладок меняются.
-4. Прокликай вкладки `Overview -> Tasks & Queue -> Agents -> Accounts & Limits -> System` и убедись, что показываются только релевантные блоки.
-5. На каждой вкладке проверь контекстный intro-блок под табами: заголовок и текст должны соответствовать текущему разделу.
-6. Вставь `ADMIN_TOKEN` в блоке `Connection` и нажми `Сохранить токен`.
-7. Проверь, что у операционных панелей отображаются state-бейджи (`loading/ok/error`) при обновлении.
+2. На entry-странице переключи язык `RU -> EN -> RU` и тему `dark -> light -> dark`.
+3. Нажми `Открыть консоль` и проверь, что URL вида `http://localhost:8080/ui/console.html#/dashboard`.
+4. В консоли прокликай sidebar-маршруты:
+   - `dashboard`
+   - `tasks`
+   - `agents`
+   - `accounts`
+   - `memory`
+   - `system`
+   - `logs`
+5. Убедись, что при переключении route меняются `quickbar` заголовок/описание и отображается только активный экран.
+6. Вставь `ADMIN_TOKEN` в sidebar-форму `X-Admin-Token` и нажми `Сохранить`.
+7. Нажми `Обновить экран` и `Полный refresh`, проверь state-бейджи `loading/ok/error` на панелях.
 
 API-проверка:
 
 ```powershell
 (Invoke-WebRequest -UseBasicParsing "$BASE/ui/").StatusCode
+(Invoke-WebRequest -UseBasicParsing "$BASE/ui/console.html").StatusCode
 (Invoke-WebRequest -UseBasicParsing "$BASE/ui/app.js").StatusCode
 (Invoke-WebRequest -UseBasicParsing "$BASE/ui/styles.css").StatusCode
 ```
@@ -56,7 +64,7 @@ API-проверка:
 
 ## 3.1 Сценарий A1: Operator cards (agents + account fleet)
 
-1. В UI открой блок `Agent Runtime Cards` и нажми `Обновить`.
+1. Перейди на `#/agents` и нажми `Обновить`.
 2. Убедись, что видны три секции: `Preparing`, `Running`, `Recent`.
 3. Запусти любую делегацию (например из сценария F), затем снова обнови блок.
 4. Проверь, что в каждой колонке есть счетчик карточек.
@@ -67,7 +75,7 @@ API-проверка:
    - `status`, `capability`, `template/model`;
    - `account` (label + status);
    - короткий preview без длинных полотен.
-7. В UI открой блок `Account Fleet` и нажми `Обновить`.
+7. Перейди на `#/accounts`, выбери секцию `Лимиты`, нажми `Обновить`.
 8. Проверь, что по профилям отображаются:
    - `label`, `status`, `id`;
    - `5h remaining`, `weekly remaining`;
@@ -75,16 +83,15 @@ API-проверка:
 
 ## 3.2 Сценарий A2: Agent Memory panel + memory-aware delegation
 
-1. В UI открой вкладку `System`.
-2. Раскрой блок `Ручная правка памяти (fallback)`.
-3. Внутри него открой `Agent Memory`.
-4. Заполни:
+1. Перейди на `#/memory`.
+2. Проверь, что доступны форма создания и список записей памяти.
+3. Заполни:
    - `Project ID` = `manual-memory`;
    - `Agent Role` = `reviewer`;
    - `Memory title` = `GUI note`;
    - `Memory content` = `Use breadcrumbs and sticky header checks first.`
 5. Нажми `Save memory`.
-6. Нажми `Обновить` в этом же блоке и проверь, что запись видна в списке.
+6. Нажми `Обновить` и проверь, что запись видна в списке.
 7. Нажми `Выключить` у записи и проверь, что статус сменился на `неактивен`.
 8. Нажми `Включить` и верни запись в `активен`.
 
@@ -101,7 +108,7 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 
 ## 3.3 Сценарий A3: Task board по статусам
 
-1. В UI открой вкладку `Tasks & Queue`.
+1. Перейди на `#/tasks`.
 2. Убедись, что задачи показываются в 3 колонках:
    - `Ожидает запуска`
    - `Запущена`
@@ -116,7 +123,7 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 
 ## 3.4 Сценарий A4: Auth profile cards
 
-1. В UI открой вкладку `Accounts & Limits`.
+1. Перейди на `#/accounts`.
 2. Проверь внутренние подтабы `Профили / Лимиты / История` и переключение между ними.
 3. В `Профили` проверь, что профили показываются карточками (не таблицей).
 4. Нажми `Activate` у неактивного профиля.
@@ -127,10 +134,14 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 
 ## 3.5 Сценарий A5: Auto refresh toggles
 
-1. На вкладке `Tasks & Queue` включи `авто` у панели задач.
+1. На `#/tasks` включи `авто` у панели задач.
 2. Создай новую задачу через API и подожди до 15 секунд.
 3. Проверь, что board обновился без ручного `Обновить`.
-4. Повтори на вкладках `Agents` и `Accounts & Limits -> История` для соответствующих `авто` toggles.
+4. Повтори на `#/agents` и `#/accounts -> История` для соответствующих `авто` toggles.
+5. Перезагрузи страницу и проверь, что сохранены:
+   - последний активный route;
+   - выбранная тема/язык;
+   - значения фильтров и auto-refresh toggles.
 
 ## 4. Сценарий B: Security boundary
 
