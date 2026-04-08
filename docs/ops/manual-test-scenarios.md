@@ -205,6 +205,53 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 6. Открой `#/tasks` и проверь, что в форме создания и фильтре проектов есть созданный `project key`.
 7. Открой `#/memory` и проверь, что `project_id` выбирается из того же project registry (селект, без свободного ввода).
 
+## 3.8 Сценарий A8: MCP bridge MVP
+
+1. Убедись, что сервис запущен (`docker compose up -d`), а `ADMIN_TOKEN` подготовлен в переменных (`$ADMIN_TOKEN`).
+2. В отдельном терминале запусти MCP bridge:
+
+```powershell
+cd C:\Users\Yakoo\source\repos\codex-orchestrator
+$env:MCP_API_BASE_URL = "http://localhost:8080"
+$env:MCP_ADMIN_TOKEN = $ADMIN_TOKEN
+npm run mcp:serve
+```
+
+3. Подключи любой MCP-клиент к stdio-процессу `npm run mcp:serve`.
+4. Вызови MCP tool `orchestrator.list_agents`:
+   - ожидаемо: возвращаются `templates`, `capabilities`, `totals`.
+5. Вызови MCP tool `orchestrator.list_tasks` с аргументами:
+
+```json
+{ "status": "NEW", "limit": 5 }
+```
+
+Ожидаемо: возвращаются `items`, `total`, `returned`, `truncated`.
+
+6. Вызови MCP tool `orchestrator.dispatch_agent` с аргументами:
+
+```json
+{
+  "requester_task_id": "task-<id>",
+  "capability": "reviewer",
+  "target_selector": {},
+  "payload": { "execution_mode": "mock", "prompt": "mcp smoke run" },
+  "idempotency_key": "mcp-smoke-dispatch-1"
+}
+```
+
+Ожидаемо:
+- возвращается `trace_id` (детерминированный от `idempotency_key`, если `trace_id` явно не задан);
+- в `result` есть объект делегации от `/api/delegation/dispatch`.
+
+7. Вызови MCP tool `orchestrator.get_limits`:
+   - вариант 1: `{ "profile_id": "<profile-id>" }`;
+   - вариант 2: `{ "include_inactive": true, "limit_profiles": 10 }`.
+
+Ожидаемо:
+- в fleet-режиме есть `requested_profiles/successful_profiles/failed_profiles`;
+- при частичных ошибках есть массив `errors` с `error/code/status_code`.
+
 ## 4. Сценарий B: Security boundary
 
 ```powershell

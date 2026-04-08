@@ -5,18 +5,21 @@
 
 Этот roadmap фиксирует ближайшие продуктовые улучшения после закрытия PR1.
 
-## Planned: MCP Bridge for Agent Operations
-- Статус: `planned`.
+## MCP Bridge for Agent Operations
+- Статус: `completed` (MVP).
 - Цель: дать агентам и внешним ассистентам стандартный MCP-интерфейс для работы с оркестратором.
 - Базовый scope MCP (MVP):
   - `orchestrator.list_agents`: получить доступных агентов/шаблоны;
   - `orchestrator.list_tasks`: получить список задач и статусы;
   - `orchestrator.dispatch_agent`: запустить делегацию/агента на задачу;
   - `orchestrator.get_limits`: получить актуальные лимиты профилей.
-- Требования:
-  - переиспользование текущих API/контрактов оркестратора;
-  - единый security boundary (`X-Admin-Token`/service token);
-  - trace/idempotency для операций запуска.
+- Что реализовано:
+  - MCP stdio bridge (`npm run mcp:serve`) как proxy-adapter поверх текущего REST API;
+  - единый security boundary через `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN` -> `X-Admin-Token`;
+  - trace/idempotency на уровне bridge для `orchestrator.dispatch_agent`;
+  - единый error mapping (`error`, `code`, `status_code`) для upstream ошибок.
+- Что дальше:
+  - streamable HTTP transport и расширение набора MCP tools вынесены в follow-up scope.
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: Project Registry (доменный объект Project)

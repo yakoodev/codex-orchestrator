@@ -9,7 +9,7 @@ Open-source orchestrator bus for Codex workers with limit-aware scheduling, dete
 - Docker/Ops: [`docs/docker`](/docs/docker)
 - PR1 status tracker: [`docs/ops/pr1-progress.md`](/docs/ops/pr1-progress.md)
 - Product roadmap (post-PR1): [`docs/ops/roadmap.md`](/docs/ops/roadmap.md)
-- MCP bridge plan: [`docs/ops/mcp-agent-bridge.md`](/docs/ops/mcp-agent-bridge.md)
+- MCP bridge (MVP): [`docs/ops/mcp-agent-bridge.md`](/docs/ops/mcp-agent-bridge.md)
 - Manual test scenarios: [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md)
 
 ## Quickstart (Root UX)
@@ -58,6 +58,20 @@ Real Codex delegation runtime:
 - For real execution path, upload and activate ChatGPT `auth.json`, then call `POST /api/delegation/dispatch` with `payload.prompt`.
 - Storage/runtime behavior: service persists uploaded `auth.json` in MinIO and writes it to per-run `CODEX_HOME/auth.json` before `codex exec`.
 - You can override mode per request with `payload.execution_mode` (`mock` or `codex_exec`).
+
+MCP bridge (MVP, stdio):
+- Start MCP server:
+```bash
+MCP_API_BASE_URL=http://localhost:8080 \
+MCP_ADMIN_TOKEN=<ADMIN_TOKEN> \
+npm run mcp:serve
+```
+- Implemented tools:
+  - `orchestrator.list_agents`
+  - `orchestrator.list_tasks`
+  - `orchestrator.dispatch_agent`
+  - `orchestrator.get_limits`
+- MCP bridge works as proxy over existing REST API and preserves the same admin-token security boundary.
 
 Built-in web control panel:
 - Open `http://localhost:8080/ui/` and press `Открыть консоль`.
