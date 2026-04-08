@@ -143,6 +143,15 @@ export interface ArtifactEntity {
   path: string;
 }
 
+export type InterventionType =
+  | "steer"
+  | "interrupt"
+  | "pause"
+  | "resume"
+  | "replan"
+  | "approve"
+  | "reject";
+
 export interface AgentTemplateEntity {
   id: string;
   name: string;
@@ -233,6 +242,15 @@ export interface CreateTaskInput {
   priority: number;
   status: TaskStatus;
   source: string;
+  created_by: string;
+}
+
+export interface CreateInterventionInput {
+  task_id: string;
+  task_run_id?: string | null;
+  source: string;
+  type: InterventionType;
+  payload?: Record<string, unknown> | null;
   created_by: string;
 }
 
@@ -361,6 +379,7 @@ export interface Persistence {
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
   getTaskById(id: string): Promise<TaskEntity | null>;
   updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null>;
+  createIntervention(input: CreateInterventionInput): Promise<boolean>;
   releaseHeldQueue(): Promise<number>;
   createAgentTemplate(input: CreateAgentTemplateInput): Promise<AgentTemplateEntity>;
   listAgentTemplates(): Promise<AgentTemplateEntity[]>;

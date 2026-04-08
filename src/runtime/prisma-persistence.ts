@@ -1,6 +1,7 @@
 import {
   AuthContextType as PrismaAuthContextType,
   ArtifactType as PrismaArtifactType,
+  InterventionType as PrismaInterventionType,
   ModuleExecutionStatus as PrismaModuleExecutionStatus,
   Prisma,
   PrismaClient,
@@ -26,6 +27,7 @@ import type {
   CreateAgentTemplateInput,
   CreateAuthContextInput,
   CreateDelegationRequestInput,
+  CreateInterventionInput,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
@@ -402,6 +404,29 @@ export class PrismaPersistence implements Persistence {
     });
 
     return toTaskEntity(updated);
+  }
+
+  public async createIntervention(input: CreateInterventionInput): Promise<boolean> {
+    const task = await this.prisma.task.findUnique({
+      where: { id: input.task_id },
+      select: { id: true }
+    });
+    if (!task) {
+      return false;
+    }
+
+    await this.prisma.intervention.create({
+      data: {
+        task_id: input.task_id,
+        task_run_id: input.task_run_id ?? null,
+        source: input.source,
+        type: input.type as PrismaInterventionType,
+        payload: (input.payload ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput,
+        created_by: input.created_by
+      }
+    });
+
+    return true;
   }
 
   public async releaseHeldQueue(): Promise<number> {

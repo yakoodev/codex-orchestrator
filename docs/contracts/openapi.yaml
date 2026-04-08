@@ -172,6 +172,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AcceptedResponse"
+  /api/tasks/{id}/say:
+    post:
+      tags: [Tasks]
+      summary: Send task steering message
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+              required: [message]
+      responses:
+        "202":
+          description: Message accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AcceptedResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/tasks/{id}/approve:
     post:
       tags: [Tasks]

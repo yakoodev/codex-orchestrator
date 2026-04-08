@@ -37,7 +37,7 @@ docker compose --profile observability up -d
 1. Set Telegram variables in root `.env`:
 - `TG_ENABLED=true`
 - `TG_BOT_TOKEN=<telegram_bot_token>`
-- `TG_ALLOWED_CHAT_IDS=<chat_id_1,chat_id_2>`
+- Optional: `TG_ALLOWED_CHAT_IDS=<chat_id_1,chat_id_2>`
 - Optional: `TG_ALLOWED_USER_IDS=<user_id_1,user_id_2>`
 - Optional proxy: `TG_PROXY_URL=socks5://host:port` (or `http(s)://`)
 2. Start or restart bus service:
@@ -55,7 +55,8 @@ Notes:
 - Adapter runs in fail-safe mode: Telegram/API connectivity errors do not stop Web/API control path.
 - Incoming updates are deduplicated by `update_id`; last processed offset is persisted in `TG_STATE_FILE_PATH`.
 - Adapter also bridges key Redis Stream events into Telegram (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) with debounce.
-- `/say` command is reserved and currently returns explicit "not supported" response.
+- If whitelist is empty, adapter starts in discovery mode: updates are ignored, while `chat_id/user_id` are logged for initial setup.
+- `/say <task_id> <message>` is supported and creates an admin steering intervention (`POST /api/tasks/{id}/say`).
 
 ## Health checks
 - Bus liveness: `GET /health/live`

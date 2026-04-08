@@ -298,6 +298,10 @@ function normalizeProxyUrl(proxyUrl: string | null): string | null {
   return null;
 }
 
+function buildTelegramMethodUrl(baseUrl: URL, botToken: string, methodName: string): URL {
+  return new URL(`./bot${botToken}/${methodName}`, baseUrl);
+}
+
 class TelegramHttpTransport implements TelegramTransport {
   private readonly proxyAgent: ProxyAgent | undefined;
   private readonly baseUrl: URL;
@@ -338,7 +342,7 @@ class TelegramHttpTransport implements TelegramTransport {
     methodName: string,
     payload: Record<string, unknown>
   ): Promise<T> {
-    const endpoint = new URL(`bot${this.botToken}/${methodName}`, this.baseUrl);
+    const endpoint = buildTelegramMethodUrl(this.baseUrl, this.botToken, methodName);
     const body = JSON.stringify(payload);
     const responseText = await this.postJson(endpoint, body);
 
@@ -439,6 +443,7 @@ export async function executeTelegramCommand(options: {
       "/resume <id>",
       "/stop <id>",
       "/replan <id> <message>",
+      "/say <id> <message>",
       "/approve <id>",
       "/reject <id> [reason]",
       "/artifacts <task_id>",
@@ -554,6 +559,26 @@ export async function executeTelegramCommand(options: {
       return `OK: /replan ${taskId}`;
     }
     return `Ошибка /replan: HTTP ${response.statusCode}`;
+  }
+
+  if (command === "/say") {
+    const taskId = args[0];
+    const message = args.slice(1).join(" ").trim();
+    if (!taskId || !message) {
+      return "Использование: /say <id> <message>";
+    }
+    const response = await callApi(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/say`,
+      { message }
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return `OK: /say ${taskId}`;
+    }
+    if (response.statusCode === 404) {
+      return `Задача ${taskId} не найдена.`;
+    }
+    return `Ошибка /say: HTTP ${response.statusCode}`;
   }
 
   if (command === "/artifacts") {
@@ -707,10 +732,6 @@ export async function executeTelegramCommand(options: {
     ].join("\n");
   }
 
-  if (command === "/say") {
-    return "Команда /say пока не поддерживается в API-only контуре.";
-  }
-
   return "Неизвестная команда. Используйте /help";
 }
 
@@ -748,9 +769,8 @@ class TelegramBotRunner {
     }
     if (this.allowedChatIds.size === 0 && this.allowedUserIds.size === 0) {
       this.deps.app.log.warn(
-        "Telegram adapter enabled, but no whitelist is configured (TG_ALLOWED_CHAT_IDS / TG_ALLOWED_USER_IDS)"
+        "Telegram adapter enabled without whitelist; running in discovery mode (updates ignored, ids only in logs)"
       );
-      return;
     }
     if (this.running) {
       return;
@@ -1073,5 +1093,6 @@ export function createTelegramBotController(deps: TelegramBotRunnerDeps): Telegr
 
 export const telegramCommandInternals = {
   normalizeCommand,
-  buildNotificationTextFromEnvelope
+  buildNotificationTextFromEnvelope,
+  buildTelegramMethodUrl
 };

@@ -32,8 +32,9 @@
 - Реализован long polling адаптер с whitelist (`TG_ALLOWED_CHAT_IDS` / `TG_ALLOWED_USER_IDS`), дедупликацией `update_id`, persisted offset (`TG_STATE_FILE_PATH`) и exponential backoff.
 - Реализована поддержка proxy через `TG_PROXY_URL` (`socks5://`, `http://`, `https://`).
 - Реализован bridge системных уведомлений из Redis Streams (`hold_started`, `switch_started`, `switch_completed`, `switch_skipped`, `hold_released`) с debounce.
-- Все перечисленные команды, кроме `/say`, подключены к рабочему API слою.
-- `/say` пока возвращает явный ответ "не поддерживается в текущем контуре".
+- Все перечисленные команды, включая `/say`, подключены к рабочему API слою.
+- `/say` пишет admin intervention (`type=steer`) в задачу через `POST /api/tasks/{id}/say` и возвращает `accepted`.
+- Если whitelist пустой, адаптер запускается в discovery-режиме: команды не выполняются, но `chat_id/user_id` попадают в логи для безопасной первичной настройки.
 
 ## Безопасность
 - Все команды администрирования требуют соответствия single-admin политике.

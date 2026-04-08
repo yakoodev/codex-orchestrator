@@ -272,6 +272,12 @@ $dispatch | ConvertTo-Json -Depth 8
 docker compose up -d --build bus
 ```
 
+Если `chat_id` пока неизвестен:
+- оставь `TG_ALLOWED_CHAT_IDS=` пустым;
+- перезапусти `bus` и отправь любое сообщение боту;
+- в `docker compose logs --tail=120 bus` забери `chat_id/user_id` из `Unauthorized telegram update ignored`;
+- пропиши найденный id в whitelist и перезапусти `bus`.
+
 Проверка старта адаптера:
 
 ```powershell
@@ -283,6 +289,7 @@ docker compose logs --tail=80 bus
 Дальше в чате с ботом отправь команды:
 - `/help`
 - `/tasks`
+- `/say <task_id> проверь edge-cases`
 - `/held`
 - `/switch-status`
 - `/limit`
@@ -290,6 +297,7 @@ docker compose logs --tail=80 bus
 Ожидаемо:
 - ответы приходят в Telegram;
 - команды читают текущее состояние сервиса через API;
+- `/say` возвращает `OK` и пишет steering-intervention по задаче;
 - при неактивном профиле `/limit` возвращает понятный empty-state.
 - при активации/деактивации профиля в UI/API в Telegram приходят системные уведомления `switch_*` и `hold_*` (с debounce, без спама).
 

@@ -49,6 +49,14 @@ class FakePersistence implements Persistence {
     notes: string | null;
   })[] = [];
   public readonly artifacts: ArtifactEntity[] = [];
+  public readonly interventions: Array<{
+    task_id: string;
+    task_run_id: string | null;
+    source: string;
+    type: "steer" | "interrupt" | "pause" | "resume" | "replan" | "approve" | "reject";
+    payload: Record<string, unknown> | null;
+    created_by: string;
+  }> = [];
   public readonly profiles: (AuthProfileEntity & {
     storage_path: string;
     uploaded_by: string;
@@ -133,6 +141,30 @@ class FakePersistence implements Persistence {
 
     task.status = status;
     return task;
+  }
+
+  public async createIntervention(input: {
+    task_id: string;
+    task_run_id?: string | null;
+    source: string;
+    type: "steer" | "interrupt" | "pause" | "resume" | "replan" | "approve" | "reject";
+    payload?: Record<string, unknown> | null;
+    created_by: string;
+  }): Promise<boolean> {
+    const task = this.tasks.find((item) => item.id === input.task_id);
+    if (!task) {
+      return false;
+    }
+
+    this.interventions.push({
+      task_id: input.task_id,
+      task_run_id: input.task_run_id ?? null,
+      source: input.source,
+      type: input.type,
+      payload: input.payload ?? null,
+      created_by: input.created_by
+    });
+    return true;
   }
 
   public async releaseHeldQueue(): Promise<number> {
@@ -1181,6 +1213,74 @@ describe("smoke-core API", () => {
     });
     expect(stopResponse.statusCode).toBe(200);
     expect(stopResponse.json().status).toBe("FAILED_TERMINAL");
+  });
+
+  it("accepts task /say message and persists intervention", async () => {
+    const task = await persistence.createTask({
+      title: "Say task",
+      description: "task say message",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "RUNNING",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const sayResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/say`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: { message: "Нужно доделать проверку edge-cases" }
+    });
+
+    expect(sayResponse.statusCode).toBe(202);
+    expect(sayResponse.json()).toEqual({ accepted: true });
+    expect(persistence.interventions).toHaveLength(1);
+    expect(persistence.interventions[0]).toMatchObject({
+      task_id: task.id,
+      source: "admin",
+      type: "steer",
+      created_by: "admin",
+      payload: { message: "Нужно доделать проверку edge-cases" }
+    });
+  });
+
+  it("validates task /say payload", async () => {
+    const task = await persistence.createTask({
+      title: "Say task invalid",
+      description: "task say invalid payload",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "RUNNING",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const sayResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${task.id}/say`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: { message: "   " }
+    });
+
+    expect(sayResponse.statusCode).toBe(400);
+    expect(sayResponse.json().code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 404 for /say when task does not exist", async () => {
+    const sayResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks/task-missing/say",
+      headers: { "x-admin-token": config.adminToken },
+      payload: { message: "hello" }
+    });
+
+    expect(sayResponse.statusCode).toBe(404);
+    expect(sayResponse.json().code).toBe("NOT_FOUND");
   });
 
   it("manages agent templates CRUD", async () => {

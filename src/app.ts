@@ -50,6 +50,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/tasks/{id}/resume",
   "POST /api/tasks/{id}/stop",
   "POST /api/tasks/{id}/replan",
+  "POST /api/tasks/{id}/say",
   "POST /api/tasks/{id}/approve",
   "POST /api/tasks/{id}/reject",
   "POST /api/agents/templates",
@@ -118,6 +119,10 @@ interface TaskCreateRequest {
   repo_id?: unknown;
   branch?: unknown;
   priority?: unknown;
+}
+
+interface TaskSayRequest {
+  message?: unknown;
 }
 
 interface AuthContextCreateRequest {
@@ -1414,6 +1419,28 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const { id } = request.params as { id: string };
     const task = await persistence.updateTaskStatus(id, "REPLANNING");
     if (!task) {
+      return sendError(reply, 404, "Task not found", "NOT_FOUND");
+    }
+
+    return reply.code(202).send({ accepted: true });
+  });
+
+  app.post("/api/tasks/:id/say", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as TaskSayRequest;
+    const message = asNonEmptyString(body?.message);
+    if (!message) {
+      return sendError(reply, 400, "message is required", "VALIDATION_ERROR");
+    }
+
+    const created = await persistence.createIntervention({
+      task_id: id,
+      source: "admin",
+      type: "steer",
+      payload: { message },
+      created_by: "admin"
+    });
+    if (!created) {
       return sendError(reply, 404, "Task not found", "NOT_FOUND");
     }
 

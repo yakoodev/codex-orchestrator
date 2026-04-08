@@ -87,13 +87,34 @@ describe("telegram command handler", () => {
     expect(response).toBe("Использование: /replan <id> <message>");
   });
 
-  it("returns fallback for unsupported /say", async () => {
+  it("routes /say to api endpoint", async () => {
+    const calls: Array<{ method: string; url: string; payload: unknown }> = [];
+
     const response = await executeTelegramCommand({
       text: "/say task-1 hello",
+      callApi: async (method, url, payload) => {
+        calls.push({ method, url, payload });
+        return { statusCode: 202, body: { accepted: true } };
+      }
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "POST",
+        url: "/api/tasks/task-1/say",
+        payload: { message: "hello" }
+      }
+    ]);
+    expect(response).toBe("OK: /say task-1");
+  });
+
+  it("returns usage when /say args are missing", async () => {
+    const response = await executeTelegramCommand({
+      text: "/say task-1",
       callApi: async () => ({ statusCode: 500, body: {} })
     });
 
-    expect(response).toContain("/say пока не поддерживается");
+    expect(response).toBe("Использование: /say <id> <message>");
   });
 
   it("formats redis stream notification envelopes", () => {
@@ -107,5 +128,18 @@ describe("telegram command handler", () => {
 
     expect(text).toContain("queue: hold_started");
     expect(text).toContain("held_count=3");
+  });
+
+  it("builds telegram api method url for tokens with colon", () => {
+    const endpoint = telegramCommandInternals.buildTelegramMethodUrl(
+      new URL("https://api.telegram.org/"),
+      "8598004064:AAGuUs5BzbFvi1ovHIyysrSle97JqPuN5vA",
+      "getUpdates"
+    );
+
+    expect(endpoint.protocol).toBe("https:");
+    expect(endpoint.toString()).toBe(
+      "https://api.telegram.org/bot8598004064:AAGuUs5BzbFvi1ovHIyysrSle97JqPuN5vA/getUpdates"
+    );
   });
 });
