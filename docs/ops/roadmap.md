@@ -108,7 +108,7 @@
   - добавить richer editor/версионирование памяти и историю изменений.
 
 ## Planned: Account Fleet Cards
-- Статус: `in_progress`.
+- Статус: `completed`.
 - Цель: карточки аккаунтов с обзором “зоопарка” auth-профилей.
 - В карточке аккаунта:
   - понятное имя/label;
@@ -118,7 +118,6 @@
 - Текущий прогресс:
   - добавлены UI-карточки account fleet в `/ui/`;
   - лимиты подтягиваются live через `GET /api/auth-profiles/chatgpt/{id}/limits` для каждого профиля;
-  - вкладка аккаунтов разделена на `Profiles/Limits/History`, добавлены фильтры по истории switch-событий.
-- Остается:
+  - вкладка аккаунтов разделена на `Profiles/Limits/History`, добавлены фильтры по истории switch-событий;
   - [x] добавить быстрые inline-экшены на карточках лимитов;
-  - [~] добавить расширенный history drill-down по конкретному аккаунту (базовый jump-to-history с prefilter по profile_id уже добавлен).
+  - [x] добавить расширенный history drill-down по конкретному аккаунту (server-side filters `profile/status/limit` + быстрый filter-by-profile из списка событий).

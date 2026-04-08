@@ -167,6 +167,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Стартован UI reliability-pass: добавлен fail-soft retry для route-enter refresh (`sidebar/hash/init/quick refresh/token update/accounts section`) при transient ошибках загрузки.
 - [x] Завершен unified partial-panel retry/backoff: для `dashboard`, `tasks`, `system`, `full refresh` и `tasks auto-refresh` добавлена повторная подгрузка только упавших панелей без ручного refresh.
 - [x] `Accounts -> Limits` усилен inline-действиями: прямо в карточках лимитов добавлены `activate/deactivate` и быстрый переход в `History` с авто-prefilter по выбранному `profile_id`.
+- [x] `Switch History` переведен на server-side drill-down: `GET /api/auth-profiles/chatgpt/switch-events` поддерживает фильтры `profile_id/status/reason/limit`, UI применяет их при смене фильтров и дает быстрый profile drill-down прямо из карточек history.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.

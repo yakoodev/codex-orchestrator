@@ -27,6 +27,7 @@ import type {
   DelegationRequestEntity,
   EventPublishInput,
   EventPublisher,
+  ListAuthSwitchEventsOptions,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
@@ -1081,8 +1082,25 @@ class FakePersistence implements Persistence {
     return event;
   }
 
-  public async listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]> {
-    return [...this.switchEvents];
+  public async listAuthSwitchEvents(
+    options?: ListAuthSwitchEventsOptions
+  ): Promise<AuthSwitchEventEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 200, 500));
+    const filtered = [...this.switchEvents]
+      .filter((event) => (options?.status ? event.status === options.status : true))
+      .filter((event) => (options?.reason ? event.reason === options.reason : true))
+      .filter((event) => {
+        if (!options?.profile_id) {
+          return true;
+        }
+        return (
+          event.from_auth_profile_id === options.profile_id ||
+          event.to_auth_profile_id === options.profile_id
+        );
+      })
+      .sort((left, right) => right.started_at.getTime() - left.started_at.getTime());
+
+    return filtered.slice(0, limit);
   }
 
   public async listHeldTasks(): Promise<TaskEntity[]> {
@@ -4099,6 +4117,69 @@ describe("smoke-core API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().items).toHaveLength(1);
     expect(response.json().items[0].id).toBe("switch-1");
+  });
+
+  it("filters switch-events by profile/status/limit", async () => {
+    persistence.switchEvents.push(
+      {
+        id: "switch-1",
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: "profile-a",
+        to_auth_profile_id: "profile-b",
+        reason: "manual_activate",
+        status: "completed",
+        started_at: new Date("2026-01-01T00:01:00.000Z"),
+        ended_at: new Date("2026-01-01T00:02:00.000Z")
+      },
+      {
+        id: "switch-2",
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: "profile-c",
+        to_auth_profile_id: "profile-a",
+        reason: "manual_deactivate",
+        status: "failed",
+        started_at: new Date("2026-01-02T00:01:00.000Z"),
+        ended_at: new Date("2026-01-02T00:02:00.000Z")
+      },
+      {
+        id: "switch-3",
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: "profile-c",
+        to_auth_profile_id: "profile-d",
+        reason: "manual_deactivate",
+        status: "failed",
+        started_at: new Date("2026-01-03T00:01:00.000Z"),
+        ended_at: new Date("2026-01-03T00:02:00.000Z")
+      }
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt/switch-events?profile_id=profile-a&status=failed&limit=1",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toHaveLength(1);
+    expect(response.json().items[0].id).toBe("switch-2");
+  });
+
+  it("validates switch-events filter query", async () => {
+    const invalidStatus = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt/switch-events?status=unknown",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(invalidStatus.statusCode).toBe(400);
+    expect(invalidStatus.json().code).toBe("VALIDATION_ERROR");
+
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt/switch-events?limit=0",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidLimit.json().code).toBe("VALIDATION_ERROR");
   });
 
   it("returns 404 for unknown route", async () => {

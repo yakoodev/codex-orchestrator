@@ -127,6 +127,13 @@ export interface CreateAuthSwitchEventInput {
   ended_at?: Date | null;
 }
 
+export interface ListAuthSwitchEventsOptions {
+  profile_id?: string;
+  status?: AuthSwitchEventEntity["status"];
+  reason?: string;
+  limit?: number;
+}
+
 export interface CustomModuleConfigEntity {
   id: string;
   module_key: string;
@@ -589,7 +596,7 @@ export interface Persistence {
   activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null>;
   deactivateAuthProfile(id: string): Promise<boolean>;
   createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity>;
-  listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]>;
+  listAuthSwitchEvents(options?: ListAuthSwitchEventsOptions): Promise<AuthSwitchEventEntity[]>;
   listHeldTasks(): Promise<TaskEntity[]>;
   listCustomModuleConfigs(): Promise<CustomModuleConfigEntity[]>;
   getCustomModuleConfig(key: string): Promise<CustomModuleConfigEntity | null>;

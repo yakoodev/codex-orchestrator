@@ -1163,8 +1163,14 @@ function renderFleet(items) {
 }
 
 function syncSwitchFilters(items) {
-  const statuses = Array.from(new Set(items.map((item) => item.status).filter((v) => typeof v === "string" && v.trim()))).sort((a, b) => a.localeCompare(b))
-  const profiles = Array.from(new Set(items.flatMap((item) => [item.from_auth_profile_id, item.to_auth_profile_id]).filter((v) => typeof v === "string" && v.trim()))).sort((a, b) => a.localeCompare(b))
+  const statuses = ["started", "completed", "failed", "skipped"]
+  const profilesFromItems = items
+    .flatMap((item) => [item.from_auth_profile_id, item.to_auth_profile_id])
+    .filter((v) => typeof v === "string" && v.trim())
+  const profilesFromRegistry = state.profiles
+    .map((item) => item?.id)
+    .filter((v) => typeof v === "string" && v.trim())
+  const profiles = Array.from(new Set([...profilesFromRegistry, ...profilesFromItems])).sort((a, b) => a.localeCompare(b))
 
   ui.switchFilterStatus.innerHTML = [`<option value="all">${escapeHtml(t("switch_filter_any_status"))}</option>`, ...statuses.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)].join("")
   ui.switchFilterProfile.innerHTML = [`<option value="all">${escapeHtml(t("switch_filter_any_profile"))}</option>`, ...profiles.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)].join("")
@@ -1213,6 +1219,10 @@ function renderSwitches(items) {
       <div class="task-card-head"><span class="pill">${escapeHtml(item.status)}</span><span class="meta-note">${escapeHtml(fmtDate(item.started_at))}</span></div>
       <div>${escapeHtml(item.reason ?? "")}</div>
       <div class="meta-note">${escapeHtml(t("switch_event_from_to", { from, to }))}</div>
+      <div class="action-bar">
+        ${from === "none" ? "" : `<button type="button" class="button-ghost" data-switch-profile="${escapeHtml(from)}">${escapeHtml(from)}</button>`}
+        ${to === "none" ? "" : `<button type="button" class="button-ghost" data-switch-profile="${escapeHtml(to)}">${escapeHtml(to)}</button>`}
+      </div>
       <div class="meta-note">${escapeHtml(t("switch_event_ended_at", { value: fmtDate(item.ended_at) }))}</div>
     </li>`
   }).join("")
@@ -1386,8 +1396,20 @@ async function refreshFleet() {
   })
 }
 
+function buildSwitchesRoute() {
+  const params = new URLSearchParams()
+  if (state.switchFilters.status !== "all") params.set("status", state.switchFilters.status)
+  if (state.switchFilters.profile !== "all") params.set("profile_id", state.switchFilters.profile)
+  params.set("limit", "200")
+  return `/api/auth-profiles/chatgpt/switch-events?${params.toString()}`
+}
+
 async function refreshSwitches() {
-  return withPanel(ui.eventsPanelState, "system", async () => renderSwitches((await requestJson("/api/auth-profiles/chatgpt/switch-events")).items))
+  return withPanel(
+    ui.eventsPanelState,
+    "system",
+    async () => renderSwitches((await requestJson(buildSwitchesRoute())).items)
+  )
 }
 
 async function refreshMemoryEntries() {
@@ -1890,6 +1912,8 @@ function wireConsoleHandlers() {
     if (action === "history") {
       setSection("history", { persist: true, log: true })
       state.switchFilters.profile = id
+      state.switchFilters.status = "all"
+      state.switchFilters.search = ""
       saveJson(KEYS.switchFilters, state.switchFilters)
       await refreshSwitches()
       return
@@ -1909,20 +1933,29 @@ function wireConsoleHandlers() {
     saveJson(KEYS.switchFilters, state.switchFilters)
     renderSwitches(state.switches)
   })
-  ui.switchFilterStatus.addEventListener("change", () => {
+  ui.switchFilterStatus.addEventListener("change", async () => {
     state.switchFilters.status = ui.switchFilterStatus.value
     saveJson(KEYS.switchFilters, state.switchFilters)
-    renderSwitches(state.switches)
+    await refreshSwitches()
   })
-  ui.switchFilterProfile.addEventListener("change", () => {
+  ui.switchFilterProfile.addEventListener("change", async () => {
     state.switchFilters.profile = ui.switchFilterProfile.value
     saveJson(KEYS.switchFilters, state.switchFilters)
-    renderSwitches(state.switches)
+    await refreshSwitches()
   })
-  ui.switchFilterClear.addEventListener("click", () => {
+  ui.switchFilterClear.addEventListener("click", async () => {
     state.switchFilters = { search: "", status: "all", profile: "all" }
     saveJson(KEYS.switchFilters, state.switchFilters)
-    renderSwitches(state.switches)
+    await refreshSwitches()
+  })
+  ui.switchEvents.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-switch-profile]")
+    if (!button) return
+    const profileId = button.dataset.switchProfile
+    if (!profileId) return
+    state.switchFilters.profile = profileId
+    saveJson(KEYS.switchFilters, state.switchFilters)
+    await refreshSwitches()
   })
 
   ui.refreshMemory.addEventListener("click", async () => state.token ? refreshMemoryEntries() : requireTokenPanels())

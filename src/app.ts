@@ -3022,8 +3022,48 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send(authProfileToResponse(activeProfile));
   });
 
-  app.get("/api/auth-profiles/chatgpt/switch-events", async (_request, reply) => {
-    const events = await persistence.listAuthSwitchEvents();
+  app.get("/api/auth-profiles/chatgpt/switch-events", async (request, reply) => {
+    const query = request.query as {
+      profile_id?: unknown;
+      status?: unknown;
+      reason?: unknown;
+      limit?: unknown;
+    };
+
+    const profileId = asNonEmptyString(query.profile_id) ?? undefined;
+    const reason = asNonEmptyString(query.reason) ?? undefined;
+
+    const rawStatus = asNonEmptyString(query.status);
+    const status =
+      rawStatus === "started" ||
+      rawStatus === "completed" ||
+      rawStatus === "failed" ||
+      rawStatus === "skipped"
+        ? rawStatus
+        : undefined;
+
+    if (rawStatus && status === undefined) {
+      return sendError(
+        reply,
+        400,
+        "status must be one of: started, completed, failed, skipped",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    const limit = parsedLimit == null ? undefined : parsedLimit;
+
+    if (query.limit !== undefined && (limit == null || limit < 1)) {
+      return sendError(reply, 400, "limit must be a positive integer", "VALIDATION_ERROR");
+    }
+
+    const events = await persistence.listAuthSwitchEvents({
+      profile_id: profileId,
+      status,
+      reason,
+      limit
+    });
     return reply.send({
       items: events.map((event) => ({
         id: event.id,

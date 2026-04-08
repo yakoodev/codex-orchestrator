@@ -92,6 +92,15 @@ API-проверка:
    - reset timestamps.
 10. На карточке лимитов нажми `История` и проверь, что автоматически открылась секция `История` с фильтром по выбранному `profile_id`.
 11. Вернись в `Лимиты` и проверь inline-кнопки `Активировать/Деактивировать` (после действия в `Истории` должны появляться новые switch-events).
+12. В секции `История` переключи фильтр `status` (`started/completed/failed/skipped`) и проверь, что список перерисовывается после server-side запроса (без полного reload страницы).
+13. В списке событий нажми кнопку с `profile_id` (from/to) и проверь быстрый drill-down: фильтр `profile` обновляется и подгружается история только по выбранному профилю.
+
+API-проверка server-side фильтров:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/auth-profiles/chatgpt/switch-events?profile_id=<PROFILE_ID>&status=completed&limit=20" `
+  -Headers $HEADERS
+```
 
 ## 3.2 Сценарий A2: Agent Memory panel + memory-aware delegation
 

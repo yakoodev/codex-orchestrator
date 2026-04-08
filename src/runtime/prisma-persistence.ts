@@ -39,6 +39,7 @@ import type {
   CreateTaskInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
+  ListAuthSwitchEventsOptions,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
@@ -1404,8 +1405,30 @@ export class PrismaPersistence implements Persistence {
     });
   }
 
-  public async listAuthSwitchEvents(): Promise<AuthSwitchEventEntity[]> {
+  public async listAuthSwitchEvents(
+    options?: ListAuthSwitchEventsOptions
+  ): Promise<AuthSwitchEventEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 200, 500));
+    const where: Prisma.AuthSwitchEventWhereInput = {};
+
+    if (options?.status) {
+      where.status = options.status as PrismaSwitchEventStatus;
+    }
+
+    if (options?.reason) {
+      where.reason = options.reason;
+    }
+
+    if (options?.profile_id) {
+      where.OR = [
+        { from_auth_profile_id: options.profile_id },
+        { to_auth_profile_id: options.profile_id }
+      ];
+    }
+
     const events = await this.prisma.authSwitchEvent.findMany({
+      where,
+      take: limit,
       orderBy: { started_at: "desc" }
     });
 
