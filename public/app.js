@@ -212,6 +212,7 @@ const I18N = {
     log_token_cleared: "Токен очищен",
     log_language_changed: "Язык обновлен",
     log_theme_changed: "Тема обновлена",
+    log_route_refresh_retry: "Повтор загрузки экрана",
     log_project_created: "Проект создан",
     log_project_updated: "Проект обновлен",
     log_project_selected: "Проект выбран",
@@ -404,6 +405,7 @@ I18N.en = {
   log_token_cleared: "Token cleared",
   log_language_changed: "Language updated",
   log_theme_changed: "Theme updated",
+  log_route_refresh_retry: "Route refresh retry",
   log_project_created: "Project created",
   log_project_updated: "Project updated",
   log_project_selected: "Project selected",
@@ -494,6 +496,10 @@ function clampPercent(value) {
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim()
   return trimmed ? trimmed : null
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function loadJson(key, fallback) {
@@ -1441,6 +1447,22 @@ async function refreshAll() {
   await Promise.allSettled([refreshProjects(), refreshTasks(), refreshHeld(), refreshAgents(), refreshProfiles(), refreshFleet(), refreshSwitches(), refreshMemoryEntries(), refreshModule(), refreshExecutions()])
 }
 
+async function refreshCurrentRouteWithRetry(reason = "manual", attempts = 2) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await refreshCurrentRoute()
+      return
+    } catch (error) {
+      if (attempt < attempts) {
+        pushLog("warn", "ui", t("log_route_refresh_retry"), { reason, attempt, message: error?.message ?? t("error_generic") })
+        await sleep(450 * attempt)
+        continue
+      }
+      pushLog("error", "ui", error?.message ?? t("error_generic"), { reason, attempt, stage: "route_refresh_terminal" })
+    }
+  }
+}
+
 function syncAutoTimers() {
   for (const key of ["tasks", "agents", "history"]) {
     if (timers[key]) {
@@ -1537,14 +1559,14 @@ function wireConsoleHandlers() {
     event.preventDefault()
     const route = link.dataset.routeLink ?? "dashboard"
     setRoute(route, { persist: true, writeHash: true, log: true })
-    await refreshCurrentRoute()
+    await refreshCurrentRouteWithRetry("sidebar_navigation")
   }))
 
   window.addEventListener("hashchange", async () => {
     const route = routeFromHash(window.location.hash)
     if (route === state.route) return
     setRoute(route, { persist: true, writeHash: false, log: true })
-    await refreshCurrentRoute()
+    await refreshCurrentRouteWithRetry("hash_navigation")
   })
 
   ui.tokenForm.addEventListener("submit", async (event) => {
@@ -1557,7 +1579,7 @@ function wireConsoleHandlers() {
       removeStorage(KEYS.token)
       pushLog("warn", "ui", t("log_token_cleared"))
     }
-    await refreshCurrentRoute()
+    await refreshCurrentRouteWithRetry("token_update")
   })
 
   ui.tokenClear.addEventListener("click", async () => {
@@ -1583,7 +1605,7 @@ function wireConsoleHandlers() {
     pushLog("info", "ui", t("log_theme_changed"), { theme: state.theme })
   })
 
-  ui.quickRefreshRoute.addEventListener("click", async () => refreshCurrentRoute())
+  ui.quickRefreshRoute.addEventListener("click", async () => refreshCurrentRouteWithRetry("quick_refresh"))
   ui.quickRefreshAll.addEventListener("click", async () => refreshAll())
   ui.refreshHealth.addEventListener("click", async () => refreshHealth())
 
@@ -1745,7 +1767,7 @@ function wireConsoleHandlers() {
 
   ui.accountSectionButtons.forEach((btn) => btn.addEventListener("click", async () => {
     setSection(btn.dataset.accountsSection ?? "profiles", { persist: true, log: true })
-    if (state.route === "accounts") await refreshCurrentRoute()
+    if (state.route === "accounts") await refreshCurrentRouteWithRetry("accounts_section_change")
   }))
 
   ui.refreshProfiles.addEventListener("click", async () => state.token ? refreshProfiles() : requireTokenPanels())
@@ -1898,7 +1920,7 @@ async function initConsole() {
 
   syncAutoTimers()
   pushLog("info", "ui", "Console initialized", { route: state.route, lang: state.lang, theme: state.theme })
-  await refreshCurrentRoute()
+  await refreshCurrentRouteWithRetry("console_init")
   updateStats()
 }
 

@@ -164,6 +164,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - в `public/app.js` добавлен route/state/render/action flow для `#/projects` с API-интеграцией `POST/GET/PATCH /api/projects` и `GET /api/projects/{key}/summary`;
   - селекты `project_id` в `Tasks` и `Memory`, а также фильтр задач по проекту теперь синхронизируются с реестром проектов (active/all), а не со свободным вводом.
 - [x] Исправлена загрузка данных при навигации по sidebar в `/ui/console.html`: при переходе между hash-экранами теперь выполняется `refreshCurrentRoute()` без необходимости вручную нажимать `Обновить`.
+- [x] Стартован UI reliability-pass: добавлен fail-soft retry для route-enter refresh (`sidebar/hash/init/quick refresh/token update/accounts section`) при transient ошибках загрузки.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
