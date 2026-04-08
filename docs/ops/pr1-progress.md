@@ -110,6 +110,13 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Ручное управление памятью скрыто в `System` как fallback/admin override (основной сценарий памяти остается автоматическим).
 - [x] Улучшена навигационная логика `/ui/`: добавлен контекстный intro-блок текущей вкладки с явным операционным сценарием.
 - [x] `Auth Profiles` в `/ui/` переведены с таблицы на карточки с быстрыми действиями `activate/deactivate` и явной пометкой активного профиля.
+- [x] В `Tasks & Queue` добавлены client-side фильтры (`search/project/status`) и карточка `Task Details` по клику на задачу.
+- [x] Форма создания задачи сделана collapsible и автосворачивается после первого успешного create.
+- [x] Списки `Task board` и `Held Queue` уплотнены фиксированной высотой с прокруткой для лучшей операционной плотности экрана.
+- [x] `Agents` получили компактные карточки + отдельный inspector (prompt/log и ключевые поля выбранного запуска).
+- [x] `Accounts & Limits` разделены на внутренние подтабы `Profiles/Limits/History`, добавлены фильтры для switch-history.
+- [x] Добавлены UI panel states (`loading/success/error`) и toggle автообновления (default off) для `Tasks`, `Agents`, `Switch History`.
+- [x] Вкладка `System`: ручная память выделена как `Advanced/fallback` блок с явным warning.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -120,7 +127,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Редизайн админки `/ui/`: вкладки + task board + скрытый fallback memory-control + tab-intro + profile-cards внедрены; остаются action-panel компактность и UX-pass по mobile.
+- [~] Редизайн админки `/ui/`: вкладки + task board + filters/details + agent inspector + accounts subtabs + panel states + hidden fallback memory-control внедрены; остаются визуальная полировка и финальный mobile/a11y pass.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`
