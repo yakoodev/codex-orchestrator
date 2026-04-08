@@ -72,7 +72,7 @@
   - [x] сделать задачи в формате task-tracker доски с 3 колонками (`ожидает запуска / запущена / выполнена`);
   - [x] вынести память агентов в отдельный экран `Memory` (а не hidden fallback);
   - [x] доработать визуальную и навигационную логику админки до уровня production polish.
-  - [~] повысить надежность автозагрузки данных UI без ручного `Обновить`: route-enter hydration уже включен, остается unified retry/backoff для частичных панелей.
+  - [x] повысить надежность автозагрузки данных UI без ручного `Обновить`: route-enter hydration + unified retry/backoff для частичных панелей.
 
 ## Planned: Operator visibility for agents
 - Статус: `in_progress`.

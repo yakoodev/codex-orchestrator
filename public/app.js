@@ -213,6 +213,7 @@ const I18N = {
     log_language_changed: "Язык обновлен",
     log_theme_changed: "Тема обновлена",
     log_route_refresh_retry: "Повтор загрузки экрана",
+    log_partial_refresh_failed: "Частичная загрузка экрана завершилась с ошибкой",
     log_project_created: "Проект создан",
     log_project_updated: "Проект обновлен",
     log_project_selected: "Проект выбран",
@@ -406,6 +407,7 @@ I18N.en = {
   log_language_changed: "Language updated",
   log_theme_changed: "Theme updated",
   log_route_refresh_retry: "Route refresh retry",
+  log_partial_refresh_failed: "Partial screen hydration failed",
   log_project_created: "Project created",
   log_project_updated: "Project updated",
   log_project_selected: "Project selected",
@@ -1410,13 +1412,53 @@ async function refreshExecutions() {
   renderExecutions((await requestJson(`/api/custom-modules/${SWITCH_MODULE_KEY}/executions`)).items)
 }
 
+async function runRefreshGroupWithRetry(reason, refreshers, attempts = 2) {
+  let pending = Array.isArray(refreshers) ? [...refreshers] : []
+  if (!pending.length) return
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const results = await Promise.allSettled(pending.map((item) => item.run()))
+    const failed = []
+
+    results.forEach((result, index) => {
+      if (result.status === "rejected") failed.push(pending[index])
+    })
+
+    if (!failed.length) return
+
+    const failedNames = failed.map((item) => item.name).join(",")
+
+    if (attempt < attempts) {
+      pushLog("warn", "ui", t("log_route_refresh_retry"), {
+        reason: `${reason}:${failedNames}`,
+        attempt,
+        message: "partial_panels"
+      })
+      await sleep(350 * attempt)
+      pending = failed
+      continue
+    }
+
+    pushLog("error", "ui", t("log_partial_refresh_failed"), {
+      reason,
+      failed: failedNames,
+      attempt
+    })
+  }
+}
+
 async function refreshDashboard() {
   await refreshHealth()
   if (!state.token) {
     requireTokenPanels()
     return
   }
-  await Promise.allSettled([refreshTasks(), refreshHeld(), refreshProfiles(), refreshSwitches()])
+  await runRefreshGroupWithRetry("dashboard", [
+    { name: "tasks", run: () => refreshTasks() },
+    { name: "held", run: () => refreshHeld() },
+    { name: "profiles", run: () => refreshProfiles() },
+    { name: "switches", run: () => refreshSwitches() }
+  ])
 }
 
 async function refreshCurrentRoute() {
@@ -1426,7 +1468,12 @@ async function refreshCurrentRoute() {
     return
   }
   if (state.route === "projects") return refreshProjects()
-  if (state.route === "tasks") return Promise.allSettled([refreshTasks(), refreshHeld()])
+  if (state.route === "tasks") {
+    return runRefreshGroupWithRetry("tasks_route", [
+      { name: "tasks", run: () => refreshTasks() },
+      { name: "held", run: () => refreshHeld() }
+    ])
+  }
   if (state.route === "agents") return refreshAgents()
   if (state.route === "accounts") {
     if (state.section === "profiles") return refreshProfiles()
@@ -1434,7 +1481,12 @@ async function refreshCurrentRoute() {
     return refreshSwitches()
   }
   if (state.route === "memory") return refreshMemoryEntries()
-  if (state.route === "system") return Promise.allSettled([refreshModule(), refreshExecutions()])
+  if (state.route === "system") {
+    return runRefreshGroupWithRetry("system_route", [
+      { name: "module", run: () => refreshModule() },
+      { name: "executions", run: () => refreshExecutions() }
+    ])
+  }
   renderLogs()
 }
 
@@ -1444,7 +1496,18 @@ async function refreshAll() {
     requireTokenPanels()
     return
   }
-  await Promise.allSettled([refreshProjects(), refreshTasks(), refreshHeld(), refreshAgents(), refreshProfiles(), refreshFleet(), refreshSwitches(), refreshMemoryEntries(), refreshModule(), refreshExecutions()])
+  await runRefreshGroupWithRetry("full_refresh", [
+    { name: "projects", run: () => refreshProjects() },
+    { name: "tasks", run: () => refreshTasks() },
+    { name: "held", run: () => refreshHeld() },
+    { name: "agents", run: () => refreshAgents() },
+    { name: "profiles", run: () => refreshProfiles() },
+    { name: "fleet", run: () => refreshFleet() },
+    { name: "switches", run: () => refreshSwitches() },
+    { name: "memory", run: () => refreshMemoryEntries() },
+    { name: "module", run: () => refreshModule() },
+    { name: "executions", run: () => refreshExecutions() }
+  ])
 }
 
 async function refreshCurrentRouteWithRetry(reason = "manual", attempts = 2) {
@@ -1471,7 +1534,15 @@ function syncAutoTimers() {
     }
   }
 
-  if (state.auto.tasks) timers.tasks = setInterval(() => Promise.allSettled([refreshTasks(), refreshHeld()]), AUTOREFRESH_INTERVAL_MS)
+  if (state.auto.tasks) {
+    timers.tasks = setInterval(
+      () => runRefreshGroupWithRetry("tasks_autorefresh", [
+        { name: "tasks", run: () => refreshTasks() },
+        { name: "held", run: () => refreshHeld() }
+      ]),
+      AUTOREFRESH_INTERVAL_MS
+    )
+  }
   if (state.auto.agents) timers.agents = setInterval(() => refreshAgents().catch(() => {}), AUTOREFRESH_INTERVAL_MS)
   if (state.auto.history) timers.history = setInterval(() => refreshSwitches().catch(() => {}), AUTOREFRESH_INTERVAL_MS)
 }
