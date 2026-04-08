@@ -19,6 +19,27 @@
   - trace/idempotency для операций запуска.
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
+## Planned: Project Registry (доменный объект Project)
+- Статус: `planned`.
+- Цель: ввести отдельный объект `Project` как источник истины для памяти, задач, артефактов и GitHub-контекста.
+- Дизайн-док: `docs/ops/project-object.md`.
+- Этап A (Data + API core):
+  - [ ] добавить Prisma-модель `Project` и миграцию;
+  - [ ] реализовать persistence CRUD + summary;
+  - [ ] добавить API `POST/GET /api/projects`, `GET/PATCH /api/projects/{key}`, `GET /api/projects/{key}/summary`;
+  - [ ] добавить валидацию `project_id` при создании задач и памяти.
+- Этап B (Workflow integration):
+  - [ ] использовать `Project.workspace_path` как default `cwd` в delegation runtime;
+  - [ ] синхронизировать smoke/manual сценарии под проектный registry.
+- Этап C (UI integration):
+  - [ ] добавить отдельный экран `Projects` в `/ui/console.html`;
+  - [ ] перевести фильтры задач/памяти на список реальных проектов;
+  - [ ] добавить project summary-карточку в UI.
+- Критерий готовности:
+  - [ ] `project_id` больше не “свободная строка” в runtime-сценариях;
+  - [ ] делегации стабильно берут рабочую директорию из настроек проекта;
+  - [ ] проектные данные доступны через API и UI.
+
 ## Planned: Admin UI Redesign v2 (Hybrid Console)
 - Статус: `completed` (дизайн-цикл закрыт, далее только точечные bugfix-правки).
 - Решение:

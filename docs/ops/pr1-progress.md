@@ -143,6 +143,9 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - в `Dashboard -> Последние сигналы` добавлен `scope` и человекочитаемая строка для API (`METHOD route -> status (ms)`);
   - на экране `Logs` тот же компактный summary показывается над JSON details.
 - [x] Стилизованы выпадающие списки (`select/option`) для dark/light темы: единый вид с кастомной стрелкой и без светлого системного контраста в тёмной теме.
+- [x] Подготовлен дизайн-пакет для выделения отдельного доменного объекта `Project`:
+  - новый документ `docs/ops/project-object.md` (scope v1, миграционная стратегия, API/UI контракты, rollout phases);
+  - roadmap синхронизирован задачами по этапам A/B/C для реализации `Project Registry`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -153,6 +156,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
+- [ ] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md`.
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 
 ## Текущее состояние проверок (ветка PR1)
