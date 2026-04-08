@@ -881,14 +881,11 @@ summary:focus-visible {
   }
 }
 
-.agents-layout .board-column {
-  grid-template-rows: auto auto;
-}
-
 .agents-layout .card-list {
-  max-height: none;
-  overflow: visible;
-  padding-right: 0;
+  max-height: min(48vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 @media (max-width: 1120px) {
