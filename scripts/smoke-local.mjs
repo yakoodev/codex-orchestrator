@@ -95,8 +95,13 @@ async function main() {
   ok("health/ready");
 
   const uiIndex = await requestJson(baseUrl, null, "GET", "/ui/", { expected: [200] });
-  if (typeof uiIndex.data !== "string" || !uiIndex.data.includes('id="lang-select"')) {
-    fail("ui index should include language switch", uiIndex.data);
+  if (typeof uiIndex.data !== "string" || !uiIndex.data.includes('id="open-console"')) {
+    fail("ui index should include entry link to console", uiIndex.data);
+  }
+
+  const uiConsole = await requestJson(baseUrl, null, "GET", "/ui/console.html", { expected: [200] });
+  if (typeof uiConsole.data !== "string" || !uiConsole.data.includes('data-page="console"')) {
+    fail("ui console should expose console page shell", uiConsole.data);
   }
 
   const uiScript = await requestJson(baseUrl, null, "GET", "/ui/app.js", { expected: [200] });
@@ -105,8 +110,8 @@ async function main() {
   }
 
   const uiStyles = await requestJson(baseUrl, null, "GET", "/ui/styles.css", { expected: [200] });
-  if (typeof uiStyles.data !== "string" || !uiStyles.data.includes(".stats-grid")) {
-    fail("ui styles should include dashboard metrics layout", uiStyles.data);
+  if (typeof uiStyles.data !== "string" || !uiStyles.data.includes(".console-shell")) {
+    fail("ui styles should include console shell layout", uiStyles.data);
   }
   ok("ui static assets");
 

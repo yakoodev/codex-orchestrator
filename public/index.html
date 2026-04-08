@@ -3,411 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Codex Orchestrator Admin UI</title>
+    <title>Codex Orchestrator Control Panel</title>
     <link rel="stylesheet" href="/ui/styles.css" />
   </head>
-  <body>
-    <div class="bg-shape bg-shape-a"></div>
-    <div class="bg-shape bg-shape-b"></div>
-    <main class="layout">
-      <header class="card reveal">
-        <div class="section-head">
-          <div>
-            <p class="eyebrow" data-i18n="eyebrow">Control Plane</p>
-            <h1 data-i18n="title">Codex Orchestrator Control Panel</h1>
-          </div>
-          <div class="lang-control">
-            <label for="lang-select" data-i18n="language_label">Язык</label>
-            <select id="lang-select">
-              <option value="ru">Русский</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-        </div>
-        <p class="muted" data-i18n="subtitle">
-          Web interface for day-to-day operations: health, tasks, auth switch flow, held queue, and module config.
+  <body data-page="entry" class="entry-body">
+    <div class="entry-noise"></div>
+    <main class="entry-shell">
+      <section class="entry-card">
+        <p class="eyebrow" data-i18n="entry_kicker">Control Plane</p>
+        <h1 data-i18n="entry_title">Codex Orchestrator Control Panel</h1>
+        <p class="entry-lead" data-i18n="entry_subtitle">
+          Полностью обновленная консоль оператора: задачи, агенты, аккаунты, память, система и логи на отдельных экранах.
         </p>
-      </header>
-
-      <section class="stats-grid reveal">
-        <article class="stat-card">
-          <p class="tiny-label" data-i18n="stats_tasks">Tasks</p>
-          <p id="stat-tasks" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="tiny-label" data-i18n="stats_held">Held Queue</p>
-          <p id="stat-held" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="tiny-label" data-i18n="stats_profiles">Auth Profiles</p>
-          <p id="stat-profiles" class="stat-value">0</p>
-        </article>
-        <article class="stat-card">
-          <p class="tiny-label" data-i18n="stats_events">Switch Events</p>
-          <p id="stat-events" class="stat-value">0</p>
-        </article>
-      </section>
-
-      <section class="card reveal tabs-shell">
-        <div class="tabs" role="tablist" aria-label="Admin UI Sections">
-          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="overview" data-i18n="tab_overview">Обзор</button>
-          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="tasks" data-i18n="tab_tasks">Задачи и очередь</button>
-          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="agents" data-i18n="tab_agents">Агенты</button>
-          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="accounts" data-i18n="tab_accounts">Аккаунты и лимиты</button>
-          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="system" data-i18n="tab_system">Система</button>
+        <div class="entry-actions">
+          <a id="open-console" class="button-primary" href="/ui/console.html#/dashboard" data-i18n="entry_open_console"
+            >Открыть консоль</a
+          >
         </div>
-      </section>
+        <div class="entry-controls">
+          <label for="lang-select" data-i18n="language_label">Язык</label>
+          <select id="lang-select" aria-label="Language switch">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
 
-      <section class="card reveal tab-intro-shell">
-        <p id="tab-intro-title" class="tiny-label">Операционный сценарий</p>
-        <p id="tab-intro-text" class="muted">Подключи токен и проверь состояние сервиса перед запуском операций.</p>
-      </section>
-
-      <section class="card reveal" data-tab-content="overview">
-        <div class="section-head">
-          <h2 data-i18n="connection_title">Connection</h2>
-          <p id="last-refresh" class="tiny-meta"></p>
+          <label for="theme-select" data-i18n="theme_label">Тема</label>
+          <select id="theme-select" aria-label="Theme switch">
+            <option value="dark" data-i18n="theme_dark">Тёмная</option>
+            <option value="light" data-i18n="theme_light">Светлая</option>
+          </select>
         </div>
-        <form id="token-form" class="row-form">
-          <label for="admin-token">X-Admin-Token</label>
-          <input
-            id="admin-token"
-            name="admin-token"
-            type="password"
-            autocomplete="off"
-            data-i18n-placeholder="token_placeholder"
-            placeholder="вставь токен"
-          />
-          <div class="actions">
-            <button type="submit" data-i18n="save_token">Сохранить токен</button>
-            <button type="button" id="token-clear" class="ghost" data-i18n="clear_token">Очистить</button>
-          </div>
-          <p class="hint" data-i18n="token_hint">
-            Токен хранится в localStorage браузера и отправляется только для <code>/api/*</code> запросов.
-          </p>
-        </form>
+        <p class="meta-note" data-i18n="entry_note">
+          Токен, язык, тема и последний экран консоли сохраняются в localStorage браузера.
+        </p>
       </section>
 
-      <section class="grid">
-        <article class="card reveal" data-tab-content="overview">
-          <div class="section-head">
-            <h2 data-i18n="health_title">Health</h2>
-            <button id="refresh-health" class="ghost" data-i18n="refresh">Обновить</button>
-          </div>
-          <div class="status-grid">
-            <div>
-              <p class="tiny-label">/health/live</p>
-              <p id="live-status" class="status-badge">unknown</p>
-            </div>
-            <div>
-              <p class="tiny-label">/health/ready</p>
-              <p id="ready-status" class="status-badge">unknown</p>
-            </div>
-          </div>
+      <section class="entry-side">
+        <article class="entry-mini-card">
+          <p class="tiny-label" data-i18n="entry_routes_label">Экраны консоли</p>
+          <ul class="entry-route-list">
+            <li data-i18n="route_dashboard">Dashboard</li>
+            <li data-i18n="route_tasks">Tasks</li>
+            <li data-i18n="route_agents">Agents</li>
+            <li data-i18n="route_accounts">Accounts</li>
+            <li data-i18n="route_memory">Memory</li>
+            <li data-i18n="route_system">System</li>
+            <li data-i18n="route_logs">Logs</li>
+          </ul>
         </article>
-
-        <article class="card reveal" data-tab-content="tasks">
-          <div class="section-head">
-            <h2 data-i18n="tasks_title">Tasks</h2>
-            <div class="actions action-bar">
-              <label class="checkbox small">
-                <input id="toggle-autorefresh-tasks" type="checkbox" />
-                <span data-i18n="autorefresh_label">Авто</span>
-              </label>
-              <span id="tasks-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-tasks" class="ghost" data-i18n="refresh">Обновить</button>
-            </div>
-          </div>
-          <details id="task-create-shell" class="create-task-shell" open>
-            <summary data-i18n="task_create_toggle">Создать задачу</summary>
-            <form id="task-form" class="row-form compact">
-              <label for="task-title" data-i18n="task_title_label">Title</label>
-              <input id="task-title" name="title" required />
-              <label for="task-description" data-i18n="task_description_label">Description</label>
-              <textarea id="task-description" name="description" rows="2" required></textarea>
-              <div class="split">
-                <div>
-                  <label for="task-project" data-i18n="task_project_label">Project ID</label>
-                  <input id="task-project" name="project_id" value="web-ui" required />
-                </div>
-                <div>
-                  <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
-                  <input id="task-repo" name="repo_id" value="web-ui" required />
-                </div>
-              </div>
-              <button type="submit" data-i18n="create_task">Create task</button>
-            </form>
-          </details>
-          <div class="task-filters split">
-            <div>
-              <label for="task-filter-search" data-i18n="task_filter_search_label">Поиск</label>
-              <input id="task-filter-search" data-i18n-placeholder="task_filter_search_placeholder" placeholder="id/заголовок/описание" />
-            </div>
-            <div class="split">
-              <div>
-                <label for="task-filter-project" data-i18n="task_filter_project_label">Project</label>
-                <select id="task-filter-project">
-                  <option value="all" data-i18n="task_filter_any_project">Все проекты</option>
-                </select>
-              </div>
-              <div>
-                <label for="task-filter-status" data-i18n="task_filter_status_label">Status</label>
-                <select id="task-filter-status">
-                  <option value="all" data-i18n="task_filter_any_status">Все статусы</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="actions action-bar">
-            <button id="task-filter-clear" type="button" class="ghost" data-i18n="task_filter_clear">Сбросить фильтры</button>
-          </div>
-          <div class="task-board">
-            <section class="task-column task-column-waiting">
-              <div class="task-column-head">
-                <p class="tiny-label" data-i18n="task_board_waiting">Ожидает запуска</p>
-                <span id="tasks-waiting-count" class="count-pill">0</span>
-              </div>
-              <ul id="tasks-waiting" class="line-list scroll-list"></ul>
-            </section>
-            <section class="task-column task-column-running">
-              <div class="task-column-head">
-                <p class="tiny-label" data-i18n="task_board_running">Запущена</p>
-                <span id="tasks-running-count" class="count-pill">0</span>
-              </div>
-              <ul id="tasks-running" class="line-list scroll-list"></ul>
-            </section>
-            <section class="task-column task-column-completed">
-              <div class="task-column-head">
-                <p class="tiny-label" data-i18n="task_board_completed">Выполнена</p>
-                <span id="tasks-completed-count" class="count-pill">0</span>
-              </div>
-              <ul id="tasks-completed" class="line-list scroll-list"></ul>
-            </section>
-          </div>
-        </article>
-
-        <article class="card reveal" data-tab-content="agents">
-          <div class="section-head">
-            <h2 data-i18n="agent_cards_title">Agent Runtime Cards</h2>
-            <div class="actions action-bar">
-              <label class="checkbox small">
-                <input id="toggle-autorefresh-agents" type="checkbox" />
-                <span data-i18n="autorefresh_label">Авто</span>
-              </label>
-              <span id="agents-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-agent-cards" class="ghost" data-i18n="refresh">Обновить</button>
-            </div>
-          </div>
-          <div class="agents-workspace">
-            <div class="agent-columns">
-              <section>
-                <div class="task-column-head">
-                  <p class="tiny-label" data-i18n="agent_preparing">Preparing</p>
-                  <span id="agents-preparing-count" class="count-pill">0</span>
-                </div>
-                <ul id="agents-preparing" class="line-list scroll-list"></ul>
-              </section>
-              <section>
-                <div class="task-column-head">
-                  <p class="tiny-label" data-i18n="agent_running">Running</p>
-                  <span id="agents-running-count" class="count-pill">0</span>
-                </div>
-                <ul id="agents-running" class="line-list scroll-list"></ul>
-              </section>
-              <section>
-                <div class="task-column-head">
-                  <p class="tiny-label" data-i18n="agent_recent">Recent</p>
-                  <span id="agents-recent-count" class="count-pill">0</span>
-                </div>
-                <ul id="agents-recent" class="line-list scroll-list"></ul>
-              </section>
-            </div>
-            <aside class="agent-inspector">
-              <p class="tiny-label" data-i18n="agent_inspector_title">Инспектор агента</p>
-              <div id="agent-inspector-empty" class="muted" data-i18n="agent_inspector_empty">
-                Выбери карточку агента, чтобы посмотреть prompt и log.
-              </div>
-              <div id="agent-inspector-content" class="agent-inspector-content" hidden>
-                <div class="agent-inspector-row"><span data-i18n="agent_field_id">id</span><code id="agent-inspector-id"></code></div>
-                <div class="agent-inspector-row"><span data-i18n="agent_field_status">status</span><span id="agent-inspector-status"></span></div>
-                <div class="agent-inspector-row"><span data-i18n="agent_field_capability">capability</span><span id="agent-inspector-capability"></span></div>
-                <div class="agent-inspector-row"><span data-i18n="agent_field_template">template</span><span id="agent-inspector-template"></span></div>
-                <div class="agent-inspector-row"><span data-i18n="agent_field_account">account</span><span id="agent-inspector-account"></span></div>
-                <div class="agent-inspector-block">
-                  <p class="tiny-label" data-i18n="agent_field_prompt">prompt</p>
-                  <pre id="agent-inspector-prompt"></pre>
-                </div>
-                <div class="agent-inspector-block">
-                  <p class="tiny-label" data-i18n="agent_field_log">log</p>
-                  <pre id="agent-inspector-log"></pre>
-                </div>
-              </div>
-            </aside>
-          </div>
-        </article>
-
-        <article class="card reveal" data-tab-content="tasks">
-          <div class="section-head">
-            <h2 data-i18n="held_title">Held Queue</h2>
-            <div class="actions action-bar">
-              <span id="held-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-held" class="ghost" data-i18n="refresh">Обновить</button>
-              <button id="release-held" class="warn" data-i18n="release">Release</button>
-            </div>
-          </div>
-          <p class="muted" id="held-summary">No data yet.</p>
-          <ul id="held-list" class="line-list scroll-list held-scroll"></ul>
-          <section class="task-details-card">
-            <p class="tiny-label" data-i18n="task_details_title">Детали задачи</p>
-            <div id="task-details-content" class="muted" data-i18n="task_details_empty">
-              Выбери карточку задачи, чтобы посмотреть детали.
-            </div>
-          </section>
-        </article>
-
-        <article class="card reveal" data-tab-content="accounts">
-          <div class="tabs inner-tabs" role="tablist" aria-label="Accounts Sections">
-            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="profiles" data-i18n="accounts_subtab_profiles">Профили</button>
-            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="limits" data-i18n="accounts_subtab_limits">Лимиты</button>
-            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="history" data-i18n="accounts_subtab_history">История</button>
-          </div>
-        </article>
-
-        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="profiles">
-          <div class="section-head">
-            <h2 data-i18n="profiles_title">Auth Profiles</h2>
-            <div class="actions action-bar">
-              <span id="profiles-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-profiles" class="ghost" data-i18n="refresh">Обновить</button>
-            </div>
-          </div>
-          <form id="upload-form" class="row-form compact">
-            <label for="profile-label" data-i18n="profile_label_label">Label</label>
-            <input id="profile-label" name="label" required />
-            <label for="profile-file" data-i18n="profile_json_label">auth.json file</label>
-            <input id="profile-file" name="file" type="file" accept=".json,application/json,text/json" required />
-            <button type="submit" data-i18n="upload_profile">Upload profile</button>
-          </form>
-          <p class="muted" id="active-profile">Active profile: unknown</p>
-          <div id="profiles-body" class="profile-grid"></div>
-        </article>
-
-        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="history">
-          <div class="section-head">
-            <h2 data-i18n="events_title">Switch Events</h2>
-            <div class="actions action-bar">
-              <label class="checkbox small">
-                <input id="toggle-autorefresh-events" type="checkbox" />
-                <span data-i18n="autorefresh_label">Авто</span>
-              </label>
-              <span id="events-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
-            </div>
-          </div>
-          <div class="split switch-filters">
-            <div>
-              <label for="switch-filter-search" data-i18n="switch_filter_search_label">Поиск</label>
-              <input id="switch-filter-search" data-i18n-placeholder="switch_filter_search_placeholder" placeholder="reason/profile/status" />
-            </div>
-            <div class="split">
-              <div>
-                <label for="switch-filter-status" data-i18n="switch_filter_status_label">Status</label>
-                <select id="switch-filter-status">
-                  <option value="all" data-i18n="switch_filter_any_status">Все статусы</option>
-                </select>
-              </div>
-              <div>
-                <label for="switch-filter-profile" data-i18n="switch_filter_profile_label">Profile</label>
-                <select id="switch-filter-profile">
-                  <option value="all" data-i18n="switch_filter_any_profile">Все профили</option>
-                </select>
-              </div>
-            </div>
-          </div>
-          <div class="actions action-bar">
-            <button id="switch-filter-clear" type="button" class="ghost" data-i18n="switch_filter_clear">Сбросить фильтры</button>
-          </div>
-          <ul id="switch-events" class="line-list scroll-list"></ul>
-        </article>
-
-        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="limits">
-          <div class="section-head">
-            <h2 data-i18n="accounts_title">Account Fleet</h2>
-            <div class="actions action-bar">
-              <span id="limits-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-account-fleet" class="ghost" data-i18n="refresh">Обновить</button>
-            </div>
-          </div>
-          <div id="account-fleet" class="account-grid"></div>
-        </article>
-
-        <article class="card reveal" data-tab-content="system">
-          <div class="section-head">
-            <h2 data-i18n="module_title">Custom Module</h2>
-            <div class="actions action-bar">
-              <span id="module-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-              <button id="refresh-module" class="ghost" data-i18n="refresh">Обновить</button>
-              <button id="refresh-executions" class="ghost" data-i18n="executions">Executions</button>
-            </div>
-          </div>
-          <form id="module-form" class="row-form compact">
-            <label class="checkbox">
-              <input id="module-enabled" type="checkbox" />
-              <span data-i18n="module_enabled_label">switch_chatgpt_auth_on_limit enabled</span>
-            </label>
-            <label for="module-config">config_json</label>
-            <textarea id="module-config" rows="6"></textarea>
-            <button type="submit" data-i18n="patch_module">Patch module</button>
-          </form>
-          <ul id="executions-list" class="line-list"></ul>
-        </article>
-
-        <article class="card reveal" data-tab-content="system">
-          <details class="manual-memory-panel">
-            <summary>
-              <span data-i18n="memory_manual_title">Ручная правка памяти (fallback)</span>
-            </summary>
-            <p class="warning" data-i18n="memory_manual_warning">
-              Advanced mode: используй только для ручного восстановления потока, основной сценарий памяти автоматический.
-            </p>
-            <p class="muted" data-i18n="memory_manual_hint">
-              Память подмешивается в задачи автоматически. Этот блок нужен только для ручной коррекции.
-            </p>
-            <div class="section-head">
-              <h2 data-i18n="memory_title">Agent Memory</h2>
-              <div class="actions action-bar">
-                <span id="memory-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
-                <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
-              </div>
-            </div>
-            <form id="memory-form" class="row-form compact">
-              <div class="split">
-                <div>
-                  <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
-                  <input id="memory-project" name="project_id" value="web-ui" required />
-                </div>
-                <div>
-                  <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>
-                  <input id="memory-role" name="agent_role" value="reviewer" required />
-                </div>
-              </div>
-              <label for="memory-title" data-i18n="memory_note_title_label">Memory title</label>
-              <input id="memory-title" name="title" required />
-              <label for="memory-content" data-i18n="memory_note_content_label">Memory content</label>
-              <textarea id="memory-content" name="content" rows="3" required></textarea>
-              <button type="submit" data-i18n="create_memory_note">Save memory</button>
-            </form>
-            <ul id="memory-list" class="line-list"></ul>
-          </details>
-        </article>
-      </section>
-
-      <section class="card reveal" data-tab-content="overview">
-        <div class="section-head">
-          <h2 data-i18n="activity_title">Activity Log</h2>
-          <button id="refresh-all" class="ghost" data-i18n="refresh_all">Refresh all</button>
-        </div>
-        <pre id="activity-log" class="log"></pre>
       </section>
     </main>
     <script src="/ui/app.js" defer></script>

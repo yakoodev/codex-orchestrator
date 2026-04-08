@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codex Orchestrator Console</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body data-page="console" class="console-body">
+    <div class="console-noise"></div>
+    <div class="console-shell">
+      <aside class="console-sidebar" aria-label="Primary navigation">
+        <div class="sidebar-brand">
+          <p class="eyebrow" data-i18n="brand_kicker">Control Plane</p>
+          <h1 data-i18n="brand_title">Codex Orchestrator</h1>
+          <p class="meta-note" data-i18n="brand_subtitle">Operational console v2</p>
+        </div>
+
+        <nav class="route-nav" aria-label="Console routes">
+          <a href="#/dashboard" class="route-link" data-route-link="dashboard" data-i18n="route_dashboard">Dashboard</a>
+          <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Tasks</a>
+          <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Agents</a>
+          <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Accounts</a>
+          <a href="#/memory" class="route-link" data-route-link="memory" data-i18n="route_memory">Memory</a>
+          <a href="#/system" class="route-link" data-route-link="system" data-i18n="route_system">System</a>
+          <a href="#/logs" class="route-link" data-route-link="logs" data-i18n="route_logs">Logs</a>
+        </nav>
+
+        <section class="sidebar-tools">
+          <form id="token-form" class="token-form">
+            <label for="admin-token">X-Admin-Token</label>
+            <input
+              id="admin-token"
+              name="admin-token"
+              type="password"
+              autocomplete="off"
+              data-i18n-placeholder="token_placeholder"
+              placeholder="вставь токен"
+            />
+            <div class="button-row">
+              <button type="submit" data-i18n="save_token">Сохранить</button>
+              <button type="button" id="token-clear" class="button-ghost" data-i18n="clear_token">Очистить</button>
+            </div>
+            <p class="meta-note" data-i18n="token_hint">
+              Токен хранится в localStorage и отправляется только в /api/* запросы.
+            </p>
+          </form>
+
+          <div class="sidebar-selects">
+            <label for="lang-select" data-i18n="language_label">Язык</label>
+            <select id="lang-select">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+            </select>
+
+            <label for="theme-select" data-i18n="theme_label">Тема</label>
+            <select id="theme-select">
+              <option value="dark" data-i18n="theme_dark">Тёмная</option>
+              <option value="light" data-i18n="theme_light">Светлая</option>
+            </select>
+          </div>
+        </section>
+      </aside>
+
+      <div class="console-main">
+        <header class="quickbar">
+          <div>
+            <p id="quickbar-route" class="eyebrow">DASHBOARD</p>
+            <h2 id="quickbar-title">Dashboard</h2>
+            <p id="quickbar-subtitle" class="meta-note"></p>
+          </div>
+          <div class="quickbar-actions">
+            <button id="quick-refresh-route" class="button-ghost" data-i18n="refresh_current">Обновить экран</button>
+            <button id="quick-refresh-all" data-i18n="refresh_all">Полный refresh</button>
+          </div>
+        </header>
+
+        <section class="kpi-strip" aria-label="Main indicators">
+          <article class="kpi-card">
+            <p class="tiny-label" data-i18n="stats_tasks">Задачи</p>
+            <p id="stat-tasks" class="kpi-value">0</p>
+          </article>
+          <article class="kpi-card">
+            <p class="tiny-label" data-i18n="stats_held">Удержанные</p>
+            <p id="stat-held" class="kpi-value">0</p>
+          </article>
+          <article class="kpi-card">
+            <p class="tiny-label" data-i18n="stats_profiles">Профили</p>
+            <p id="stat-profiles" class="kpi-value">0</p>
+          </article>
+          <article class="kpi-card">
+            <p class="tiny-label" data-i18n="stats_events">Switch events</p>
+            <p id="stat-events" class="kpi-value">0</p>
+          </article>
+        </section>
+
+        <main class="screen-host" id="screen-host">
+          <section class="screen-panel" data-screen="dashboard" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="dashboard_health_title">Состояние сервиса</h3>
+              <div class="action-bar">
+                <button id="refresh-health" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+            <div class="dashboard-grid">
+              <article class="surface-card">
+                <p class="tiny-label">/health/live</p>
+                <p id="live-status" class="status-badge">unknown</p>
+              </article>
+              <article class="surface-card">
+                <p class="tiny-label">/health/ready</p>
+                <p id="ready-status" class="status-badge">unknown</p>
+              </article>
+              <article class="surface-card surface-card-wide">
+                <div class="panel-head compact">
+                  <h4 data-i18n="dashboard_signals_title">Последние сигналы</h4>
+                  <span id="dashboard-signals-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                </div>
+                <ul id="dashboard-signals" class="compact-list"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="tasks" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="tasks_title">Задачи и очередь</h3>
+              <div class="action-bar">
+                <label class="toggle">
+                  <input id="toggle-autorefresh-tasks" type="checkbox" />
+                  <span data-i18n="autorefresh_label">Авто</span>
+                </label>
+                <span id="tasks-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-tasks" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="tasks-layout">
+              <article class="surface-card">
+                <details id="task-create-shell" class="compact-collapse" open>
+                  <summary data-i18n="task_create_toggle">Создать задачу</summary>
+                  <form id="task-form" class="form-grid">
+                    <label for="task-title" data-i18n="task_title_label">Заголовок</label>
+                    <input id="task-title" name="title" required />
+
+                    <label for="task-description" data-i18n="task_description_label">Описание</label>
+                    <textarea id="task-description" name="description" rows="3" required></textarea>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="task-project" data-i18n="task_project_label">Project ID</label>
+                        <input id="task-project" name="project_id" value="web-ui" required />
+                      </div>
+                      <div>
+                        <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
+                        <input id="task-repo" name="repo_id" value="web-ui" required />
+                      </div>
+                    </div>
+
+                    <button type="submit" data-i18n="create_task">Создать задачу</button>
+                  </form>
+                </details>
+
+                <div class="filters-grid">
+                  <div>
+                    <label for="task-filter-search" data-i18n="task_filter_search_label">Поиск</label>
+                    <input
+                      id="task-filter-search"
+                      data-i18n-placeholder="task_filter_search_placeholder"
+                      placeholder="id/заголовок/описание"
+                    />
+                  </div>
+                  <div class="split-2">
+                    <div>
+                      <label for="task-filter-project" data-i18n="task_filter_project_label">Project</label>
+                      <select id="task-filter-project"></select>
+                    </div>
+                    <div>
+                      <label for="task-filter-status" data-i18n="task_filter_status_label">Status</label>
+                      <select id="task-filter-status"></select>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="action-bar">
+                  <button id="task-filter-clear" type="button" class="button-ghost" data-i18n="task_filter_clear">Сбросить фильтры</button>
+                </div>
+
+                <div class="board-grid">
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="task_board_waiting">Ожидает запуска</p>
+                      <span id="tasks-waiting-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="tasks-waiting" class="card-list"></ul>
+                  </section>
+
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="task_board_running">Запущена</p>
+                      <span id="tasks-running-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="tasks-running" class="card-list"></ul>
+                  </section>
+
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="task_board_completed">Выполнена</p>
+                      <span id="tasks-completed-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="tasks-completed" class="card-list"></ul>
+                  </section>
+                </div>
+              </article>
+
+              <article class="surface-card">
+                <div class="panel-head compact">
+                  <h4 data-i18n="held_title">Held Queue</h4>
+                  <div class="action-bar">
+                    <span id="held-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                    <button id="refresh-held" class="button-ghost" data-i18n="refresh">Обновить</button>
+                    <button id="release-held" class="button-warn" data-i18n="release">Освободить</button>
+                  </div>
+                </div>
+                <p id="held-summary" class="meta-note"></p>
+                <ul id="held-list" class="compact-list fixed-list"></ul>
+
+                <section class="detail-card">
+                  <p class="tiny-label" data-i18n="task_details_title">Детали задачи</p>
+                  <div id="task-details-content" class="meta-note" data-i18n="task_details_empty">
+                    Выбери карточку задачи, чтобы посмотреть детали.
+                  </div>
+                </section>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="agents" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="agent_cards_title">Карточки агентов</h3>
+              <div class="action-bar">
+                <label class="toggle">
+                  <input id="toggle-autorefresh-agents" type="checkbox" />
+                  <span data-i18n="autorefresh_label">Авто</span>
+                </label>
+                <span id="agents-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-agent-cards" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="agents-layout">
+              <article class="surface-card">
+                <div class="board-grid">
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="agent_preparing">Готовятся</p>
+                      <span id="agents-preparing-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="agents-preparing" class="card-list"></ul>
+                  </section>
+
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="agent_running">Запущены</p>
+                      <span id="agents-running-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="agents-running" class="card-list"></ul>
+                  </section>
+
+                  <section class="board-column">
+                    <div class="board-head">
+                      <p class="tiny-label" data-i18n="agent_recent">Недавние</p>
+                      <span id="agents-recent-count" class="count-pill">0</span>
+                    </div>
+                    <ul id="agents-recent" class="card-list"></ul>
+                  </section>
+                </div>
+              </article>
+
+              <article class="surface-card">
+                <p class="tiny-label" data-i18n="agent_inspector_title">Инспектор агента</p>
+                <div id="agent-inspector-empty" class="meta-note" data-i18n="agent_inspector_empty">
+                  Выбери карточку агента, чтобы посмотреть prompt и log.
+                </div>
+                <div id="agent-inspector-content" class="inspector-grid" hidden>
+                  <div class="kv-row"><span data-i18n="agent_field_id">ID</span><code id="agent-inspector-id"></code></div>
+                  <div class="kv-row"><span data-i18n="agent_field_status">Status</span><span id="agent-inspector-status"></span></div>
+                  <div class="kv-row"><span data-i18n="agent_field_capability">Capability</span><span id="agent-inspector-capability"></span></div>
+                  <div class="kv-row"><span data-i18n="agent_field_template">Template</span><span id="agent-inspector-template"></span></div>
+                  <div class="kv-row"><span data-i18n="agent_field_account">Account</span><span id="agent-inspector-account"></span></div>
+
+                  <div>
+                    <p class="tiny-label" data-i18n="agent_field_prompt">Prompt</p>
+                    <pre id="agent-inspector-prompt" class="mono-box"></pre>
+                  </div>
+
+                  <div>
+                    <p class="tiny-label" data-i18n="agent_field_log">Log</p>
+                    <pre id="agent-inspector-log" class="mono-box"></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="accounts" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="accounts_title">Аккаунты и лимиты</h3>
+              <div class="action-bar">
+                <button class="button-ghost account-section-button" data-accounts-section="profiles" data-i18n="accounts_subtab_profiles">Профили</button>
+                <button class="button-ghost account-section-button" data-accounts-section="limits" data-i18n="accounts_subtab_limits">Лимиты</button>
+                <button class="button-ghost account-section-button" data-accounts-section="history" data-i18n="accounts_subtab_history">История</button>
+              </div>
+            </div>
+
+            <article class="surface-card" data-accounts-panel="profiles">
+              <div class="panel-head compact">
+                <h4 data-i18n="profiles_title">Auth Profiles</h4>
+                <div class="action-bar">
+                  <span id="profiles-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                  <button id="refresh-profiles" class="button-ghost" data-i18n="refresh">Обновить</button>
+                </div>
+              </div>
+
+              <form id="upload-form" class="form-grid">
+                <label for="profile-label" data-i18n="profile_label_label">Label</label>
+                <input id="profile-label" name="label" required />
+                <label for="profile-file" data-i18n="profile_json_label">auth.json файл</label>
+                <input id="profile-file" name="file" type="file" accept=".json,application/json,text/json" required />
+                <button type="submit" data-i18n="upload_profile">Загрузить профиль</button>
+              </form>
+
+              <p id="active-profile" class="meta-note"></p>
+              <div id="profiles-body" class="cards-grid"></div>
+            </article>
+
+            <article class="surface-card" data-accounts-panel="limits" hidden>
+              <div class="panel-head compact">
+                <h4 data-i18n="accounts_limits_title">Лимиты профилей</h4>
+                <div class="action-bar">
+                  <span id="limits-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                  <button id="refresh-account-fleet" class="button-ghost" data-i18n="refresh">Обновить</button>
+                </div>
+              </div>
+              <div id="account-fleet" class="cards-grid"></div>
+            </article>
+
+            <article class="surface-card" data-accounts-panel="history" hidden>
+              <div class="panel-head compact">
+                <h4 data-i18n="events_title">Switch Events</h4>
+                <div class="action-bar">
+                  <label class="toggle">
+                    <input id="toggle-autorefresh-events" type="checkbox" />
+                    <span data-i18n="autorefresh_label">Авто</span>
+                  </label>
+                  <span id="events-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                  <button id="refresh-switch-events" class="button-ghost" data-i18n="refresh">Обновить</button>
+                </div>
+              </div>
+
+              <div class="filters-grid">
+                <div>
+                  <label for="switch-filter-search" data-i18n="switch_filter_search_label">Поиск</label>
+                  <input
+                    id="switch-filter-search"
+                    data-i18n-placeholder="switch_filter_search_placeholder"
+                    placeholder="reason/profile/status"
+                  />
+                </div>
+                <div class="split-2">
+                  <div>
+                    <label for="switch-filter-status" data-i18n="switch_filter_status_label">Status</label>
+                    <select id="switch-filter-status"></select>
+                  </div>
+                  <div>
+                    <label for="switch-filter-profile" data-i18n="switch_filter_profile_label">Profile</label>
+                    <select id="switch-filter-profile"></select>
+                  </div>
+                </div>
+              </div>
+              <div class="action-bar">
+                <button id="switch-filter-clear" class="button-ghost" type="button" data-i18n="switch_filter_clear">Сбросить</button>
+              </div>
+              <ul id="switch-events" class="compact-list fixed-list"></ul>
+            </article>
+          </section>
+
+          <section class="screen-panel" data-screen="memory" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="memory_title">Память агентов</h3>
+              <div class="action-bar">
+                <span id="memory-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-memory" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="memory-layout">
+              <article class="surface-card">
+                <form id="memory-form" class="form-grid">
+                  <div class="split-2">
+                    <div>
+                      <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
+                      <input id="memory-project" name="project_id" value="web-ui" required />
+                    </div>
+                    <div>
+                      <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>
+                      <input id="memory-role" name="agent_role" value="reviewer" required />
+                    </div>
+                  </div>
+                  <label for="memory-title" data-i18n="memory_note_title_label">Заголовок памяти</label>
+                  <input id="memory-title" name="title" required />
+                  <label for="memory-content" data-i18n="memory_note_content_label">Содержимое памяти</label>
+                  <textarea id="memory-content" name="content" rows="4" required></textarea>
+                  <button type="submit" data-i18n="create_memory_note">Сохранить память</button>
+                </form>
+              </article>
+              <article class="surface-card">
+                <ul id="memory-list" class="compact-list fixed-list"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="system" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="module_title">Модуль и исполнение</h3>
+              <div class="action-bar">
+                <span id="module-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-module" class="button-ghost" data-i18n="refresh">Обновить модуль</button>
+                <button id="refresh-executions" class="button-ghost" data-i18n="executions">Исполнения</button>
+              </div>
+            </div>
+
+            <div class="system-layout">
+              <article class="surface-card">
+                <form id="module-form" class="form-grid">
+                  <label class="toggle">
+                    <input id="module-enabled" type="checkbox" />
+                    <span data-i18n="module_enabled_label">switch_chatgpt_auth_on_limit включен</span>
+                  </label>
+                  <label for="module-config">CONFIG_JSON</label>
+                  <textarea id="module-config" rows="10"></textarea>
+                  <button type="submit" data-i18n="patch_module">Обновить модуль</button>
+                </form>
+              </article>
+
+              <article class="surface-card">
+                <ul id="executions-list" class="compact-list fixed-list"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="logs" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="logs_title">Операционные логи</h3>
+              <div class="action-bar">
+                <span id="logs-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="logs-clear" class="button-ghost" data-i18n="logs_clear">Очистить логи</button>
+              </div>
+            </div>
+
+            <article class="surface-card">
+              <div class="filters-grid">
+                <div class="split-2">
+                  <div>
+                    <label for="log-filter-level" data-i18n="logs_filter_level">Уровень</label>
+                    <select id="log-filter-level">
+                      <option value="all" data-i18n="logs_filter_all">Все</option>
+                      <option value="info">info</option>
+                      <option value="success">success</option>
+                      <option value="warn">warn</option>
+                      <option value="error">error</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="log-filter-scope" data-i18n="logs_filter_scope">Scope</label>
+                    <select id="log-filter-scope">
+                      <option value="all" data-i18n="logs_filter_all">Все</option>
+                      <option value="ui">ui</option>
+                      <option value="api">api</option>
+                      <option value="system">system</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label for="log-filter-search" data-i18n="logs_filter_search">Поиск</label>
+                  <input id="log-filter-search" data-i18n-placeholder="logs_filter_search_placeholder" placeholder="route/status/message" />
+                </div>
+              </div>
+
+              <div class="action-bar">
+                <button id="log-filter-clear" class="button-ghost" type="button" data-i18n="task_filter_clear">Сбросить фильтры</button>
+              </div>
+
+              <ul id="logs-list" class="compact-list fixed-list"></ul>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/ui/app.js" defer></script>
+  </body>
+</html>
