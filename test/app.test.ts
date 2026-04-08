@@ -3026,6 +3026,158 @@ describe("smoke-core API", () => {
     });
   });
 
+  it("uses project workspace_path as default cwd for delegation when payload cwd is absent", async () => {
+    await app.close();
+
+    const executionCalls: Array<{
+      payload: Record<string, unknown>;
+    }> = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push({
+          payload: input.payload
+        });
+        return {
+          execution_mode: "mock",
+          result_summary: "ok",
+          output_text: "ok"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    await persistence.patchProject("proj-memory", {
+      workspace_path: "C:/workspace/proj-memory"
+    });
+
+    const task = await persistence.createTask({
+      title: "Workspace task",
+      description: "Needs default cwd from project",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentTemplate({
+      name: "workspace-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are reviewer",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-project-cwd-fallback-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Проверь cwd fallback" },
+        priority: 50
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(executionCalls).toHaveLength(1);
+    const firstExecution = executionCalls[0];
+    if (!firstExecution) {
+      throw new Error("Expected delegation execution call to be captured");
+    }
+    expect(firstExecution.payload["cwd"]).toBe("C:/workspace/proj-memory");
+  });
+
+  it("keeps explicit payload cwd and does not override with project workspace_path", async () => {
+    await app.close();
+
+    const executionCalls: Array<{
+      payload: Record<string, unknown>;
+    }> = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push({
+          payload: input.payload
+        });
+        return {
+          execution_mode: "mock",
+          result_summary: "ok",
+          output_text: "ok"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    await persistence.patchProject("proj-memory", {
+      workspace_path: "C:/workspace/proj-memory"
+    });
+
+    const task = await persistence.createTask({
+      title: "Workspace override task",
+      description: "Needs explicit cwd override",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentTemplate({
+      name: "workspace-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are reviewer",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-project-cwd-override-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Проверь cwd override", cwd: "C:/manual/override" },
+        priority: 50
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(executionCalls).toHaveLength(1);
+    const firstExecution = executionCalls[0];
+    if (!firstExecution) {
+      throw new Error("Expected delegation execution call to be captured");
+    }
+    expect(firstExecution.payload["cwd"]).toBe("C:/manual/override");
+  });
+
   it("uses injected delegation executor and stores returned summary", async () => {
     await app.close();
 

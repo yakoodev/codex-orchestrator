@@ -340,6 +340,7 @@ curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/$runtimeProfileId/activate"
 $projectBody = @{
   key = "manual-runtime"
   name = "Manual Runtime"
+  workspace_path = "/app"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri "$BASE/api/projects" -Method POST -Headers $HEADERS -Body $projectBody
@@ -373,7 +374,6 @@ $dispatchBody = @{
   payload = @{
     execution_mode = "codex_exec"
     prompt = "Reply exactly READY and nothing else."
-    cwd = "/app"
   }
   priority = 100
 } | ConvertTo-Json -Depth 8
@@ -389,6 +389,7 @@ $dispatch | ConvertTo-Json -Depth 8
 Ожидаемо:
 - `status = completed`;
 - `result_summary` содержит ответ модели (например `READY`), а не mock-строку вида `Delegation completed by template ...`.
+- делегация берёт рабочую директорию из `Project.workspace_path` (`/app`), даже если `payload.cwd` не передан явно.
 
 ## 9. Сценарий G: Telegram long polling команды
 

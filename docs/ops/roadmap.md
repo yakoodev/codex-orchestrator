@@ -29,8 +29,8 @@
   - [x] добавить API `POST/GET /api/projects`, `GET/PATCH /api/projects/{key}`, `GET /api/projects/{key}/summary`;
   - [x] добавить валидацию `project_id` при создании задач и памяти.
 - Этап B (Workflow integration):
-  - [ ] использовать `Project.workspace_path` как default `cwd` в delegation runtime;
-  - [ ] синхронизировать smoke/manual сценарии под проектный registry.
+  - [x] использовать `Project.workspace_path` как default `cwd` в delegation runtime;
+  - [x] синхронизировать smoke/manual сценарии под проектный registry.
 - Этап C (UI integration):
   - [ ] добавить отдельный экран `Projects` в `/ui/console.html`;
   - [ ] перевести фильтры задач/памяти на список реальных проектов;

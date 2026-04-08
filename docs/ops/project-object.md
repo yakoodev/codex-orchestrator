@@ -89,8 +89,8 @@
 - [x] Валидация `project_id` для `tasks` и `memory`.
 
 ### Phase B — Workflow integration
-- Использование `Project.workspace_path` в delegation runtime.
-- Обновление smoke/manual сценариев.
+- [x] Использование `Project.workspace_path` в delegation runtime.
+- [x] Обновление smoke/manual сценариев.
 
 ### Phase C — UI integration
 - Новый экран `Projects`.

@@ -152,6 +152,13 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
     - `GET /api/projects/{key}/summary`
   - включена валидация `project_id` в `POST /api/tasks` и `POST /api/memory/entries` (ошибки `PROJECT_NOT_FOUND` / `PROJECT_INACTIVE`);
   - синхронизированы OpenAPI/route-coverage и `smoke:local` под обязательный шаг создания проекта.
+- [x] Реализован `Project Registry` (Phase B, Workflow integration):
+  - в `POST /api/delegation/dispatch` добавлен fallback `cwd`:
+    - при наличии `payload.cwd` используется он;
+    - иначе берётся `Project.workspace_path` проекта задачи;
+    - если и он не задан, остаётся текущий runtime fallback (`process.cwd()` в executor);
+  - в execution meta добавлен `execution_context` с `cwd` и `cwd_source` для диагностики;
+  - добавлены тесты на fallback/override поведения `cwd` и синхронизированы manual/smoke сценарии.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -162,7 +169,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A закрыт, остаются Phase B/C).
+- [~] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B закрыты, остается Phase C — UI integration).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 
 ## Текущее состояние проверок (ветка PR1)

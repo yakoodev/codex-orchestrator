@@ -3526,6 +3526,17 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     const requesterTask = await persistence.getTaskById(requesterTaskId);
     const memoryProjectId = requesterTask?.project_id ?? null;
+    const requesterProject = memoryProjectId
+      ? await persistence.getProjectByKey(memoryProjectId)
+      : null;
+    const payloadCwd = asNonEmptyString(payload["cwd"]);
+    const projectWorkspacePath = asNonEmptyString(requesterProject?.workspace_path ?? null);
+    const resolvedExecutionCwd = payloadCwd ?? projectWorkspacePath;
+    const executionCwdSource: "payload" | "project_workspace_path" | "process_cwd" = payloadCwd
+      ? "payload"
+      : projectWorkspacePath
+        ? "project_workspace_path"
+        : "process_cwd";
     const memoryAgentRole = normalizeAgentRole(targetTemplate.role);
     const memoryDisabled = payload["memory_disabled"] === true;
     const memoryEntries =
@@ -3553,6 +3564,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         disabled: memoryDisabled
       }
     };
+    if (!payloadCwd && resolvedExecutionCwd) {
+      executionPayload["cwd"] = resolvedExecutionCwd;
+    }
 
     const selectedAuthProfile = await persistence.getActiveAuthProfile();
     const acceptedAt = new Date();
@@ -3672,6 +3686,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             code: executionError.code,
             attempt,
             reason: failureReason,
+            execution_context: {
+              cwd: resolvedExecutionCwd,
+              cwd_source: executionCwdSource
+            },
             memory_context: {
               project_id: memoryProjectId,
               agent_role: memoryAgentRole,
@@ -3699,6 +3717,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         execution_log: trimToLimit(executionResult.output_text, MAX_DELEGATION_LOG_LENGTH),
         execution_meta_json: {
           ...(executionResult.metadata ?? {}),
+          execution_context: {
+            cwd: resolvedExecutionCwd,
+            cwd_source: executionCwdSource
+          },
           memory_context: {
             project_id: memoryProjectId,
             agent_role: memoryAgentRole,

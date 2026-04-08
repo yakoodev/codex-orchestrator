@@ -146,7 +146,8 @@ async function main() {
       key: projectKey,
       name: `Smoke project ${runId}`,
       github_repo: "example/smoke-project",
-      default_branch: "main"
+      default_branch: "main",
+      workspace_path: "/app"
     })
   });
   ok("create project");
