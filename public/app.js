@@ -165,6 +165,7 @@ const I18N = {
     active_now: "активный сейчас",
     action_activate: "Активировать",
     action_deactivate: "Деактивировать",
+    action_open_history: "История",
     no_profiles: "Профилей пока нет.",
     events_title: "События переключений",
     switch_filter_search_label: "Поиск",
@@ -368,6 +369,7 @@ I18N.en = {
   active_now: "active now",
   action_activate: "Activate",
   action_deactivate: "Deactivate",
+  action_open_history: "History",
   no_profiles: "No profiles yet.",
   events_title: "Switch events",
   switch_filter_search_label: "Search",
@@ -1151,6 +1153,11 @@ function renderFleet(items) {
       <div class="meta-note">${escapeHtml(t("account_limits_5h", { remaining: l1, reset: r1 }))}</div>
       <div class="meta-note">${escapeHtml(t("account_limits_week", { remaining: l2, reset: r2 }))}</div>
       <div class="meta-note">${escapeHtml(t("account_limits_source", { source: src }))}</div>
+      <div class="action-bar">
+        <button type="button" data-fleet-action="activate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button>
+        <button type="button" class="button-ghost" data-fleet-action="deactivate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_deactivate"))}</button>
+        <button type="button" class="button-ghost" data-fleet-action="history" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_open_history"))}</button>
+      </div>
     </article>`
   }).join("")
 }
@@ -1871,6 +1878,30 @@ function wireConsoleHandlers() {
   })
 
   ui.refreshAccountFleet.addEventListener("click", async () => state.token ? refreshFleet() : requireTokenPanels())
+  ui.accountFleet.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-fleet-action]")
+    if (!button) return
+    if (!state.token) return requireTokenPanels()
+
+    const action = button.dataset.fleetAction
+    const id = button.dataset.profileId
+    if (!id) return
+
+    if (action === "history") {
+      setSection("history", { persist: true, log: true })
+      state.switchFilters.profile = id
+      saveJson(KEYS.switchFilters, state.switchFilters)
+      await refreshSwitches()
+      return
+    }
+
+    const route = action === "activate"
+      ? `/api/auth-profiles/chatgpt/${id}/activate`
+      : `/api/auth-profiles/chatgpt/${id}/deactivate`
+    await requestJson(route, { method: "POST" })
+    pushLog("success", "ui", t("log_profile_action"), { action, profile_id: id, source: "limits" })
+    await Promise.allSettled([refreshProfiles(), refreshFleet(), refreshSwitches()])
+  })
   ui.refreshSwitchEvents.addEventListener("click", async () => state.token ? refreshSwitches() : requireTokenPanels())
 
   ui.switchFilterSearch.addEventListener("input", () => {
