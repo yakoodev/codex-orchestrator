@@ -236,6 +236,24 @@ model AuthContext {
   @@map("auth_contexts")
 }
 
+model Project {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  name           String
+  description    String?
+  github_url     String?
+  github_repo    String?
+  default_branch String?
+  workspace_path String?
+  meta_json      Json?
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([is_active, updated_at])
+  @@map("projects")
+}
+
 model Task {
   id                 String     @id @default(cuid())
   title              String

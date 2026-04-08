@@ -24,6 +24,7 @@ import type {
   AuthContextType,
   AuthProfileEntity,
   AuthSwitchEventEntity,
+  CreateProjectInput,
   CreateAgentMemoryEntryInput,
   CreateAuthProfileInput,
   CreateAuthSwitchEventInput,
@@ -41,6 +42,8 @@ import type {
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
+  ProjectEntity,
+  ProjectSummaryEntity,
   ScheduledRuleEntity,
   ScheduledRunEntity,
   ScheduleMisfirePolicy,
@@ -71,6 +74,36 @@ function toTaskEntity(task: {
     project_id: task.project_id,
     repo_id: task.repo_id,
     branch: task.branch
+  };
+}
+
+function toProjectEntity(entity: {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  github_url: string | null;
+  github_repo: string | null;
+  default_branch: string | null;
+  workspace_path: string | null;
+  meta_json: Prisma.JsonValue | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}): ProjectEntity {
+  return {
+    id: entity.id,
+    key: entity.key,
+    name: entity.name,
+    description: entity.description,
+    github_url: entity.github_url,
+    github_repo: entity.github_repo,
+    default_branch: entity.default_branch,
+    workspace_path: entity.workspace_path,
+    meta_json: entity.meta_json as Record<string, unknown> | null,
+    is_active: entity.is_active,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
   };
 }
 
@@ -387,6 +420,148 @@ export class PrismaPersistence implements Persistence {
 
   public async pingDb(): Promise<void> {
     await this.prisma.$queryRawUnsafe("SELECT 1");
+  }
+
+  public async createProject(input: CreateProjectInput): Promise<ProjectEntity> {
+    const created = await this.prisma.project.create({
+      data: {
+        key: input.key,
+        name: input.name,
+        description: input.description ?? null,
+        github_url: input.github_url ?? null,
+        github_repo: input.github_repo ?? null,
+        default_branch: input.default_branch ?? null,
+        workspace_path: input.workspace_path ?? null,
+        meta_json:
+          input.meta_json === undefined
+            ? undefined
+            : ((input.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput),
+        is_active: input.is_active ?? true
+      }
+    });
+
+    return toProjectEntity(created);
+  }
+
+  public async listProjects(options?: { include_inactive?: boolean }): Promise<ProjectEntity[]> {
+    const includeInactive = options?.include_inactive ?? true;
+    const projects = await this.prisma.project.findMany({
+      where: includeInactive ? undefined : { is_active: true },
+      orderBy: [{ is_active: "desc" }, { updated_at: "desc" }]
+    });
+
+    return projects.map((project) => toProjectEntity(project));
+  }
+
+  public async getProjectByKey(key: string): Promise<ProjectEntity | null> {
+    const project = await this.prisma.project.findUnique({
+      where: { key }
+    });
+
+    if (!project) {
+      return null;
+    }
+
+    return toProjectEntity(project);
+  }
+
+  public async patchProject(
+    key: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      github_url?: string | null;
+      github_repo?: string | null;
+      default_branch?: string | null;
+      workspace_path?: string | null;
+      meta_json?: Record<string, unknown> | null;
+      is_active?: boolean;
+    }
+  ): Promise<ProjectEntity | null> {
+    const existing = await this.prisma.project.findUnique({
+      where: { key }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.project.update({
+      where: { key },
+      data: {
+        name: patch.name,
+        description: patch.description,
+        github_url: patch.github_url,
+        github_repo: patch.github_repo,
+        default_branch: patch.default_branch,
+        workspace_path: patch.workspace_path,
+        meta_json:
+          patch.meta_json === undefined
+            ? undefined
+            : ((patch.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput),
+        is_active: patch.is_active
+      }
+    });
+
+    return toProjectEntity(updated);
+  }
+
+  public async getProjectSummaryByKey(
+    key: string,
+    options?: { switch_events_window_hours?: number }
+  ): Promise<ProjectSummaryEntity | null> {
+    const project = await this.prisma.project.findUnique({
+      where: { key }
+    });
+    if (!project) {
+      return null;
+    }
+
+    const windowHours = Math.max(1, Math.min(options?.switch_events_window_hours ?? 24, 24 * 30));
+    const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1_000);
+
+    const [taskGroups, taskTotal, activeMemoryEntries, switchEvents] = await Promise.all([
+      this.prisma.task.groupBy({
+        by: ["status"],
+        where: { project_id: key },
+        _count: { _all: true }
+      }),
+      this.prisma.task.count({
+        where: { project_id: key }
+      }),
+      this.prisma.agentMemoryEntry.count({
+        where: {
+          project_id: key,
+          is_active: true
+        }
+      }),
+      this.prisma.authSwitchEvent.findMany({
+        where: {
+          started_at: { gte: windowStart },
+          OR: [
+            { details_json: { path: ["project_id"], equals: key } },
+            { details_json: { path: ["project_key"], equals: key } },
+            { details_json: { path: ["task_project_id"], equals: key } }
+          ]
+        },
+        orderBy: { started_at: "desc" },
+        select: { id: true, started_at: true }
+      })
+    ]);
+
+    const tasksByStatus: Partial<Record<TaskStatus, number>> = {};
+    for (const group of taskGroups) {
+      tasksByStatus[group.status as TaskStatus] = group._count._all;
+    }
+
+    return {
+      project: toProjectEntity(project),
+      tasks_total: taskTotal,
+      tasks_by_status: tasksByStatus,
+      active_memory_entries: activeMemoryEntries,
+      switch_events_recent: switchEvents.length,
+      switch_events_window_hours: windowHours,
+      last_switch_event_at: switchEvents[0]?.started_at ?? null
+    };
   }
 
   public async createTask(input: CreateTaskInput): Promise<TaskEntity> {

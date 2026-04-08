@@ -20,14 +20,14 @@
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: Project Registry (доменный объект Project)
-- Статус: `planned`.
+- Статус: `in_progress` (Phase A завершен, в работе Phase B).
 - Цель: ввести отдельный объект `Project` как источник истины для памяти, задач, артефактов и GitHub-контекста.
 - Дизайн-док: `docs/ops/project-object.md`.
 - Этап A (Data + API core):
-  - [ ] добавить Prisma-модель `Project` и миграцию;
-  - [ ] реализовать persistence CRUD + summary;
-  - [ ] добавить API `POST/GET /api/projects`, `GET/PATCH /api/projects/{key}`, `GET /api/projects/{key}/summary`;
-  - [ ] добавить валидацию `project_id` при создании задач и памяти.
+  - [x] добавить Prisma-модель `Project` и миграцию;
+  - [x] реализовать persistence CRUD + summary;
+  - [x] добавить API `POST/GET /api/projects`, `GET/PATCH /api/projects/{key}`, `GET /api/projects/{key}/summary`;
+  - [x] добавить валидацию `project_id` при создании задач и памяти.
 - Этап B (Workflow integration):
   - [ ] использовать `Project.workspace_path` как default `cwd` в delegation runtime;
   - [ ] синхронизировать smoke/manual сценарии под проектный registry.

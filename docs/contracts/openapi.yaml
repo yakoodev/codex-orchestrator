@@ -8,6 +8,7 @@ servers:
 security:
   - AdminToken: []
 tags:
+  - name: Projects
   - name: Tasks
   - name: Agent Templates
   - name: Workers
@@ -47,6 +48,123 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "503":
           description: Dependencies are not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects:
+    post:
+      tags: [Projects]
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "409":
+          description: Project key already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [Projects]
+      summary: List projects
+      parameters:
+        - in: query
+          name: include_inactive
+          schema:
+            type: boolean
+          description: Include inactive projects in response (default true).
+      responses:
+        "200":
+          description: Projects list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+                required: [items]
+
+  /api/projects/{key}:
+    get:
+      tags: [Projects]
+      summary: Get project by key
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Projects]
+      summary: Patch project metadata
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectPatchRequest"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/summary:
+    get:
+      tags: [Projects]
+      summary: Get project summary
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - in: query
+          name: switch_events_window_hours
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 720
+          description: Sliding window for switch-events aggregation.
+      responses:
+        "200":
+          description: Project summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+        "404":
+          description: Project not found
           content:
             application/json:
               schema:
@@ -1137,6 +1255,12 @@ components:
       required: true
       schema:
         type: string
+    ProjectKey:
+      in: path
+      name: key
+      required: true
+      schema:
+        type: string
   schemas:
     HealthResponse:
       type: object
@@ -1160,6 +1284,127 @@ components:
         code:
           type: string
       required: [error, code]
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        github_url:
+          type: [string, "null"]
+        github_repo:
+          type: [string, "null"]
+        default_branch:
+          type: [string, "null"]
+        workspace_path:
+          type: [string, "null"]
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - key
+        - name
+        - is_active
+        - created_at
+        - updated_at
+
+    ProjectCreateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        github_url:
+          type: [string, "null"]
+        github_repo:
+          type: [string, "null"]
+        default_branch:
+          type: [string, "null"]
+        workspace_path:
+          type: [string, "null"]
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        is_active:
+          type: boolean
+      required: [key, name]
+      additionalProperties: false
+
+    ProjectPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: [string, "null"]
+        github_url:
+          type: [string, "null"]
+        github_repo:
+          type: [string, "null"]
+        default_branch:
+          type: [string, "null"]
+        workspace_path:
+          type: [string, "null"]
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        is_active:
+          type: boolean
+      additionalProperties: false
+
+    ProjectSummary:
+      type: object
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        tasks_total:
+          type: integer
+          minimum: 0
+        tasks_by_status:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+        active_memory_entries:
+          type: integer
+          minimum: 0
+        switch_events_recent:
+          type: integer
+          minimum: 0
+        switch_events_window_hours:
+          type: integer
+          minimum: 1
+        last_switch_event_at:
+          type: [string, "null"]
+          format: date-time
+      required:
+        - project
+        - tasks_total
+        - tasks_by_status
+        - active_memory_entries
+        - switch_events_recent
+        - switch_events_window_hours
+        - last_switch_event_at
 
     TaskStatus:
       type: string

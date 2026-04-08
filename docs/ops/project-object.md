@@ -1,7 +1,7 @@
 # Project Object v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-08  
-Статус: `planned` (документация согласована, реализация следующим этапом).
+Статус: `in_progress` (Phase A реализован, Phase B/C в работе).
 
 ## 1. Цель
 
@@ -83,10 +83,10 @@
 ## 5. Rollout-план
 
 ### Phase A — Data + API core
-- Prisma-модель `Project` + миграция.
-- Persistence методы CRUD + summary.
-- HTTP endpoints `/api/projects*`.
-- Валидация `project_id` для `tasks` и `memory`.
+- [x] Prisma-модель `Project` + миграция.
+- [x] Persistence методы CRUD + summary.
+- [x] HTTP endpoints `/api/projects*`.
+- [x] Валидация `project_id` для `tasks` и `memory`.
 
 ### Phase B — Workflow integration
 - Использование `Project.workspace_path` в delegation runtime.

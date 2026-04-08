@@ -30,6 +30,8 @@ import type {
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
+  ProjectEntity,
+  ProjectSummaryEntity,
   ScheduleMisfirePolicy,
   ScheduledRuleEntity,
   ScheduledRunEntity,
@@ -44,6 +46,11 @@ import { isTaskStatus, type TaskStatus } from "./types";
 const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /health/live",
   "GET /health/ready",
+  "POST /api/projects",
+  "GET /api/projects",
+  "GET /api/projects/{key}",
+  "PATCH /api/projects/{key}",
+  "GET /api/projects/{key}/summary",
   "POST /api/tasks",
   "GET /api/tasks",
   "GET /api/tasks/{id}",
@@ -124,6 +131,29 @@ interface TaskCreateRequest {
   repo_id?: unknown;
   branch?: unknown;
   priority?: unknown;
+}
+
+interface ProjectCreateRequest {
+  key?: unknown;
+  name?: unknown;
+  description?: unknown;
+  github_url?: unknown;
+  github_repo?: unknown;
+  default_branch?: unknown;
+  workspace_path?: unknown;
+  meta_json?: unknown;
+  is_active?: unknown;
+}
+
+interface ProjectPatchRequest {
+  name?: unknown;
+  description?: unknown;
+  github_url?: unknown;
+  github_repo?: unknown;
+  default_branch?: unknown;
+  workspace_path?: unknown;
+  meta_json?: unknown;
+  is_active?: unknown;
 }
 
 interface TaskSayRequest {
@@ -248,11 +278,14 @@ const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_sk
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
 const DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT = 3;
 const DEFAULT_AUTH_SWITCH_RETRY_LIMIT = 3;
+const DEFAULT_PROJECT_SUMMARY_WINDOW_HOURS = 24;
+const MAX_PROJECT_SUMMARY_WINDOW_HOURS = 24 * 30;
 const MAX_DELEGATION_PROMPT_LENGTH = 4_000;
 const MAX_DELEGATION_EXECUTION_PROMPT_LENGTH = 12_000;
 const MAX_DELEGATION_LOG_LENGTH = 12_000;
 const MAX_MEMORY_CONTENT_LENGTH = 8_000;
 const MAX_MEMORY_CONTEXT_ENTRIES = 6;
+const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -328,6 +361,48 @@ function asNonEmptyString(value: unknown): string | null {
   }
 
   return trimmed;
+}
+
+function asProjectKey(value: unknown): string | null {
+  const candidate = asNonEmptyString(value);
+  if (!candidate) {
+    return null;
+  }
+
+  const normalized = candidate.toLowerCase();
+  if (!PROJECT_KEY_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  return (error as { code?: unknown }).code === "P2002";
+}
+
+function parseBooleanLike(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0") {
+    return false;
+  }
+
+  return null;
 }
 
 function getTraceId(request: FastifyRequest): string {
@@ -1141,6 +1216,35 @@ async function runScheduleRecoveryOnStartup(deps: {
   }
 }
 
+function projectToResponse(project: ProjectEntity): Record<string, unknown> {
+  return {
+    id: project.id,
+    key: project.key,
+    name: project.name,
+    description: project.description,
+    github_url: project.github_url,
+    github_repo: project.github_repo,
+    default_branch: project.default_branch,
+    workspace_path: project.workspace_path,
+    meta_json: project.meta_json,
+    is_active: project.is_active,
+    created_at: project.created_at,
+    updated_at: project.updated_at
+  };
+}
+
+function projectSummaryToResponse(summary: ProjectSummaryEntity): Record<string, unknown> {
+  return {
+    project: projectToResponse(summary.project),
+    tasks_total: summary.tasks_total,
+    tasks_by_status: summary.tasks_by_status,
+    active_memory_entries: summary.active_memory_entries,
+    switch_events_recent: summary.switch_events_recent,
+    switch_events_window_hours: summary.switch_events_window_hours,
+    last_switch_event_at: summary.last_switch_event_at
+  };
+}
+
 function taskToResponse(task: TaskEntity): Record<string, unknown> {
   return {
     id: task.id,
@@ -1530,6 +1634,235 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
   });
 
+  app.post("/api/projects", async (request, reply) => {
+    const body = request.body as ProjectCreateRequest;
+    const key = asProjectKey(body?.key);
+    const name = asNonEmptyString(body?.name);
+
+    if (!key || !name) {
+      return sendError(
+        reply,
+        400,
+        "key and name are required; key must match ^[a-z0-9][a-z0-9_-]{0,63}$",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const parseNullableField = (fieldValue: unknown, fieldName: string): string | null | undefined => {
+      if (fieldValue === undefined) {
+        return undefined;
+      }
+      if (fieldValue === null) {
+        return null;
+      }
+      const value = asNonEmptyString(fieldValue);
+      if (!value) {
+        throw new Error(`${fieldName} must be a non-empty string or null`);
+      }
+      return value;
+    };
+
+    let description: string | null | undefined;
+    let githubUrl: string | null | undefined;
+    let githubRepo: string | null | undefined;
+    let defaultBranch: string | null | undefined;
+    let workspacePath: string | null | undefined;
+    try {
+      description = parseNullableField(body.description, "description");
+      githubUrl = parseNullableField(body.github_url, "github_url");
+      githubRepo = parseNullableField(body.github_repo, "github_repo");
+      defaultBranch = parseNullableField(body.default_branch, "default_branch");
+      workspacePath = parseNullableField(body.workspace_path, "workspace_path");
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "VALIDATION_ERROR");
+    }
+
+    let metaJson: Record<string, unknown> | null | undefined;
+    if (body.meta_json !== undefined) {
+      if (body.meta_json === null) {
+        metaJson = null;
+      } else if (!isPlainObject(body.meta_json)) {
+        return sendError(reply, 400, "meta_json must be an object or null", "VALIDATION_ERROR");
+      } else {
+        metaJson = body.meta_json;
+      }
+    }
+
+    let isActive: boolean | undefined;
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      isActive = body.is_active;
+    }
+
+    try {
+      const created = await persistence.createProject({
+        key,
+        name,
+        description,
+        github_url: githubUrl,
+        github_repo: githubRepo,
+        default_branch: defaultBranch,
+        workspace_path: workspacePath,
+        meta_json: metaJson,
+        is_active: isActive
+      });
+      return reply.code(201).send(projectToResponse(created));
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        return sendError(reply, 409, "Project key already exists", "PROJECT_KEY_EXISTS");
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/projects", async (request, reply) => {
+    const query = request.query as { include_inactive?: unknown };
+    let includeInactive = true;
+    if (query.include_inactive !== undefined) {
+      const parsed = parseBooleanLike(query.include_inactive);
+      if (parsed === null) {
+        return sendError(reply, 400, "include_inactive must be boolean", "VALIDATION_ERROR");
+      }
+      includeInactive = parsed;
+    }
+
+    const items = await persistence.listProjects({ include_inactive: includeInactive });
+    return reply.send({ items: items.map((project) => projectToResponse(project)) });
+  });
+
+  app.get("/api/projects/:key", async (request, reply) => {
+    const { key: keyParam } = request.params as { key: string };
+    const key = asProjectKey(keyParam);
+    if (!key) {
+      return sendError(reply, 400, "Invalid project key", "VALIDATION_ERROR");
+    }
+
+    const project = await persistence.getProjectByKey(key);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "NOT_FOUND");
+    }
+
+    return reply.send(projectToResponse(project));
+  });
+
+  app.patch("/api/projects/:key", async (request, reply) => {
+    const { key: keyParam } = request.params as { key: string };
+    const key = asProjectKey(keyParam);
+    if (!key) {
+      return sendError(reply, 400, "Invalid project key", "VALIDATION_ERROR");
+    }
+
+    const body = request.body as ProjectPatchRequest;
+    const patch: Parameters<Persistence["patchProject"]>[1] = {};
+
+    if (body.name !== undefined) {
+      const name = asNonEmptyString(body.name);
+      if (!name) {
+        return sendError(reply, 400, "name must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.name = name;
+    }
+
+    const parseNullablePatchField = (
+      fieldValue: unknown,
+      fieldName: string
+    ): string | null | undefined => {
+      if (fieldValue === undefined) {
+        return undefined;
+      }
+      if (fieldValue === null) {
+        return null;
+      }
+      const value = asNonEmptyString(fieldValue);
+      if (!value) {
+        throw new Error(`${fieldName} must be a non-empty string or null`);
+      }
+      return value;
+    };
+
+    try {
+      if (body.description !== undefined) {
+        patch.description = parseNullablePatchField(body.description, "description");
+      }
+      if (body.github_url !== undefined) {
+        patch.github_url = parseNullablePatchField(body.github_url, "github_url");
+      }
+      if (body.github_repo !== undefined) {
+        patch.github_repo = parseNullablePatchField(body.github_repo, "github_repo");
+      }
+      if (body.default_branch !== undefined) {
+        patch.default_branch = parseNullablePatchField(body.default_branch, "default_branch");
+      }
+      if (body.workspace_path !== undefined) {
+        patch.workspace_path = parseNullablePatchField(body.workspace_path, "workspace_path");
+      }
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "VALIDATION_ERROR");
+    }
+
+    if (body.meta_json !== undefined) {
+      if (body.meta_json === null) {
+        patch.meta_json = null;
+      } else if (!isPlainObject(body.meta_json)) {
+        return sendError(reply, 400, "meta_json must be an object or null", "VALIDATION_ERROR");
+      } else {
+        patch.meta_json = body.meta_json;
+      }
+    }
+
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_active = body.is_active;
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return sendError(reply, 400, "No fields to update", "VALIDATION_ERROR");
+    }
+
+    const updated = await persistence.patchProject(key, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Project not found", "NOT_FOUND");
+    }
+
+    return reply.send(projectToResponse(updated));
+  });
+
+  app.get("/api/projects/:key/summary", async (request, reply) => {
+    const { key: keyParam } = request.params as { key: string };
+    const key = asProjectKey(keyParam);
+    if (!key) {
+      return sendError(reply, 400, "Invalid project key", "VALIDATION_ERROR");
+    }
+
+    const query = request.query as { switch_events_window_hours?: unknown };
+    let switchEventsWindowHours = DEFAULT_PROJECT_SUMMARY_WINDOW_HOURS;
+    if (query.switch_events_window_hours !== undefined) {
+      const parsed = asNonNegativeInteger(query.switch_events_window_hours);
+      if (!parsed || parsed < 1 || parsed > MAX_PROJECT_SUMMARY_WINDOW_HOURS) {
+        return sendError(
+          reply,
+          400,
+          `switch_events_window_hours must be between 1 and ${MAX_PROJECT_SUMMARY_WINDOW_HOURS}`,
+          "VALIDATION_ERROR"
+        );
+      }
+      switchEventsWindowHours = parsed;
+    }
+
+    const summary = await persistence.getProjectSummaryByKey(key, {
+      switch_events_window_hours: switchEventsWindowHours
+    });
+    if (!summary) {
+      return sendError(reply, 404, "Project not found", "NOT_FOUND");
+    }
+
+    return reply.send(projectSummaryToResponse(summary));
+  });
+
   app.post("/api/tasks", async (request, reply) => {
     const body = request.body as TaskCreateRequest;
 
@@ -1540,6 +1873,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     if (!title || !description || !projectId || !repoId) {
       return sendError(reply, 400, "title, description, project_id and repo_id are required", "VALIDATION_ERROR");
+    }
+
+    const project = await persistence.getProjectByKey(projectId);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+    if (!project.is_active) {
+      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
     }
 
     const branch = body.branch == null ? null : asNonEmptyString(body.branch);
@@ -2912,6 +3253,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         "project_id, agent_role, title and content are required",
         "VALIDATION_ERROR"
       );
+    }
+
+    const project = await persistence.getProjectByKey(projectId);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+    if (!project.is_active) {
+      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
     }
 
     if (content.length > MAX_MEMORY_CONTENT_LENGTH) {

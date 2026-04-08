@@ -11,6 +11,31 @@ export interface TaskEntity {
   branch: string | null;
 }
 
+export interface ProjectEntity {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  github_url: string | null;
+  github_repo: string | null;
+  default_branch: string | null;
+  workspace_path: string | null;
+  meta_json: Record<string, unknown> | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ProjectSummaryEntity {
+  project: ProjectEntity;
+  tasks_total: number;
+  tasks_by_status: Partial<Record<TaskStatus, number>>;
+  active_memory_entries: number;
+  switch_events_recent: number;
+  switch_events_window_hours: number;
+  last_switch_event_at: Date | null;
+}
+
 export type AuthContextType = "apikey" | "chatgpt" | "chatgptAuthTokens";
 export type WorkerRuntimeMode = "ondemand" | "warm_pool" | "dedicated";
 
@@ -263,6 +288,18 @@ export interface CreateTaskInput {
   created_by: string;
 }
 
+export interface CreateProjectInput {
+  key: string;
+  name: string;
+  description?: string | null;
+  github_url?: string | null;
+  github_repo?: string | null;
+  default_branch?: string | null;
+  workspace_path?: string | null;
+  meta_json?: Record<string, unknown> | null;
+  is_active?: boolean;
+}
+
 export interface CreateInterventionInput {
   task_id: string;
   task_run_id?: string | null;
@@ -403,6 +440,26 @@ export interface DelegationExecutor {
 
 export interface Persistence {
   pingDb(): Promise<void>;
+  createProject(input: CreateProjectInput): Promise<ProjectEntity>;
+  listProjects(options?: { include_inactive?: boolean }): Promise<ProjectEntity[]>;
+  getProjectByKey(key: string): Promise<ProjectEntity | null>;
+  patchProject(
+    key: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      github_url?: string | null;
+      github_repo?: string | null;
+      default_branch?: string | null;
+      workspace_path?: string | null;
+      meta_json?: Record<string, unknown> | null;
+      is_active?: boolean;
+    }
+  ): Promise<ProjectEntity | null>;
+  getProjectSummaryByKey(
+    key: string,
+    options?: { switch_events_window_hours?: number }
+  ): Promise<ProjectSummaryEntity | null>;
   createTask(input: CreateTaskInput): Promise<TaskEntity>;
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
   getTaskById(id: string): Promise<TaskEntity | null>;

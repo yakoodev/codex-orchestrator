@@ -138,13 +138,26 @@ async function main() {
     ok("active profile pre-selected (200)");
   }
 
+  const projectKey = `smoke-project-${runId}`;
+  await requestJson(baseUrl, adminToken, "POST", "/api/projects", {
+    expected: [201],
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      key: projectKey,
+      name: `Smoke project ${runId}`,
+      github_repo: "example/smoke-project",
+      default_branch: "main"
+    })
+  });
+  ok("create project");
+
   const task = await requestJson(baseUrl, adminToken, "POST", "/api/tasks", {
     expected: [201],
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       title: "Smoke task",
       description: "Created by smoke script",
-      project_id: "smoke-project",
+      project_id: projectKey,
       repo_id: "smoke-repo",
       priority: 100
     })

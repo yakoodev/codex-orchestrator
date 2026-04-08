@@ -18,6 +18,7 @@ import type {
   AuthSwitchEventEntity,
   CreateAgentMemoryEntryInput,
   CreateDelegationRequestInput,
+  CreateProjectInput,
   DelegationExecutor,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
@@ -29,6 +30,8 @@ import type {
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
+  ProjectEntity,
+  ProjectSummaryEntity,
   ScheduledRuleEntity,
   ScheduledRunEntity,
   ScheduleMisfirePolicy,
@@ -70,6 +73,7 @@ class FakePersistence implements Persistence {
   public readonly moduleExecutions: ModuleExecutionEntity[] = [];
   public readonly delegations: DelegationRequestEntity[] = [];
   public readonly memoryEntries: AgentMemoryEntryEntity[] = [];
+  public readonly projects: ProjectEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
 
@@ -85,6 +89,7 @@ class FakePersistence implements Persistence {
   private moduleExecutionCounter = 1;
   private delegationCounter = 1;
   private memoryEntryCounter = 1;
+  private projectCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
 
@@ -102,6 +107,130 @@ class FakePersistence implements Persistence {
     if (!this.dbReady) {
       throw new Error("db not ready");
     }
+  }
+
+  public async createProject(input: CreateProjectInput): Promise<ProjectEntity> {
+    const existing = this.projects.find((project) => project.key === input.key);
+    if (existing) {
+      const duplicateError = new Error("Project key already exists") as Error & { code?: string };
+      duplicateError.code = "P2002";
+      throw duplicateError;
+    }
+
+    const now = new Date();
+    const project: ProjectEntity = {
+      id: `project-${this.projectCounter++}`,
+      key: input.key,
+      name: input.name,
+      description: input.description ?? null,
+      github_url: input.github_url ?? null,
+      github_repo: input.github_repo ?? null,
+      default_branch: input.default_branch ?? null,
+      workspace_path: input.workspace_path ?? null,
+      meta_json: input.meta_json ?? null,
+      is_active: input.is_active ?? true,
+      created_at: now,
+      updated_at: now
+    };
+
+    this.projects.push(project);
+    return project;
+  }
+
+  public async listProjects(options?: { include_inactive?: boolean }): Promise<ProjectEntity[]> {
+    const includeInactive = options?.include_inactive ?? true;
+    const items = includeInactive
+      ? this.projects
+      : this.projects.filter((project) => project.is_active);
+
+    return [...items].sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+  }
+
+  public async getProjectByKey(key: string): Promise<ProjectEntity | null> {
+    return this.projects.find((project) => project.key === key) ?? null;
+  }
+
+  public async patchProject(
+    key: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      github_url?: string | null;
+      github_repo?: string | null;
+      default_branch?: string | null;
+      workspace_path?: string | null;
+      meta_json?: Record<string, unknown> | null;
+      is_active?: boolean;
+    }
+  ): Promise<ProjectEntity | null> {
+    const project = this.projects.find((item) => item.key === key);
+    if (!project) {
+      return null;
+    }
+
+    if (patch.name !== undefined) {
+      project.name = patch.name;
+    }
+    if (patch.description !== undefined) {
+      project.description = patch.description;
+    }
+    if (patch.github_url !== undefined) {
+      project.github_url = patch.github_url;
+    }
+    if (patch.github_repo !== undefined) {
+      project.github_repo = patch.github_repo;
+    }
+    if (patch.default_branch !== undefined) {
+      project.default_branch = patch.default_branch;
+    }
+    if (patch.workspace_path !== undefined) {
+      project.workspace_path = patch.workspace_path;
+    }
+    if (patch.meta_json !== undefined) {
+      project.meta_json = patch.meta_json;
+    }
+    if (typeof patch.is_active === "boolean") {
+      project.is_active = patch.is_active;
+    }
+    project.updated_at = new Date();
+
+    return project;
+  }
+
+  public async getProjectSummaryByKey(
+    key: string,
+    options?: { switch_events_window_hours?: number }
+  ): Promise<ProjectSummaryEntity | null> {
+    const project = this.projects.find((item) => item.key === key) ?? null;
+    if (!project) {
+      return null;
+    }
+
+    const tasks = this.tasks.filter((task) => task.project_id === key);
+    const tasksByStatus: Partial<Record<TaskStatus, number>> = {};
+    for (const task of tasks) {
+      tasksByStatus[task.status] = (tasksByStatus[task.status] ?? 0) + 1;
+    }
+
+    const activeMemoryEntries = this.memoryEntries.filter(
+      (entry) => entry.project_id === key && entry.is_active
+    ).length;
+
+    const windowHours = Math.max(1, Math.min(options?.switch_events_window_hours ?? 24, 24 * 30));
+    const windowStart = Date.now() - windowHours * 60 * 60 * 1_000;
+    const recentSwitchEvents = this.switchEvents
+      .filter((event) => event.started_at.getTime() >= windowStart)
+      .sort((a, b) => b.started_at.getTime() - a.started_at.getTime());
+
+    return {
+      project,
+      tasks_total: tasks.length,
+      tasks_by_status: tasksByStatus,
+      active_memory_entries: activeMemoryEntries,
+      switch_events_recent: recentSwitchEvents.length,
+      switch_events_window_hours: windowHours,
+      last_switch_event_at: recentSwitchEvents[0]?.started_at ?? null
+    };
   }
 
   public async createTask(input: {
@@ -1175,6 +1304,19 @@ describe("smoke-core API", () => {
     });
 
     await app.ready();
+
+    await persistence.createProject({
+      key: "project",
+      name: "Default Project"
+    });
+    await persistence.createProject({
+      key: "project-1",
+      name: "Project 1"
+    });
+    await persistence.createProject({
+      key: "proj-memory",
+      name: "Project Memory"
+    });
   });
 
   afterEach(async () => {
@@ -1231,6 +1373,223 @@ describe("smoke-core API", () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json().code).toBe("MISSING_ADMIN_TOKEN");
+  });
+
+  it("creates, updates and lists projects", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "web-ui",
+        name: "Web UI",
+        github_url: "https://github.com/example/web-ui",
+        github_repo: "example/web-ui",
+        default_branch: "main",
+        workspace_path: "/workspace/web-ui",
+        meta_json: { owner: "platform" }
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json().key).toBe("web-ui");
+    expect(createResponse.json().meta_json).toEqual({ owner: "platform" });
+
+    const duplicateResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "web-ui",
+        name: "Duplicate"
+      }
+    });
+    expect(duplicateResponse.statusCode).toBe(409);
+    expect(duplicateResponse.json().code).toBe("PROJECT_KEY_EXISTS");
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: "/api/projects/web-ui",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        description: "Project for UI",
+        is_active: false
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().description).toBe("Project for UI");
+    expect(patchResponse.json().is_active).toBe(false);
+
+    const listAllResponse = await app.inject({
+      method: "GET",
+      url: "/api/projects",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listAllResponse.statusCode).toBe(200);
+    expect(listAllResponse.json().items.some((item: { key: string }) => item.key === "web-ui")).toBe(true);
+
+    const listActiveResponse = await app.inject({
+      method: "GET",
+      url: "/api/projects?include_inactive=false",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listActiveResponse.statusCode).toBe(200);
+    expect(listActiveResponse.json().items.some((item: { key: string }) => item.key === "web-ui")).toBe(false);
+
+    const getResponse = await app.inject({
+      method: "GET",
+      url: "/api/projects/web-ui",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().name).toBe("Web UI");
+  });
+
+  it("returns project summary", async () => {
+    await persistence.createProject({
+      key: "summary-proj",
+      name: "Summary Project"
+    });
+
+    await persistence.createTask({
+      title: "Summary task new",
+      description: "summary",
+      project_id: "summary-proj",
+      repo_id: "repo-summary",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+    await persistence.createTask({
+      title: "Summary task done",
+      description: "summary",
+      project_id: "summary-proj",
+      repo_id: "repo-summary",
+      branch: null,
+      priority: 100,
+      status: "DONE",
+      source: "api",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentMemoryEntry({
+      project_id: "summary-proj",
+      agent_role: "reviewer",
+      title: "Active memory",
+      content: "Use dark theme checks",
+      is_active: true,
+      created_by: "admin"
+    });
+    await persistence.createAgentMemoryEntry({
+      project_id: "summary-proj",
+      agent_role: "reviewer",
+      title: "Inactive memory",
+      content: "Deprecated flow",
+      is_active: false,
+      created_by: "admin"
+    });
+
+    persistence.switchEvents.push({
+      id: "switch-old",
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: null,
+      to_auth_profile_id: null,
+      reason: "manual_activate",
+      status: "completed",
+      started_at: new Date(Date.now() - 5 * 60 * 60 * 1_000),
+      ended_at: new Date(Date.now() - 5 * 60 * 60 * 1_000 + 30_000)
+    });
+    persistence.switchEvents.push({
+      id: "switch-recent",
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: null,
+      to_auth_profile_id: null,
+      reason: "manual_activate",
+      status: "completed",
+      started_at: new Date(),
+      ended_at: new Date()
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/projects/summary-proj/summary?switch_events_window_hours=2",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().project.key).toBe("summary-proj");
+    expect(response.json().tasks_total).toBe(2);
+    expect(response.json().tasks_by_status.NEW).toBe(1);
+    expect(response.json().tasks_by_status.DONE).toBe(1);
+    expect(response.json().active_memory_entries).toBe(1);
+    expect(response.json().switch_events_recent).toBe(1);
+  });
+
+  it("validates project_id for task and memory create", async () => {
+    const missingProjectTaskResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        title: "Task with unknown project",
+        description: "desc",
+        project_id: "unknown-project",
+        repo_id: "repo"
+      }
+    });
+
+    expect(missingProjectTaskResponse.statusCode).toBe(404);
+    expect(missingProjectTaskResponse.json().code).toBe("PROJECT_NOT_FOUND");
+
+    await persistence.createProject({
+      key: "inactive-proj",
+      name: "Inactive project",
+      is_active: false
+    });
+
+    const inactiveTaskResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        title: "Task inactive project",
+        description: "desc",
+        project_id: "inactive-proj",
+        repo_id: "repo"
+      }
+    });
+    expect(inactiveTaskResponse.statusCode).toBe(409);
+    expect(inactiveTaskResponse.json().code).toBe("PROJECT_INACTIVE");
+
+    const missingProjectMemoryResponse = await app.inject({
+      method: "POST",
+      url: "/api/memory/entries",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "unknown-project",
+        agent_role: "reviewer",
+        title: "Memory",
+        content: "Content"
+      }
+    });
+    expect(missingProjectMemoryResponse.statusCode).toBe(404);
+    expect(missingProjectMemoryResponse.json().code).toBe("PROJECT_NOT_FOUND");
+
+    const inactiveMemoryResponse = await app.inject({
+      method: "POST",
+      url: "/api/memory/entries",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "inactive-proj",
+        agent_role: "reviewer",
+        title: "Memory",
+        content: "Content"
+      }
+    });
+    expect(inactiveMemoryResponse.statusCode).toBe(409);
+    expect(inactiveMemoryResponse.json().code).toBe("PROJECT_INACTIVE");
   });
 
   it("creates and lists tasks", async () => {

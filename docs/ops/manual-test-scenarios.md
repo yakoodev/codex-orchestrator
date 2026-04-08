@@ -92,8 +92,19 @@ API-проверка:
 ## 3.2 Сценарий A2: Agent Memory panel + memory-aware delegation
 
 1. Перейди на `#/memory`.
-2. Проверь, что доступны форма создания и список записей памяти.
-3. Заполни:
+2. Создай проект `manual-memory` через API (один раз):
+
+```powershell
+$projectBody = @{
+  key = "manual-memory"
+  name = "Manual Memory"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$BASE/api/projects" -Method POST -Headers $HEADERS -Body $projectBody
+```
+
+3. Проверь, что доступны форма создания и список записей памяти.
+4. Заполни:
    - `Project ID` = `manual-memory`;
    - `Agent Role` = `reviewer`;
    - `Memory title` = `GUI note`;
@@ -173,6 +184,13 @@ $resp.Content
 ## 5. Сценарий C: Task create/list
 
 ```powershell
+$projectBody = @{
+  key = "manual-project"
+  name = "Manual Project"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$BASE/api/projects" -Method POST -Headers $HEADERS -Body $projectBody
+
 $taskBody = @{
   title = "manual-task-$(Get-Date -Format HHmmss)"
   description = "created in manual scenario"
@@ -319,6 +337,13 @@ curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/$runtimeProfileId/activate"
 Создай task + template и отправь delegation с `payload.prompt`:
 
 ```powershell
+$projectBody = @{
+  key = "manual-runtime"
+  name = "Manual Runtime"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$BASE/api/projects" -Method POST -Headers $HEADERS -Body $projectBody
+
 $taskBody = @{
   title = "manual-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime delegation test"
