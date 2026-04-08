@@ -48,8 +48,13 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
    - `system`
    - `logs`
 5. Убедись, что при переключении route меняются `quickbar` заголовок/описание и отображается только активный экран.
-6. Вставь `ADMIN_TOKEN` в sidebar-форму `X-Admin-Token` и нажми `Сохранить`.
-7. Нажми `Обновить экран` и `Полный refresh`, проверь state-бейджи `loading/ok/error` на панелях.
+6. Проверь KPI-полосу:
+   - на `#/dashboard` KPI видны;
+   - на остальных экранах KPI скрыты.
+7. Прокрути страницу на `#/dashboard` и убедись, что sticky quickbar не перекрывает KPI.
+8. Проверь локализацию: в RU-режиме нет смешанных англо-русских подписей (например `Полный refresh`, `Scope`).
+9. Вставь `ADMIN_TOKEN` в sidebar-форму `X-Admin-Token` и нажми `Сохранить`.
+10. Нажми `Обновить экран` и `Обновить всё`, проверь state-бейджи `loading/ok/error` на панелях.
 
 API-проверка:
 
@@ -142,6 +147,13 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
    - последний активный route;
    - выбранная тема/язык;
    - значения фильтров и auto-refresh toggles.
+
+## 3.6 Сценарий A6: Logs details по клику
+
+1. Перейди на `#/logs`.
+2. Убедись, что у записей, где есть JSON details, блок details по умолчанию свернут.
+3. Раскрой details у одной записи и проверь содержимое.
+4. Примени фильтр `Scope=ui` и строку поиска `route`, убедись, что список корректно фильтруется.
 
 ## 4. Сценарий B: Security boundary
 

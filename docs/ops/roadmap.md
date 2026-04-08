@@ -20,7 +20,7 @@
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: Admin UI Redesign v2 (Hybrid Console)
-- Статус: `in_progress` (v2 архитектура уже внедрена, остается polish/pass).
+- Статус: `completed` (дизайн-цикл закрыт, далее только точечные bugfix-правки).
 - Решение:
   - `/ui/` — entry-страница;
   - `/ui/console.html` — основная консоль с hash-router.
@@ -38,15 +38,18 @@
   - RU/EN переключение (RU default), строки через i18n-ключи;
   - сохранение `token/lang/theme/route/filters/autorefresh` в `localStorage`;
   - отдельный экран `Logs` с фильтрами и централизованным журналом UI/API событий;
-  - полный parity операций на `Tasks`, `Agents`, `Accounts`, `Memory`, `System`.
-- Остается:
-  - точечный UX-polish плотности/контраста на реальных операционных сессиях;
-  - mobile-pass 360/768 (дополнительная оптимизация навигации и action-групп);
-  - финальный accessibility pass (`aria`, keyboard flow, focus visibility).
+  - полный parity операций на `Tasks`, `Agents`, `Accounts`, `Memory`, `System`;
+  - KPI перенесены в `Dashboard`-only режим (без перекрытия sticky quickbar);
+  - compact adaptive плотность на рабочих экранах (`Tasks/Agents/Memory/System`) с уменьшением пустых зон;
+  - в `Logs` детали JSON свернуты по умолчанию и раскрываются по клику;
+  - проведен RU/EN аудит (убраны смешанные подписи в RU).
+- Дальше:
+  - только точечные UI багфиксы по фидбеку;
+  - более глубокий mobile/a11y pass вынесен в отдельный follow-up при необходимости.
 - Новые задачи по операторскому фидбеку (2026-04-08):
   - [x] сделать задачи в формате task-tracker доски с 3 колонками (`ожидает запуска / запущена / выполнена`);
   - [x] вынести память агентов в отдельный экран `Memory` (а не hidden fallback);
-  - [~] доработать визуальную и навигационную логику админки до уровня production polish.
+  - [x] доработать визуальную и навигационную логику админки до уровня production polish.
 
 ## Planned: Operator visibility for agents
 - Статус: `in_progress`.

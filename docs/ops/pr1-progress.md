@@ -133,6 +133,11 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - единый store для `token/lang/theme/route/filters/autorefresh`;
   - dark-first тема + light switch, RU default + EN toggle, persistence в `localStorage`.
 - [x] Обновлены smoke/test проверки UI-статики под новую структуру: `scripts/smoke-local.mjs`, `test/app.test.ts`.
+- [x] Закрыт UI Hotfix Pass (финальный дизайн-полиш):
+  - KPI-полоса показывается только на `#/dashboard`, устранено конфликтное поведение sticky quickbar/KPI;
+  - layout уплотнен в `Tasks/Agents/Memory/System` (compact adaptive высоты, меньше пустых зон);
+  - в `Logs` details JSON свернуты по умолчанию и открываются по клику;
+  - проведен RU/EN аудит строк (убраны смешанные подписи в RU, EN оставлен полностью англоязычным).
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -143,7 +148,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Следующий UI-цикл после Redesign v2: визуальная полировка (контраст/типографика), расширенный mobile UX-pass и финальный accessibility pass.
+- [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`
