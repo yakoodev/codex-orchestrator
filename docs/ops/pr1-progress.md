@@ -104,6 +104,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Добавлен API endpoint `GET /api/delegation/cards` для operator-visible карточек делегаций (`preparing/running/recent`) с prompt/account/log preview.
 - [x] Встроенная Web panel расширена карточками активных агентов и account fleet (лимиты 5h/weekly по каждому профилю).
 - [x] Добавлена baseline система памяти агентов: `POST/GET/PATCH /api/memory/entries`, Prisma-модель `AgentMemoryEntry`, UI-блок Agent Memory и авто-подмешивание `project_id + role` памяти в prompt делегации.
+- [x] Встроенная `/ui/` переведена на логические вкладки (Overview, Tasks & Queue, Agents, Accounts & Limits, System), чтобы убрать длинный single-page скролл.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -114,7 +115,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [ ] Редизайн админки `/ui/`: логические вкладки вместо длинного single-page скролла, меньше таблиц, более удобный и визуально аккуратный UX.
+- [~] Редизайн админки `/ui/`: вкладки и новая IA внедрены; остаются визуальная полировка, сокращение таблиц и UX-pass по mobile.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

@@ -1,5 +1,6 @@
 const TOKEN_KEY = "codex_orchestrator_admin_token";
 const LANG_KEY = "codex_orchestrator_lang";
+const TAB_KEY = "codex_orchestrator_tab";
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit";
 const MAX_LOG_LINES = 150;
 
@@ -20,6 +21,11 @@ const I18N = {
     stats_held: "Удержанные",
     stats_profiles: "Профили",
     stats_events: "Switch events",
+    tab_overview: "Обзор",
+    tab_tasks: "Задачи и очередь",
+    tab_agents: "Агенты",
+    tab_accounts: "Аккаунты и лимиты",
+    tab_system: "Система",
     health_title: "Health",
     refresh: "Обновить",
     tasks_title: "Задачи",
@@ -101,6 +107,7 @@ const I18N = {
     log_memory_created: "Запись памяти создана",
     log_memory_toggled: "Состояние записи памяти обновлено",
     log_memory_requirements: "Для памяти нужны project_id, agent_role, title и content.",
+    log_tab_changed: "Переключена вкладка",
     log_account_fleet_refreshed: "Карточки аккаунтов обновлены.",
     log_events_refreshed: "Switch events обновлены.",
     log_module_refreshed: "Конфиг модуля обновлен.",
@@ -127,6 +134,11 @@ const I18N = {
     stats_held: "Held Queue",
     stats_profiles: "Profiles",
     stats_events: "Switch Events",
+    tab_overview: "Overview",
+    tab_tasks: "Tasks & Queue",
+    tab_agents: "Agents",
+    tab_accounts: "Accounts & Limits",
+    tab_system: "System",
     health_title: "Health",
     refresh: "Refresh",
     tasks_title: "Tasks",
@@ -208,6 +220,7 @@ const I18N = {
     log_memory_created: "Memory entry created",
     log_memory_toggled: "Memory entry state updated",
     log_memory_requirements: "Memory requires project_id, agent_role, title, and content.",
+    log_tab_changed: "Switched tab",
     log_account_fleet_refreshed: "Account cards refreshed.",
     log_events_refreshed: "Switch events refreshed.",
     log_module_refreshed: "Module config refreshed.",
@@ -222,6 +235,8 @@ const I18N = {
 
 const ui = {
   langSelect: document.getElementById("lang-select"),
+  tabButtons: Array.from(document.querySelectorAll(".tab-button")),
+  tabPanels: Array.from(document.querySelectorAll("[data-tab-content]")),
   tokenForm: document.getElementById("token-form"),
   tokenInput: document.getElementById("admin-token"),
   tokenClear: document.getElementById("token-clear"),
@@ -267,6 +282,7 @@ const ui = {
 
 const appState = {
   lang: "ru",
+  activeTab: "overview",
   tasks: [],
   agentCards: { preparing: [], running: [], recent: [] },
   memoryEntries: [],
@@ -339,6 +355,45 @@ function setLang(lang) {
   ui.langSelect.value = normalized;
 }
 
+function getSavedTab() {
+  const value = localStorage.getItem(TAB_KEY);
+  if (!value) {
+    return "overview";
+  }
+
+  const normalized = String(value).trim();
+  return ui.tabButtons.some((button) => button.dataset.tabTarget === normalized)
+    ? normalized
+    : "overview";
+}
+
+function applyTabState() {
+  const activeTab = appState.activeTab;
+
+  ui.tabButtons.forEach((button) => {
+    const isActive = button.dataset.tabTarget === activeTab;
+    button.classList.toggle("tab-active", isActive);
+    button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+
+  ui.tabPanels.forEach((panel) => {
+    const target = panel.getAttribute("data-tab-content");
+    panel.hidden = target !== activeTab;
+  });
+}
+
+function setActiveTab(tabId, options = {}) {
+  const nextTab = ui.tabButtons.some((button) => button.dataset.tabTarget === tabId)
+    ? tabId
+    : "overview";
+  const persist = options.persist !== false;
+  appState.activeTab = nextTab;
+  if (persist) {
+    localStorage.setItem(TAB_KEY, nextTab);
+  }
+  applyTabState();
+}
+
 function markStatus(node, ok, text) {
   node.textContent = text;
   node.classList.remove("status-ok", "status-error", "status-unknown");
@@ -396,6 +451,7 @@ function applyI18n() {
   renderExecutions(appState.executions);
   applyHealthState();
   updateStats();
+  applyTabState();
 }
 
 async function requestRaw(route, options = {}) {
@@ -849,6 +905,7 @@ async function refreshAll() {
 
 function installHandlers() {
   setLang(getLang());
+  setActiveTab(getSavedTab(), { persist: false });
   ui.tokenInput.value = getToken();
   applyI18n();
 
@@ -857,6 +914,14 @@ function installHandlers() {
     setLang(nextLang);
     applyI18n();
     log(`language set to ${nextLang}`);
+  });
+
+  ui.tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextTab = button.dataset.tabTarget ?? "overview";
+      setActiveTab(nextTab);
+      log(t("log_tab_changed"), { tab: nextTab });
+    });
   });
 
   ui.tokenForm.addEventListener("submit", async (event) => {

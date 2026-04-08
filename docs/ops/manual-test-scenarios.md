@@ -38,8 +38,9 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
 
 1. Открой `http://localhost:8080/ui/`.
 2. В шапке переключи язык `RU -> EN -> RU`.
-3. Проверь, что заголовки меняются.
-4. Вставь `ADMIN_TOKEN` в блоке `Connection` и нажми `Сохранить токен`.
+3. Проверь, что заголовки и названия вкладок меняются.
+4. Прокликай вкладки `Overview -> Tasks & Queue -> Agents -> Accounts & Limits -> System` и убедись, что показываются только релевантные блоки.
+5. Вставь `ADMIN_TOKEN` в блоке `Connection` и нажми `Сохранить токен`.
 
 API-проверка:
 

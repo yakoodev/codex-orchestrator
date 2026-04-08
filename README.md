@@ -62,6 +62,7 @@ Built-in web control panel:
 - Open `http://localhost:8080/ui/`
 - Save `X-Admin-Token` from your `.env`
 - Select language (`RU/EN`) in header if needed
+- Use tabbed IA to avoid long single-page scroll: `Overview`, `Tasks & Queue`, `Agents`, `Accounts & Limits`, `System`
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 - Monitor runtime with new operator cards:
   - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview

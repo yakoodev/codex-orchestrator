@@ -48,7 +48,17 @@
         </article>
       </section>
 
-      <section class="card reveal">
+      <section class="card reveal tabs-shell">
+        <div class="tabs" role="tablist" aria-label="Admin UI Sections">
+          <button type="button" class="tab-button" data-tab-target="overview" data-i18n="tab_overview">Обзор</button>
+          <button type="button" class="tab-button" data-tab-target="tasks" data-i18n="tab_tasks">Задачи и очередь</button>
+          <button type="button" class="tab-button" data-tab-target="agents" data-i18n="tab_agents">Агенты</button>
+          <button type="button" class="tab-button" data-tab-target="accounts" data-i18n="tab_accounts">Аккаунты и лимиты</button>
+          <button type="button" class="tab-button" data-tab-target="system" data-i18n="tab_system">Система</button>
+        </div>
+      </section>
+
+      <section class="card reveal" data-tab-content="overview">
         <div class="section-head">
           <h2 data-i18n="connection_title">Connection</h2>
           <p id="last-refresh" class="tiny-meta"></p>
@@ -74,7 +84,7 @@
       </section>
 
       <section class="grid">
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="overview">
           <div class="section-head">
             <h2 data-i18n="health_title">Health</h2>
             <button id="refresh-health" class="ghost" data-i18n="refresh">Обновить</button>
@@ -91,7 +101,7 @@
           </div>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="tasks">
           <div class="section-head">
             <h2 data-i18n="tasks_title">Tasks</h2>
             <button id="refresh-tasks" class="ghost" data-i18n="refresh">Обновить</button>
@@ -128,7 +138,7 @@
           </div>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="agents">
           <div class="section-head">
             <h2 data-i18n="agent_cards_title">Agent Runtime Cards</h2>
             <button id="refresh-agent-cards" class="ghost" data-i18n="refresh">Обновить</button>
@@ -149,7 +159,7 @@
           </div>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="agents">
           <div class="section-head">
             <h2 data-i18n="memory_title">Agent Memory</h2>
             <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
@@ -174,7 +184,7 @@
           <ul id="memory-list" class="line-list"></ul>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="tasks">
           <div class="section-head">
             <h2 data-i18n="held_title">Held Queue</h2>
             <div class="actions">
@@ -186,7 +196,7 @@
           <ul id="held-list" class="line-list"></ul>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="accounts">
           <div class="section-head">
             <h2 data-i18n="profiles_title">Auth Profiles</h2>
             <button id="refresh-profiles" class="ghost" data-i18n="refresh">Обновить</button>
@@ -214,7 +224,7 @@
           </div>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="accounts">
           <div class="section-head">
             <h2 data-i18n="events_title">Switch Events</h2>
             <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
@@ -222,7 +232,7 @@
           <ul id="switch-events" class="line-list"></ul>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="accounts">
           <div class="section-head">
             <h2 data-i18n="accounts_title">Account Fleet</h2>
             <button id="refresh-account-fleet" class="ghost" data-i18n="refresh">Обновить</button>
@@ -230,7 +240,7 @@
           <div id="account-fleet" class="account-grid"></div>
         </article>
 
-        <article class="card reveal">
+        <article class="card reveal" data-tab-content="system">
           <div class="section-head">
             <h2 data-i18n="module_title">Custom Module</h2>
             <div class="actions">
@@ -251,7 +261,7 @@
         </article>
       </section>
 
-      <section class="card reveal">
+      <section class="card reveal" data-tab-content="overview">
         <div class="section-head">
           <h2 data-i18n="activity_title">Activity Log</h2>
           <button id="refresh-all" class="ghost" data-i18n="refresh_all">Refresh all</button>

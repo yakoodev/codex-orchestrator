@@ -179,6 +179,36 @@ p {
   gap: 14px;
 }
 
+[data-tab-content][hidden] {
+  display: none !important;
+}
+
+.tabs-shell {
+  padding: 10px 12px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+.tab-button {
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(15, 36, 56, 0.18);
+  color: var(--ink);
+}
+
+.tab-button.tab-active {
+  background: linear-gradient(90deg, var(--accent), #14a6bc);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(15, 138, 157, 0.24);
+}
+
 .row-form {
   display: grid;
   gap: 10px;
@@ -500,5 +530,9 @@ code {
 
   button {
     width: 100%;
+  }
+
+  .tabs .tab-button {
+    width: auto;
   }
 }
