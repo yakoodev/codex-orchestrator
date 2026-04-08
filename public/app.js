@@ -1,6 +1,6 @@
 
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit"
-const ROUTES = ["dashboard", "tasks", "agents", "accounts", "memory", "system", "logs"]
+const ROUTES = ["dashboard", "projects", "tasks", "agents", "accounts", "memory", "system", "logs"]
 const ACCOUNT_SECTIONS = ["profiles", "limits", "history"]
 const AUTOREFRESH_INTERVAL_MS = 15000
 const MAX_LOGS = 500
@@ -12,6 +12,7 @@ const KEYS = {
   route: "codex_orchestrator_console_route",
   section: "codex_orchestrator_accounts_section",
   auto: "codex_orchestrator_autorefresh",
+  projectFilters: "codex_orchestrator_project_filters",
   taskFilters: "codex_orchestrator_task_filters",
   switchFilters: "codex_orchestrator_switch_filters",
   logFilters: "codex_orchestrator_log_filters",
@@ -30,6 +31,7 @@ const I18N = {
     brand_title: "Codex Orchestrator",
     brand_subtitle: "Операционная консоль v2",
     route_dashboard: "Обзор",
+    route_projects: "Проекты",
     route_tasks: "Задачи",
     route_agents: "Агенты",
     route_accounts: "Аккаунты",
@@ -37,6 +39,7 @@ const I18N = {
     route_system: "Система",
     route_logs: "Логи",
     route_desc_dashboard: "Состояние сервиса и последние сигналы системы.",
+    route_desc_projects: "Реестр проектов, summary и проектные настройки.",
     route_desc_tasks: "Создание, фильтрация и управление очередью задач.",
     route_desc_agents: "Мониторинг групп агентов и инспектор запуска.",
     route_desc_accounts: "Профили auth.json, лимиты и история переключений.",
@@ -67,6 +70,33 @@ const I18N = {
     dashboard_health_title: "Состояние сервиса",
     dashboard_signals_title: "Последние сигналы",
     no_signals: "Пока нет сигналов.",
+    projects_title: "Реестр проектов",
+    project_create_toggle: "Создать проект",
+    project_key_label: "Ключ проекта",
+    project_name_label: "Название проекта",
+    project_description_label: "Описание",
+    project_github_url_label: "GitHub URL",
+    project_github_repo_label: "GitHub репозиторий",
+    project_default_branch_label: "Базовая ветка",
+    project_workspace_path_label: "Рабочая директория",
+    project_create_action: "Создать проект",
+    project_filter_search_label: "Поиск",
+    project_filter_search_placeholder: "key/name/github",
+    project_filter_include_inactive: "Показывать неактивные",
+    project_list_empty: "Проектов пока нет.",
+    project_details_empty: "Выбери проект в списке, чтобы посмотреть summary и обновить конфигурацию.",
+    project_summary_title: "Сводка проекта",
+    project_summary_tasks_total: "Всего задач",
+    project_summary_active_memory: "Активная память",
+    project_summary_switch_recent: "Switch events (окно)",
+    project_summary_last_switch: "Последний switch",
+    project_summary_window: "Окно агрегации",
+    project_summary_window_hours: "Окно: {hours} ч",
+    project_summary_statuses: "Задачи по статусам",
+    project_edit_title: "Редактирование проекта",
+    project_active_label: "Проект активен",
+    project_save_action: "Сохранить изменения",
+    project_option_none: "Нет активных проектов",
     tasks_title: "Задачи и очередь",
     task_create_toggle: "Создать задачу",
     task_title_label: "Заголовок",
@@ -182,6 +212,9 @@ const I18N = {
     log_token_cleared: "Токен очищен",
     log_language_changed: "Язык обновлен",
     log_theme_changed: "Тема обновлена",
+    log_project_created: "Проект создан",
+    log_project_updated: "Проект обновлен",
+    log_project_selected: "Проект выбран",
     log_task_created: "Задача создана",
     log_held_released: "Удержанная очередь освобождена",
     log_profile_uploaded: "Профиль загружен",
@@ -207,6 +240,7 @@ I18N.en = {
   brand_kicker: "Control Plane",
   brand_subtitle: "Operational console v2",
   route_dashboard: "Dashboard",
+  route_projects: "Projects",
   route_tasks: "Tasks",
   route_agents: "Agents",
   route_accounts: "Accounts",
@@ -214,6 +248,7 @@ I18N.en = {
   route_system: "System",
   route_logs: "Logs",
   route_desc_dashboard: "Service health and latest system signals.",
+  route_desc_projects: "Project registry, summary, and project settings.",
   route_desc_tasks: "Create, filter, and operate task queue.",
   route_desc_agents: "Monitor preparing/running/recent agents and inspector.",
   route_desc_accounts: "auth.json profiles, limits, and switch history.",
@@ -244,6 +279,33 @@ I18N.en = {
   dashboard_health_title: "Service health",
   dashboard_signals_title: "Latest signals",
   no_signals: "No signals yet.",
+  projects_title: "Project registry",
+  project_create_toggle: "Create project",
+  project_key_label: "Project key",
+  project_name_label: "Project name",
+  project_description_label: "Description",
+  project_github_url_label: "GitHub URL",
+  project_github_repo_label: "GitHub repository",
+  project_default_branch_label: "Default branch",
+  project_workspace_path_label: "Workspace path",
+  project_create_action: "Create project",
+  project_filter_search_label: "Search",
+  project_filter_search_placeholder: "key/name/github",
+  project_filter_include_inactive: "Show inactive projects",
+  project_list_empty: "No projects yet.",
+  project_details_empty: "Select a project to inspect summary and update settings.",
+  project_summary_title: "Project summary",
+  project_summary_tasks_total: "Total tasks",
+  project_summary_active_memory: "Active memory entries",
+  project_summary_switch_recent: "Switch events (window)",
+  project_summary_last_switch: "Last switch event",
+  project_summary_window: "Aggregation window",
+  project_summary_window_hours: "Window: {hours}h",
+  project_summary_statuses: "Tasks by status",
+  project_edit_title: "Edit project",
+  project_active_label: "Project is active",
+  project_save_action: "Save changes",
+  project_option_none: "No active projects",
   tasks_title: "Tasks & Queue",
   task_create_toggle: "Create task",
   task_title_label: "Title",
@@ -342,6 +404,9 @@ I18N.en = {
   log_token_cleared: "Token cleared",
   log_language_changed: "Language updated",
   log_theme_changed: "Theme updated",
+  log_project_created: "Project created",
+  log_project_updated: "Project updated",
+  log_project_selected: "Project selected",
   log_task_created: "Task created",
   log_held_released: "Held queue released",
   log_profile_uploaded: "Profile uploaded",
@@ -362,6 +427,7 @@ const state = {
   route: "dashboard",
   section: "profiles",
   auto: { tasks: false, agents: false, history: false },
+  projectFilters: { search: "", includeInactive: true },
   taskFilters: { search: "", project: "all", status: "all" },
   switchFilters: { search: "", status: "all", profile: "all" },
   logFilters: { level: "all", scope: "all", search: "" },
@@ -372,6 +438,9 @@ const state = {
   activeProfile: null,
   fleet: [],
   switches: [],
+  projects: [],
+  selectedProjectKey: null,
+  projectSummary: null,
   memory: [],
   executions: [],
   health: { live: "unknown", ready: "unknown" },
@@ -420,6 +489,11 @@ function clampPercent(value) {
   const num = Number(value)
   if (!Number.isFinite(num)) return null
   return Math.max(0, Math.min(100, Math.round(num)))
+}
+
+function toNullableString(value) {
+  const trimmed = String(value ?? "").trim()
+  return trimmed ? trimmed : null
 }
 
 function loadJson(key, fallback) {
@@ -488,6 +562,7 @@ function applyI18n() {
   renderRouteShell()
   renderAccountSection()
   renderHealth()
+  renderProjects(state.projects)
   renderTasks(state.tasks)
   renderHeld(state.held)
   renderAgents(state.agents)
@@ -573,7 +648,7 @@ function setPanelState(node, stateName, labelKey = null) {
 }
 
 function syncPanelStateLabels() {
-  const nodes = [ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
+  const nodes = [ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
   nodes.forEach((node) => {
     if (!node) return
     const key = node.dataset.labelKey ?? "panel_state_idle"
@@ -582,7 +657,7 @@ function syncPanelStateLabels() {
 }
 
 function requireTokenPanels() {
-  ;[ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
+  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
 }
 
 async function withPanel(node, scope, fn) {
@@ -717,18 +792,149 @@ function renderDashboardSignals() {
   setPanelState(ui.dashboardSignalsState, "success")
 }
 
+function projectKeys({ includeInactive = true } = {}) {
+  return state.projects
+    .filter((project) => includeInactive || project?.is_active === true)
+    .map((project) => project?.key)
+    .filter((key) => typeof key === "string" && key.trim())
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function applyProjectSelect(selectNode, options, selectedValue, placeholder) {
+  if (!selectNode) return ""
+
+  if (!options.length) {
+    selectNode.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`
+    selectNode.value = ""
+    selectNode.disabled = true
+    return ""
+  }
+
+  selectNode.innerHTML = options.map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`).join("")
+  selectNode.disabled = false
+  const fallback = options[0]
+  selectNode.value = options.includes(selectedValue) ? selectedValue : fallback
+  return selectNode.value
+}
+
+function syncProjectBindings() {
+  if (state.page !== "console") return
+
+  const activeKeys = projectKeys({ includeInactive: false })
+  const allKeys = projectKeys({ includeInactive: true })
+  const legacyTaskKeys = state.tasks
+    .map((task) => task.project_id)
+    .filter((key) => typeof key === "string" && key.trim())
+  const taskFilterKeys = Array.from(new Set([...allKeys, ...legacyTaskKeys])).sort((a, b) => a.localeCompare(b))
+
+  const taskProject = applyProjectSelect(ui.taskProject, activeKeys, ui.taskProject?.value ?? "", t("project_option_none"))
+  const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
+
+  const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
+  const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
+  if (taskSubmit) taskSubmit.disabled = !taskProject
+  if (memorySubmit) memorySubmit.disabled = !memoryProject
+
+  if (ui.taskFilterProject) {
+    ui.taskFilterProject.innerHTML = [
+      `<option value="all">${escapeHtml(t("task_filter_any_project"))}</option>`,
+      ...taskFilterKeys.map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`)
+    ].join("")
+    ui.taskFilterProject.value = taskFilterKeys.includes(state.taskFilters.project) ? state.taskFilters.project : "all"
+    state.taskFilters.project = ui.taskFilterProject.value
+  }
+}
+
 function syncTaskFilters(items) {
-  const projects = Array.from(new Set(items.map((task) => task.project_id).filter((v) => typeof v === "string" && v.trim()))).sort((a, b) => a.localeCompare(b))
   const statuses = Array.from(new Set(items.map((task) => task.status).filter((v) => typeof v === "string" && v.trim()))).sort((a, b) => a.localeCompare(b))
 
-  ui.taskFilterProject.innerHTML = [`<option value="all">${escapeHtml(t("task_filter_any_project"))}</option>`, ...projects.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)].join("")
   ui.taskFilterStatus.innerHTML = [`<option value="all">${escapeHtml(t("task_filter_any_status"))}</option>`, ...statuses.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`)].join("")
 
   ui.taskFilterSearch.value = state.taskFilters.search
-  ui.taskFilterProject.value = projects.includes(state.taskFilters.project) ? state.taskFilters.project : "all"
   ui.taskFilterStatus.value = statuses.includes(state.taskFilters.status) ? state.taskFilters.status : "all"
-  state.taskFilters.project = ui.taskFilterProject.value
   state.taskFilters.status = ui.taskFilterStatus.value
+}
+
+function renderProjectDetails() {
+  const selected = state.projects.find((item) => item.key === state.selectedProjectKey) ?? null
+  if (!selected || !state.projectSummary) {
+    ui.projectDetailsEmpty.hidden = false
+    ui.projectDetailsContent.hidden = true
+    return
+  }
+
+  ui.projectDetailsEmpty.hidden = true
+  ui.projectDetailsContent.hidden = false
+
+  const summary = state.projectSummary
+  const statuses = summary.tasks_by_status && typeof summary.tasks_by_status === "object"
+    ? Object.entries(summary.tasks_by_status).sort(([a], [b]) => a.localeCompare(b))
+    : []
+
+  const summaryCards = [
+    [t("project_summary_tasks_total"), String(summary.tasks_total ?? 0)],
+    [t("project_summary_active_memory"), String(summary.active_memory_entries ?? 0)],
+    [t("project_summary_switch_recent"), String(summary.switch_events_recent ?? 0)],
+    [t("project_summary_last_switch"), fmtDate(summary.last_switch_event_at)],
+    [t("project_summary_window"), t("project_summary_window_hours", { hours: summary.switch_events_window_hours ?? 24 })]
+  ]
+
+  ui.projectSummaryGrid.innerHTML = [
+    ...summaryCards.map(([label, value]) => `<div class="project-summary-item"><p class="tiny-label">${escapeHtml(label)}</p><p>${escapeHtml(value)}</p></div>`),
+    `<div class="project-summary-item project-summary-item-wide"><p class="tiny-label">${escapeHtml(t("project_summary_statuses"))}</p><div class="status-pill-wrap">${statuses.length
+      ? statuses.map(([status, count]) => `<span class="pill">${escapeHtml(status)}: ${escapeHtml(String(count))}</span>`).join("")
+      : `<span class="meta-note">${escapeHtml(t("task_field_na"))}</span>`}</div></div>`
+  ].join("")
+
+  ui.projectEditKey.value = selected.key
+  ui.projectEditName.value = selected.name ?? ""
+  ui.projectEditDescription.value = selected.description ?? ""
+  ui.projectEditGithubUrl.value = selected.github_url ?? ""
+  ui.projectEditGithubRepo.value = selected.github_repo ?? ""
+  ui.projectEditDefaultBranch.value = selected.default_branch ?? ""
+  ui.projectEditWorkspacePath.value = selected.workspace_path ?? ""
+  ui.projectEditActive.checked = selected.is_active === true
+}
+
+function renderProjects(items) {
+  state.projects = Array.isArray(items) ? [...items].sort((a, b) => String(a.key).localeCompare(String(b.key))) : state.projects
+  if (state.page !== "console") return
+
+  syncProjectBindings()
+
+  const search = state.projectFilters.search.trim().toLowerCase()
+  const visible = state.projects.filter((project) => {
+    if (!state.projectFilters.includeInactive && project.is_active !== true) return false
+    if (!search) return true
+    const haystack = `${project.key ?? ""} ${project.name ?? ""} ${project.github_repo ?? ""} ${project.github_url ?? ""}`
+    return haystack.toLowerCase().includes(search)
+  })
+
+  if (!visible.some((project) => project.key === state.selectedProjectKey)) {
+    state.selectedProjectKey = visible[0]?.key ?? null
+    state.projectSummary = null
+  }
+
+  if (!visible.length) {
+    ui.projectsList.innerHTML = `<li class="meta-note">${escapeHtml(t("project_list_empty"))}</li>`
+    renderProjectDetails()
+    return
+  }
+
+  ui.projectsList.innerHTML = visible.map((project) => {
+    const active = project.is_active === true
+    const selected = project.key === state.selectedProjectKey
+    return `<li class="project-card ${selected ? "project-card-selected" : ""}" data-project-key="${escapeHtml(project.key)}">
+      <div class="task-card-head">
+        <div class="task-card-title">${escapeHtml(project.name)}</div>
+        <span class="pill ${active ? "pill-active" : ""}">${escapeHtml(active ? t("profile_state_active") : t("profile_state_inactive"))}</span>
+      </div>
+      <div class="meta-note"><code>${escapeHtml(project.key)}</code></div>
+      <div class="meta-note">${escapeHtml(project.github_repo ?? project.github_url ?? t("task_field_na"))}</div>
+    </li>`
+  }).join("")
+
+  renderProjectDetails()
 }
 
 function renderTaskDetails(task) {
@@ -756,6 +962,7 @@ function renderTasks(items) {
   state.tasks = Array.isArray(items) ? items : []
   if (state.page !== "console") return
 
+  syncProjectBindings()
   syncTaskFilters(state.tasks)
 
   const search = state.taskFilters.search.trim().toLowerCase()
@@ -1083,7 +1290,44 @@ async function refreshHealth() {
   renderHealth()
 }
 
+async function fetchProjectRegistry({ includeInactive = true } = {}) {
+  const response = await requestJson(`/api/projects?include_inactive=${includeInactive ? "true" : "false"}`)
+  const items = Array.isArray(response?.items) ? response.items : []
+  state.projects = [...items].sort((a, b) => String(a.key).localeCompare(String(b.key)))
+  syncProjectBindings()
+  return state.projects
+}
+
+async function refreshProjectSummary() {
+  if (!state.selectedProjectKey) {
+    state.projectSummary = null
+    renderProjectDetails()
+    return null
+  }
+
+  const summary = await requestJson(`/api/projects/${encodeURIComponent(state.selectedProjectKey)}/summary`)
+  state.projectSummary = summary
+  renderProjectDetails()
+  return summary
+}
+
+async function refreshProjects() {
+  return withPanel(ui.projectsPanelState, "system", async () => {
+    const includeInactive = state.projectFilters.includeInactive
+    const items = await fetchProjectRegistry({ includeInactive })
+    renderProjects(items)
+    await refreshProjectSummary()
+  })
+}
+
 async function refreshTasks() {
+  if (state.token) {
+    try {
+      await fetchProjectRegistry({ includeInactive: true })
+    } catch {
+      // best-effort sync for project selectors in tasks form/filters
+    }
+  }
   return withPanel(ui.tasksPanelState, "system", async () => renderTasks((await requestJson("/api/tasks")).items))
 }
 
@@ -1132,6 +1376,13 @@ async function refreshSwitches() {
 }
 
 async function refreshMemoryEntries() {
+  if (state.token) {
+    try {
+      await fetchProjectRegistry({ includeInactive: true })
+    } catch {
+      // best-effort sync for project selectors in memory form
+    }
+  }
   return withPanel(ui.memoryPanelState, "system", async () => {
     const params = new URLSearchParams()
     if (ui.memoryProject.value.trim()) params.set("project_id", ui.memoryProject.value.trim())
@@ -1168,6 +1419,7 @@ async function refreshCurrentRoute() {
     requireTokenPanels()
     return
   }
+  if (state.route === "projects") return refreshProjects()
   if (state.route === "tasks") return Promise.allSettled([refreshTasks(), refreshHeld()])
   if (state.route === "agents") return refreshAgents()
   if (state.route === "accounts") {
@@ -1186,7 +1438,7 @@ async function refreshAll() {
     requireTokenPanels()
     return
   }
-  await Promise.allSettled([refreshTasks(), refreshHeld(), refreshAgents(), refreshProfiles(), refreshFleet(), refreshSwitches(), refreshMemoryEntries(), refreshModule(), refreshExecutions()])
+  await Promise.allSettled([refreshProjects(), refreshTasks(), refreshHeld(), refreshAgents(), refreshProfiles(), refreshFleet(), refreshSwitches(), refreshMemoryEntries(), refreshModule(), refreshExecutions()])
 }
 
 function syncAutoTimers() {
@@ -1259,6 +1511,7 @@ function wireConsoleRefs() {
     quickRefreshAll: document.getElementById("quick-refresh-all"),
     statTasks: document.getElementById("stat-tasks"), statHeld: document.getElementById("stat-held"), statProfiles: document.getElementById("stat-profiles"), statEvents: document.getElementById("stat-events"),
     refreshHealth: document.getElementById("refresh-health"), liveStatus: document.getElementById("live-status"), readyStatus: document.getElementById("ready-status"), dashboardSignals: document.getElementById("dashboard-signals"), dashboardSignalsState: document.getElementById("dashboard-signals-state"),
+    projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
     toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"),
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
@@ -1272,10 +1525,13 @@ function wireConsoleHandlers() {
   ui.adminToken.value = state.token
   ui.langSelect.value = state.lang
   ui.themeSelect.value = state.theme
+  ui.projectFilterSearch.value = state.projectFilters.search
+  ui.projectFilterIncludeInactive.checked = state.projectFilters.includeInactive
   ui.toggleAutoRefreshTasks.checked = state.auto.tasks
   ui.toggleAutoRefreshAgents.checked = state.auto.agents
   ui.toggleAutoRefreshEvents.checked = state.auto.history
   if (readStorage(KEYS.taskCollapsed) === "1") ui.taskCreateShell.open = false
+  syncProjectBindings()
 
   ui.routeLinks.forEach((link) => link.addEventListener("click", async (event) => {
     event.preventDefault()
@@ -1331,6 +1587,76 @@ function wireConsoleHandlers() {
   ui.quickRefreshRoute.addEventListener("click", async () => refreshCurrentRoute())
   ui.quickRefreshAll.addEventListener("click", async () => refreshAll())
   ui.refreshHealth.addEventListener("click", async () => refreshHealth())
+
+  ui.refreshProjects.addEventListener("click", async () => state.token ? refreshProjects() : requireTokenPanels())
+  ui.projectFilterSearch.addEventListener("input", () => {
+    state.projectFilters.search = ui.projectFilterSearch.value
+    saveJson(KEYS.projectFilters, state.projectFilters)
+    renderProjects(state.projects)
+  })
+  ui.projectFilterIncludeInactive.addEventListener("change", async () => {
+    state.projectFilters.includeInactive = ui.projectFilterIncludeInactive.checked
+    saveJson(KEYS.projectFilters, state.projectFilters)
+    if (!state.token) return requireTokenPanels()
+    await refreshProjects()
+  })
+
+  ui.projectsList.addEventListener("click", async (event) => {
+    const card = event.target.closest("[data-project-key]")
+    if (!card) return
+    const key = card.dataset.projectKey
+    if (!key || key === state.selectedProjectKey) return
+    state.selectedProjectKey = key
+    state.projectSummary = null
+    renderProjects(state.projects)
+    pushLog("info", "ui", t("log_project_selected"), { key })
+    if (!state.token) return requireTokenPanels()
+    await withPanel(ui.projectsPanelState, "system", async () => {
+      await refreshProjectSummary()
+    })
+  })
+
+  ui.projectCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    const payload = {
+      key: ui.projectCreateKey.value.trim(),
+      name: ui.projectCreateName.value.trim(),
+      description: toNullableString(ui.projectCreateDescription.value),
+      github_url: toNullableString(ui.projectCreateGithubUrl.value),
+      github_repo: toNullableString(ui.projectCreateGithubRepo.value),
+      default_branch: toNullableString(ui.projectCreateDefaultBranch.value),
+      workspace_path: toNullableString(ui.projectCreateWorkspacePath.value)
+    }
+
+    const created = await requestJson("/api/projects", { method: "POST", json: payload })
+    state.selectedProjectKey = created?.key ?? payload.key
+    state.projectSummary = null
+    pushLog("success", "ui", t("log_project_created"), { key: state.selectedProjectKey })
+    ui.projectCreateForm.reset()
+    await refreshProjects()
+  })
+
+  ui.projectEditForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+    if (!state.selectedProjectKey) return
+
+    const payload = {
+      name: ui.projectEditName.value.trim(),
+      description: toNullableString(ui.projectEditDescription.value),
+      github_url: toNullableString(ui.projectEditGithubUrl.value),
+      github_repo: toNullableString(ui.projectEditGithubRepo.value),
+      default_branch: toNullableString(ui.projectEditDefaultBranch.value),
+      workspace_path: toNullableString(ui.projectEditWorkspacePath.value),
+      is_active: ui.projectEditActive.checked
+    }
+
+    await requestJson(`/api/projects/${encodeURIComponent(state.selectedProjectKey)}`, { method: "PATCH", json: payload })
+    pushLog("success", "ui", t("log_project_updated"), { key: state.selectedProjectKey })
+    await refreshProjects()
+  })
 
   ui.toggleAutoRefreshTasks.addEventListener("change", () => {
     state.auto.tasks = ui.toggleAutoRefreshTasks.checked
@@ -1552,6 +1878,8 @@ function loadState() {
   state.route = normalizeRoute(readStorage(KEYS.route) ?? "dashboard")
   state.section = normalizeSection(readStorage(KEYS.section) ?? "profiles")
   state.auto = { ...state.auto, ...loadJson(KEYS.auto, state.auto) }
+  state.projectFilters = { ...state.projectFilters, ...loadJson(KEYS.projectFilters, state.projectFilters) }
+  state.projectFilters.includeInactive = state.projectFilters.includeInactive !== false
   state.taskFilters = { ...state.taskFilters, ...loadJson(KEYS.taskFilters, state.taskFilters) }
   state.switchFilters = { ...state.switchFilters, ...loadJson(KEYS.switchFilters, state.switchFilters) }
   state.logFilters = { ...state.logFilters, ...loadJson(KEYS.logFilters, state.logFilters) }

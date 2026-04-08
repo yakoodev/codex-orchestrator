@@ -20,7 +20,7 @@
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: Project Registry (доменный объект Project)
-- Статус: `in_progress` (Phase A завершен, в работе Phase B).
+- Статус: `completed` (Phase A/B/C закрыты).
 - Цель: ввести отдельный объект `Project` как источник истины для памяти, задач, артефактов и GitHub-контекста.
 - Дизайн-док: `docs/ops/project-object.md`.
 - Этап A (Data + API core):
@@ -32,13 +32,13 @@
   - [x] использовать `Project.workspace_path` как default `cwd` в delegation runtime;
   - [x] синхронизировать smoke/manual сценарии под проектный registry.
 - Этап C (UI integration):
-  - [ ] добавить отдельный экран `Projects` в `/ui/console.html`;
-  - [ ] перевести фильтры задач/памяти на список реальных проектов;
-  - [ ] добавить project summary-карточку в UI.
+  - [x] добавить отдельный экран `Projects` в `/ui/console.html`;
+  - [x] перевести фильтры задач/памяти на список реальных проектов;
+  - [x] добавить project summary-карточку в UI.
 - Критерий готовности:
-  - [ ] `project_id` больше не “свободная строка” в runtime-сценариях;
-  - [ ] делегации стабильно берут рабочую директорию из настроек проекта;
-  - [ ] проектные данные доступны через API и UI.
+  - [x] `project_id` больше не “свободная строка” в runtime-сценариях;
+  - [x] делегации стабильно берут рабочую директорию из настроек проекта;
+  - [x] проектные данные доступны через API и UI.
 
 ## Planned: Admin UI Redesign v2 (Hybrid Console)
 - Статус: `completed` (дизайн-цикл закрыт, далее только точечные bugfix-правки).
@@ -47,6 +47,7 @@
   - `/ui/console.html` — основная консоль с hash-router.
 - Новая IA:
   - `#/dashboard`
+  - `#/projects`
   - `#/tasks`
   - `#/agents`
   - `#/accounts`

@@ -18,6 +18,7 @@
 
         <nav class="route-nav" aria-label="Console routes">
           <a href="#/dashboard" class="route-link" data-route-link="dashboard" data-i18n="route_dashboard">Обзор</a>
+          <a href="#/projects" class="route-link" data-route-link="projects" data-i18n="route_projects">Проекты</a>
           <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Задачи</a>
           <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Агенты</a>
           <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Аккаунты</a>
@@ -121,6 +122,137 @@
             </div>
           </section>
 
+          <section class="screen-panel" data-screen="projects" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="projects_title">Реестр проектов</h3>
+              <div class="action-bar">
+                <span id="projects-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-projects" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="projects-layout">
+              <article class="surface-card">
+                <details id="project-create-shell" class="compact-collapse" open>
+                  <summary data-i18n="project_create_toggle">Создать проект</summary>
+                  <form id="project-create-form" class="form-grid">
+                    <div class="split-2">
+                      <div>
+                        <label for="project-create-key" data-i18n="project_key_label">Ключ проекта</label>
+                        <input id="project-create-key" name="key" placeholder="web-ui" required />
+                      </div>
+                      <div>
+                        <label for="project-create-name" data-i18n="project_name_label">Название проекта</label>
+                        <input id="project-create-name" name="name" required />
+                      </div>
+                    </div>
+
+                    <label for="project-create-description" data-i18n="project_description_label">Описание</label>
+                    <textarea id="project-create-description" name="description" rows="2"></textarea>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="project-create-github-url" data-i18n="project_github_url_label">GitHub URL</label>
+                        <input id="project-create-github-url" name="github_url" placeholder="https://github.com/owner/repo" />
+                      </div>
+                      <div>
+                        <label for="project-create-github-repo" data-i18n="project_github_repo_label">GitHub repo</label>
+                        <input id="project-create-github-repo" name="github_repo" placeholder="owner/repo" />
+                      </div>
+                    </div>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="project-create-default-branch" data-i18n="project_default_branch_label">Default branch</label>
+                        <input id="project-create-default-branch" name="default_branch" placeholder="main" />
+                      </div>
+                      <div>
+                        <label for="project-create-workspace-path" data-i18n="project_workspace_path_label">Workspace path</label>
+                        <input id="project-create-workspace-path" name="workspace_path" placeholder="/app/projects/web-ui" />
+                      </div>
+                    </div>
+
+                    <button type="submit" data-i18n="project_create_action">Создать проект</button>
+                  </form>
+                </details>
+
+                <div class="filters-grid">
+                  <div>
+                    <label for="project-filter-search" data-i18n="project_filter_search_label">Поиск</label>
+                    <input
+                      id="project-filter-search"
+                      data-i18n-placeholder="project_filter_search_placeholder"
+                      placeholder="key/name/github"
+                    />
+                  </div>
+                  <label class="toggle">
+                    <input id="project-filter-include-inactive" type="checkbox" />
+                    <span data-i18n="project_filter_include_inactive">Показывать неактивные</span>
+                  </label>
+                </div>
+
+                <ul id="projects-list" class="compact-list fixed-list"></ul>
+              </article>
+
+              <article class="surface-card">
+                <div id="project-details-empty" class="meta-note" data-i18n="project_details_empty">
+                  Выбери проект в списке, чтобы посмотреть summary и обновить конфигурацию.
+                </div>
+
+                <div id="project-details-content" hidden>
+                  <p class="tiny-label" data-i18n="project_summary_title">Сводка проекта</p>
+                  <div id="project-summary-grid" class="project-summary-grid"></div>
+
+                  <form id="project-edit-form" class="form-grid">
+                    <p class="tiny-label" data-i18n="project_edit_title">Редактирование проекта</p>
+                    <div class="split-2">
+                      <div>
+                        <label for="project-edit-key" data-i18n="project_key_label">Ключ проекта</label>
+                        <input id="project-edit-key" disabled />
+                      </div>
+                      <div>
+                        <label for="project-edit-name" data-i18n="project_name_label">Название проекта</label>
+                        <input id="project-edit-name" required />
+                      </div>
+                    </div>
+
+                    <label for="project-edit-description" data-i18n="project_description_label">Описание</label>
+                    <textarea id="project-edit-description" rows="2"></textarea>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="project-edit-github-url" data-i18n="project_github_url_label">GitHub URL</label>
+                        <input id="project-edit-github-url" />
+                      </div>
+                      <div>
+                        <label for="project-edit-github-repo" data-i18n="project_github_repo_label">GitHub repo</label>
+                        <input id="project-edit-github-repo" />
+                      </div>
+                    </div>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="project-edit-default-branch" data-i18n="project_default_branch_label">Default branch</label>
+                        <input id="project-edit-default-branch" />
+                      </div>
+                      <div>
+                        <label for="project-edit-workspace-path" data-i18n="project_workspace_path_label">Workspace path</label>
+                        <input id="project-edit-workspace-path" />
+                      </div>
+                    </div>
+
+                    <label class="toggle">
+                      <input id="project-edit-active" type="checkbox" />
+                      <span data-i18n="project_active_label">Проект активен</span>
+                    </label>
+
+                    <button type="submit" data-i18n="project_save_action">Сохранить изменения</button>
+                  </form>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <section class="screen-panel" data-screen="tasks" hidden>
             <div class="panel-head">
               <h3 data-i18n="tasks_title">Задачи и очередь</h3>
@@ -146,9 +278,9 @@
                     <textarea id="task-description" name="description" rows="3" required></textarea>
 
                     <div class="split-2">
-                      <div>
-                        <label for="task-project" data-i18n="task_project_label">Project ID</label>
-                        <input id="task-project" name="project_id" value="web-ui" required />
+                    <div>
+                      <label for="task-project" data-i18n="task_project_label">Project ID</label>
+                        <select id="task-project" name="project_id" required></select>
                       </div>
                       <div>
                         <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
@@ -399,7 +531,7 @@
                   <div class="split-2">
                     <div>
                       <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
-                      <input id="memory-project" name="project_id" value="web-ui" required />
+                      <select id="memory-project" name="project_id" required></select>
                     </div>
                     <div>
                       <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>

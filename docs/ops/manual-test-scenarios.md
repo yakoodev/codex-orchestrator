@@ -41,6 +41,7 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
 3. Нажми `Открыть консоль` и проверь, что URL вида `http://localhost:8080/ui/console.html#/dashboard`.
 4. В консоли прокликай sidebar-маршруты:
    - `dashboard`
+   - `projects`
    - `tasks`
    - `agents`
    - `accounts`
@@ -168,6 +169,27 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 2. Убедись, что у записей, где есть JSON details, блок details по умолчанию свернут.
 3. Раскрой details у одной записи и проверь содержимое.
 4. Примени фильтр `Scope=ui` и строку поиска `route`, убедись, что список корректно фильтруется.
+
+## 3.7 Сценарий A7: Projects registry в UI
+
+1. Перейди на `#/projects`.
+2. Создай проект через форму:
+   - `key = ui-project-<HHmmss>`
+   - `name = UI Project`
+   - `github_repo = owner/ui-project`
+   - `workspace_path = /app`
+3. Нажми `Создать проект` и проверь:
+   - проект появился в левом списке;
+   - справа открылась карточка summary и форма редактирования.
+4. В summary проверь поля:
+   - `Всего задач`
+   - `Активная память`
+   - `Switch events (окно)`
+   - `Последний switch`
+   - `Задачи по статусам`.
+5. В форме редактирования поменяй `name` и `default_branch`, нажми `Сохранить изменения`, проверь, что список/детали обновились.
+6. Открой `#/tasks` и проверь, что в форме создания и фильтре проектов есть созданный `project key`.
+7. Открой `#/memory` и проверь, что `project_id` выбирается из того же project registry (селект, без свободного ввода).
 
 ## 4. Сценарий B: Security boundary
 

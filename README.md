@@ -63,6 +63,7 @@ Built-in web control panel:
 - Open `http://localhost:8080/ui/` and press `Открыть консоль`.
 - Main console route map:
   - `#/dashboard` (health + KPI + latest signals)
+  - `#/projects` (project registry create/edit + summary)
   - `#/tasks` (create/filter/board/details + held queue)
   - `#/agents` (preparing/running/recent + inspector)
   - `#/accounts` (profiles/limits/history sections)

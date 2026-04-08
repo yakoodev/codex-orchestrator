@@ -1,7 +1,7 @@
 # Project Object v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-08  
-Статус: `in_progress` (Phase A реализован, Phase B/C в работе).
+Статус: `completed` (Phase A/B/C реализованы).
 
 ## 1. Цель
 
@@ -93,8 +93,8 @@
 - [x] Обновление smoke/manual сценариев.
 
 ### Phase C — UI integration
-- Новый экран `Projects`.
-- Привязка фильтров задач/памяти к `Project` registry.
+- [x] Новый экран `Projects`.
+- [x] Привязка фильтров задач/памяти к `Project` registry.
 
 ## 6. Definition of Done (v1)
 

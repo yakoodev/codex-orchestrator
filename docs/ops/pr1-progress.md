@@ -159,6 +159,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
     - если и он не задан, остаётся текущий runtime fallback (`process.cwd()` в executor);
   - в execution meta добавлен `execution_context` с `cwd` и `cwd_source` для диагностики;
   - добавлены тесты на fallback/override поведения `cwd` и синхронизированы manual/smoke сценарии.
+- [x] Реализован `Project Registry` (Phase C, UI integration):
+  - в `/ui/console.html` добавлен отдельный экран `Projects` (list/create/edit + summary);
+  - в `public/app.js` добавлен route/state/render/action flow для `#/projects` с API-интеграцией `POST/GET/PATCH /api/projects` и `GET /api/projects/{key}/summary`;
+  - селекты `project_id` в `Tasks` и `Memory`, а также фильтр задач по проекту теперь синхронизируются с реестром проектов (active/all), а не со свободным вводом.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -169,7 +173,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch готовы; остаются Telegram integration, versioning/history).
 - [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
 - [ ] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`).
-- [~] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B закрыты, остается Phase C — UI integration).
+- [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 
 ## Текущее состояние проверок (ветка PR1)
