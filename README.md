@@ -9,6 +9,7 @@ Open-source orchestrator bus for Codex workers with limit-aware scheduling, dete
 - Docker/Ops: [`docs/docker`](/docs/docker)
 - PR1 status tracker: [`docs/ops/pr1-progress.md`](/docs/ops/pr1-progress.md)
 - Product roadmap (post-PR1): [`docs/ops/roadmap.md`](/docs/ops/roadmap.md)
+- MCP bridge plan: [`docs/ops/mcp-agent-bridge.md`](/docs/ops/mcp-agent-bridge.md)
 - Manual test scenarios: [`docs/ops/manual-test-scenarios.md`](/docs/ops/manual-test-scenarios.md)
 
 ## Quickstart (Root UX)
