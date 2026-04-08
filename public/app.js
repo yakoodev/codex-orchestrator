@@ -190,7 +190,8 @@ const I18N = {
     log_memory_toggled: "Статус записи памяти обновлен",
     log_module_updated: "Конфигурация модуля обновлена",
     log_logs_cleared: "Логи очищены",
-    log_api_response: "Ответ API"
+    log_api_response: "Ответ API",
+    log_api_compact: "{method} {route} -> {status} ({duration} мс)"
   },
   en: {}
 }
@@ -349,7 +350,8 @@ I18N.en = {
   log_memory_toggled: "Memory entry state updated",
   log_module_updated: "Module config updated",
   log_logs_cleared: "Logs cleared",
-  log_api_response: "API response"
+  log_api_response: "API response",
+  log_api_compact: "{method} {route} -> {status} ({duration} ms)"
 }
 
 const state = {
@@ -513,6 +515,26 @@ function normalizeSection(section) {
 
 function levelClass(level) {
   return level === "success" ? "log-level-success" : level === "warn" ? "log-level-warn" : level === "error" ? "log-level-error" : ""
+}
+
+function logSummary(item) {
+  if (!item || !item.details || typeof item.details !== "object") return ""
+  const details = item.details
+
+  if (item.scope === "api") {
+    const method = typeof details.method === "string" && details.method.trim() ? details.method.toUpperCase() : "GET"
+    const route = typeof details.route === "string" && details.route.trim() ? details.route : t("task_field_na")
+    const status = details.status == null ? t("task_field_na") : String(details.status)
+    const durationValue = Number(details.duration_ms)
+    const duration = Number.isFinite(durationValue) ? Math.max(0, Math.round(durationValue)) : 0
+    return t("log_api_compact", { method, route, status, duration })
+  }
+
+  const pairs = ["route", "section", "action", "profile_id", "id", "status"]
+    .filter((key) => details[key] != null && String(details[key]).trim())
+    .map((key) => `${key}=${String(details[key])}`)
+
+  return pairs.join(" · ")
 }
 
 function pushLog(level, scope, message, details = {}) {
@@ -680,13 +702,18 @@ function renderDashboardSignals() {
     return
   }
 
-  ui.dashboardSignals.innerHTML = state.logs.slice(0, 8).map((item) => `<li>
+  ui.dashboardSignals.innerHTML = state.logs.slice(0, 8).map((item) => {
+    const summary = logSummary(item)
+    return `<li>
     <div class="log-head">
       <span class="log-level ${levelClass(item.level)}">${escapeHtml(item.level)}</span>
+      <span class="pill">${escapeHtml(item.scope)}</span>
       <span class="meta-note">${escapeHtml(fmtDate(item.ts))}</span>
     </div>
     <div>${escapeHtml(item.message)}</div>
-  </li>`).join("")
+    ${summary ? `<div class="meta-note">${escapeHtml(summary)}</div>` : ""}
+  </li>`
+  }).join("")
   setPanelState(ui.dashboardSignalsState, "success")
 }
 
@@ -1035,7 +1062,8 @@ function renderLogs() {
 
   ui.logsList.innerHTML = filtered.slice(0, 200).map((item) => {
     const details = item.details && Object.keys(item.details).length ? JSON.stringify(item.details, null, 2) : ""
-    return `<li class="log-item"><div class="log-head"><span class="log-level ${levelClass(item.level)}">${escapeHtml(item.level)}</span><span class="pill">${escapeHtml(item.scope)}</span><span class="meta-note">${escapeHtml(fmtDate(item.ts))}</span></div><div>${escapeHtml(item.message)}</div>${details ? `<details class="log-details"><summary>${escapeHtml(t("logs_details_toggle"))}</summary><pre class="mono-box">${escapeHtml(details)}</pre></details>` : ""}</li>`
+    const summary = logSummary(item)
+    return `<li class="log-item"><div class="log-head"><span class="log-level ${levelClass(item.level)}">${escapeHtml(item.level)}</span><span class="pill">${escapeHtml(item.scope)}</span><span class="meta-note">${escapeHtml(fmtDate(item.ts))}</span></div><div>${escapeHtml(item.message)}</div>${summary ? `<div class="meta-note">${escapeHtml(summary)}</div>` : ""}${details ? `<details class="log-details"><summary>${escapeHtml(t("logs_details_toggle"))}</summary><pre class="mono-box">${escapeHtml(details)}</pre></details>` : ""}</li>`
   }).join("")
 }
 
