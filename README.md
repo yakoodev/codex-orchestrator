@@ -66,7 +66,7 @@ Built-in web control panel:
 - Follow tab-specific intro hints (each tab now has its own operator context block)
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 - Monitor runtime with new operator cards:
-  - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview
+  - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview (prompt/log in collapsible drill-down blocks)
   - `Tasks & Queue` as task-tracker board (`waiting / running / completed`)
   - `Auth Profiles` as action cards (`activate/deactivate`) with explicit active-profile mark
   - `Agent Memory` manual override is hidden in `System` (fallback/admin correction)

@@ -68,7 +68,8 @@
 - Текущий прогресс:
   - добавлен API `GET /api/delegation/cards` c группами `preparing/running/recent`;
   - добавлены UI-карточки агентов в встроенной панели `/ui/`;
-  - в карточках показываются prompt, template/model, выбранный account и log preview.
+  - в карточках показываются prompt, template/model, выбранный account и log preview;
+  - prompt/log вынесены в collapsible-блоки, чтобы снизить визуальный шум и дать быстрый drill-down по месту.
 - Остается:
   - углубить потоковые runtime-логи по running-агентам;
   - добавить более детальный drill-down по каждому запуску.

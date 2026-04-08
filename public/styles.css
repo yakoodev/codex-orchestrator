@@ -482,6 +482,47 @@ tbody tr:last-child td {
   gap: 8px;
 }
 
+.agent-card {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-card-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-family: "Consolas", "Lucida Console", monospace;
+}
+
+.agent-card-detail {
+  border-top: 1px dashed rgba(15, 36, 56, 0.16);
+  padding-top: 6px;
+}
+
+.agent-card-detail summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+.agent-card-detail pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "Consolas", "Lucida Console", monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .account-grid {
   display: grid;
   gap: 10px;

@@ -56,6 +56,11 @@ const I18N = {
     agent_preparing: "Готовятся",
     agent_running: "Запущены",
     agent_recent: "Недавние",
+    agent_field_capability: "capability",
+    agent_field_template: "template",
+    agent_field_account: "account",
+    agent_field_prompt: "prompt",
+    agent_field_log: "log",
     memory_title: "Память агентов",
     memory_project_label: "Project ID",
     memory_role_label: "Роль агента",
@@ -189,6 +194,11 @@ const I18N = {
     agent_preparing: "Preparing",
     agent_running: "Running",
     agent_recent: "Recent",
+    agent_field_capability: "capability",
+    agent_field_template: "template",
+    agent_field_account: "account",
+    agent_field_prompt: "prompt",
+    agent_field_log: "log",
     memory_title: "Agent Memory",
     memory_project_label: "Project ID",
     memory_role_label: "Agent Role",
@@ -696,12 +706,22 @@ function renderAgentCards(cards) {
         const promptPart = item.prompt ? escapeHtml(item.prompt) : "n/a";
         const logPart = item.log_preview ? escapeHtml(item.log_preview) : "n/a";
 
-        return `<li>
-          <div><span class="pill">${escapeHtml(item.status)}</span> <code>${escapeHtml(item.id)}</code></div>
-          <div class="account-meta">capability=${escapeHtml(item.capability)} template=${templatePart}</div>
-          <div class="account-meta">account=${accountPart}</div>
-          <div class="account-meta">prompt=${promptPart}</div>
-          <div class="account-meta">log=${logPart}</div>
+        return `<li class="agent-card">
+          <div class="agent-card-head">
+            <span class="pill">${escapeHtml(item.status)}</span>
+            <code>${escapeHtml(item.id)}</code>
+          </div>
+          <div class="agent-card-meta">${escapeHtml(t("agent_field_capability"))}: ${escapeHtml(item.capability)}</div>
+          <div class="agent-card-meta">${escapeHtml(t("agent_field_template"))}: ${templatePart}</div>
+          <div class="agent-card-meta">${escapeHtml(t("agent_field_account"))}: ${accountPart}</div>
+          <details class="agent-card-detail">
+            <summary>${escapeHtml(t("agent_field_prompt"))}</summary>
+            <pre>${promptPart}</pre>
+          </details>
+          <details class="agent-card-detail">
+            <summary>${escapeHtml(t("agent_field_log"))}</summary>
+            <pre>${logPart}</pre>
+          </details>
         </li>`;
       })
       .join("");

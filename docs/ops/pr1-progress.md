@@ -103,6 +103,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Добавлен безопасный Telegram discovery-режим: при пустом whitelist адаптер стартует, не исполняет команды и логирует `chat_id/user_id` для первичной настройки.
 - [x] Добавлен API endpoint `GET /api/delegation/cards` для operator-visible карточек делегаций (`preparing/running/recent`) с prompt/account/log preview.
 - [x] Встроенная Web panel расширена карточками активных агентов и account fleet (лимиты 5h/weekly по каждому профилю).
+- [x] Карточки агентов в `/ui/` переработаны для читабельности: structured fields + collapsible `prompt`/`log` drill-down.
 - [x] Добавлена baseline система памяти агентов: `POST/GET/PATCH /api/memory/entries`, Prisma-модель `AgentMemoryEntry`, UI-блок Agent Memory и авто-подмешивание `project_id + role` памяти в prompt делегации.
 - [x] Встроенная `/ui/` переведена на логические вкладки (Overview, Tasks & Queue, Agents, Accounts & Limits, System), чтобы убрать длинный single-page скролл.
 - [x] Вкладка `Tasks & Queue` переведена на task-tracker board (колонки `ожидает запуска / запущена / выполнена`) вместо общего списка.
