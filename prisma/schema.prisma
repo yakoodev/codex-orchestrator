@@ -511,6 +511,23 @@ model ScheduledRun {
   @@map("scheduled_runs")
 }
 
+model AgentMemoryEntry {
+  id         String   @id @default(cuid())
+  project_id String
+  agent_role String
+  title      String
+  content    String
+  is_active  Boolean  @default(true)
+  created_by String
+  updated_by String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@index([project_id, agent_role, is_active, updated_at])
+  @@index([project_id, updated_at])
+  @@map("agent_memory_entries")
+}
+
 model DelegationRequest {
   id                       String           @id @default(cuid())
   requester_task_id        String

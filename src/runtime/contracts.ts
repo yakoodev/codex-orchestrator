@@ -204,6 +204,19 @@ export interface DelegationRequestEntity {
   ended_at: Date | null;
 }
 
+export interface AgentMemoryEntryEntity {
+  id: string;
+  project_id: string;
+  agent_role: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_by: string;
+  updated_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export type ScheduleScope = "global" | "project";
 export type ScheduleOverlapPolicy = "one_active_skip";
 export type ScheduleMisfirePolicy = "recompute_due_on_restart";
@@ -335,6 +348,15 @@ export interface CreateScheduledRunInput {
   result_json?: Record<string, unknown> | null;
 }
 
+export interface CreateAgentMemoryEntryInput {
+  project_id: string;
+  agent_role: string;
+  title: string;
+  content: string;
+  is_active?: boolean;
+  created_by: string;
+}
+
 export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
@@ -425,6 +447,22 @@ export interface Persistence {
     statuses?: DelegationRequestEntity["status"][];
     limit?: number;
   }): Promise<DelegationRequestEntity[]>;
+  createAgentMemoryEntry(input: CreateAgentMemoryEntryInput): Promise<AgentMemoryEntryEntity>;
+  listAgentMemoryEntries(options?: {
+    project_id?: string;
+    agent_role?: string;
+    is_active?: boolean;
+    limit?: number;
+  }): Promise<AgentMemoryEntryEntity[]>;
+  patchAgentMemoryEntry(
+    id: string,
+    patch: {
+      title?: string;
+      content?: string;
+      is_active?: boolean;
+      updated_by: string;
+    }
+  ): Promise<AgentMemoryEntryEntity | null>;
   updateDelegationRequest(
     id: string,
     patch: {

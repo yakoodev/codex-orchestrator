@@ -64,6 +64,7 @@ Built-in web control panel:
 - Run end-to-end operator workflow: create task -> upload profile -> activate/deactivate -> inspect held queue and switch-events
 - Monitor runtime with new operator cards:
   - `Agent Runtime Cards` (`preparing/running/recent`) with prompt, selected account, and execution log preview
+  - `Agent Memory` panel: create/update per `project_id + agent_role` notes and toggle them on/off
   - `Account Fleet` cards with per-profile live limits (5h/weekly remaining + reset timestamps)
 
 Telegram adapter (MVP long polling):

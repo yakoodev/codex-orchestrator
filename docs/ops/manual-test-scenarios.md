@@ -67,6 +67,30 @@ API-проверка:
    - `5h remaining`, `weekly remaining`;
    - reset timestamps.
 
+## 3.2 Сценарий A2: Agent Memory panel + memory-aware delegation
+
+1. В UI открой блок `Agent Memory`.
+2. Заполни:
+   - `Project ID` = `manual-memory`;
+   - `Agent Role` = `reviewer`;
+   - `Memory title` = `GUI note`;
+   - `Memory content` = `Use breadcrumbs and sticky header checks first.`
+3. Нажми `Save memory`.
+4. Нажми `Обновить` в этом же блоке и проверь, что запись видна в списке.
+5. Нажми `Выключить` у записи и проверь, что статус сменился на `неактивен`.
+6. Нажми `Включить` и верни запись в `активен`.
+
+API-проверка:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_role=reviewer" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- есть хотя бы одна запись памяти с `project_id=manual-memory` и `agent_role=reviewer`;
+- запись имеет `is_active=true` после обратного включения.
+
 ## 4. Сценарий B: Security boundary
 
 ```powershell

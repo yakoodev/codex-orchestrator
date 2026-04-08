@@ -15,6 +15,7 @@ import {
   createAuthProfileRateLimitsReader
 } from "./runtime/auth-profile-rate-limits";
 import type {
+  AgentMemoryEntryEntity,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -82,6 +83,9 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/delegation/capabilities",
   "POST /api/delegation/dispatch",
   "GET /api/delegation/cards",
+  "POST /api/memory/entries",
+  "GET /api/memory/entries",
+  "PATCH /api/memory/entries/{id}",
   "GET /api/delegation/{id}",
   "GET /api/delegation/{id}/result",
   "POST /api/schedules",
@@ -198,6 +202,20 @@ interface DelegationDispatchRequest {
   priority?: unknown;
 }
 
+interface MemoryEntryCreateRequest {
+  project_id?: unknown;
+  agent_role?: unknown;
+  title?: unknown;
+  content?: unknown;
+  is_active?: unknown;
+}
+
+interface MemoryEntryPatchRequest {
+  title?: unknown;
+  content?: unknown;
+  is_active?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
@@ -231,7 +249,10 @@ const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due
 const DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT = 3;
 const DEFAULT_AUTH_SWITCH_RETRY_LIMIT = 3;
 const MAX_DELEGATION_PROMPT_LENGTH = 4_000;
+const MAX_DELEGATION_EXECUTION_PROMPT_LENGTH = 12_000;
 const MAX_DELEGATION_LOG_LENGTH = 12_000;
+const MAX_MEMORY_CONTENT_LENGTH = 8_000;
+const MAX_MEMORY_CONTEXT_ENTRIES = 6;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -346,6 +367,53 @@ function extractDelegationPrompt(payload: Record<string, unknown>): string | nul
   }
 
   return trimToLimit(prompt, MAX_DELEGATION_PROMPT_LENGTH);
+}
+
+function normalizeAgentRole(role: string): string {
+  return role.trim().toLowerCase();
+}
+
+function memoryEntryToResponse(entry: AgentMemoryEntryEntity): Record<string, unknown> {
+  return {
+    id: entry.id,
+    project_id: entry.project_id,
+    agent_role: entry.agent_role,
+    title: entry.title,
+    content: entry.content,
+    is_active: entry.is_active,
+    created_by: entry.created_by,
+    updated_by: entry.updated_by,
+    created_at: entry.created_at,
+    updated_at: entry.updated_at
+  };
+}
+
+function buildMemoryAwarePrompt(options: {
+  basePrompt: string | null;
+  projectId: string;
+  agentRole: string;
+  memoryEntries: AgentMemoryEntryEntity[];
+}): string {
+  const basePrompt = options.basePrompt ?? "Выполни делегированную задачу и верни краткий итог.";
+  if (options.memoryEntries.length === 0) {
+    return trimToLimit(basePrompt, MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
+  }
+
+  const lines = options.memoryEntries.map((entry, index) => {
+    const compactContent = trimToLimit(entry.content.replace(/\s+/g, " ").trim(), 500);
+    return `${index + 1}. [${entry.title}] ${compactContent}`;
+  });
+
+  const enriched = [
+    basePrompt,
+    "",
+    `Память проекта (${options.projectId}) для роли ${options.agentRole}:`,
+    ...lines,
+    "",
+    "Используй память только если она релевантна задаче."
+  ].join("\n");
+
+  return trimToLimit(enriched, MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -2830,6 +2898,150 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.code(202).send({ accepted: true });
   });
 
+  app.post("/api/memory/entries", async (request, reply) => {
+    const body = request.body as MemoryEntryCreateRequest;
+    const projectId = asNonEmptyString(body.project_id);
+    const rawAgentRole = asNonEmptyString(body.agent_role);
+    const title = asNonEmptyString(body.title);
+    const content = asNonEmptyString(body.content);
+
+    if (!projectId || !rawAgentRole || !title || !content) {
+      return sendError(
+        reply,
+        400,
+        "project_id, agent_role, title and content are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (content.length > MAX_MEMORY_CONTENT_LENGTH) {
+      return sendError(
+        reply,
+        400,
+        `content must be <= ${MAX_MEMORY_CONTENT_LENGTH} chars`,
+        "VALIDATION_ERROR"
+      );
+    }
+
+    let isActive = true;
+    if (body.is_active !== undefined && body.is_active !== null) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      isActive = body.is_active;
+    }
+
+    const created = await persistence.createAgentMemoryEntry({
+      project_id: projectId,
+      agent_role: normalizeAgentRole(rawAgentRole),
+      title,
+      content,
+      is_active: isActive,
+      created_by: "admin"
+    });
+
+    return reply.code(201).send(memoryEntryToResponse(created));
+  });
+
+  app.get("/api/memory/entries", async (request, reply) => {
+    const query = request.query as {
+      project_id?: unknown;
+      agent_role?: unknown;
+      is_active?: unknown;
+      limit?: unknown;
+    };
+    const projectId = asNonEmptyString(query.project_id) ?? undefined;
+    const role = asNonEmptyString(query.agent_role);
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+    if (query.limit != null && (!parsedLimit || parsedLimit <= 0)) {
+      return sendError(reply, 400, "limit must be a positive integer", "VALIDATION_ERROR");
+    }
+
+    let isActive: boolean | undefined;
+    if (query.is_active !== undefined && query.is_active !== null) {
+      if (typeof query.is_active === "boolean") {
+        isActive = query.is_active;
+      } else if (typeof query.is_active === "string") {
+        const normalized = query.is_active.trim().toLowerCase();
+        if (normalized === "true" || normalized === "1") {
+          isActive = true;
+        } else if (normalized === "false" || normalized === "0") {
+          isActive = false;
+        } else {
+          return sendError(reply, 400, "is_active must be boolean", "VALIDATION_ERROR");
+        }
+      } else {
+        return sendError(reply, 400, "is_active must be boolean", "VALIDATION_ERROR");
+      }
+    }
+
+    const items = await persistence.listAgentMemoryEntries({
+      project_id: projectId,
+      agent_role: role ? normalizeAgentRole(role) : undefined,
+      is_active: isActive,
+      limit
+    });
+
+    return reply.send({
+      items: items.map((entry) => memoryEntryToResponse(entry))
+    });
+  });
+
+  app.patch("/api/memory/entries/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as MemoryEntryPatchRequest;
+    const patch: Parameters<Persistence["patchAgentMemoryEntry"]>[1] = {
+      updated_by: "admin"
+    };
+
+    if (body.title !== undefined) {
+      const title = asNonEmptyString(body.title);
+      if (!title) {
+        return sendError(reply, 400, "title must be a non-empty string", "VALIDATION_ERROR");
+      }
+      patch.title = title;
+    }
+
+    if (body.content !== undefined) {
+      const content = asNonEmptyString(body.content);
+      if (!content) {
+        return sendError(reply, 400, "content must be a non-empty string", "VALIDATION_ERROR");
+      }
+      if (content.length > MAX_MEMORY_CONTENT_LENGTH) {
+        return sendError(
+          reply,
+          400,
+          `content must be <= ${MAX_MEMORY_CONTENT_LENGTH} chars`,
+          "VALIDATION_ERROR"
+        );
+      }
+      patch.content = content;
+    }
+
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_active = body.is_active;
+    }
+
+    if (
+      patch.title === undefined &&
+      patch.content === undefined &&
+      patch.is_active === undefined
+    ) {
+      return sendError(reply, 400, "No fields to update", "VALIDATION_ERROR");
+    }
+
+    const updated = await persistence.patchAgentMemoryEntry(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Memory entry not found", "NOT_FOUND");
+    }
+
+    return reply.send(memoryEntryToResponse(updated));
+  });
+
   app.get("/api/delegation/capabilities", async (_request, reply) => {
     const templates = await persistence.listAgentTemplates();
     const capabilityMap = new Map<
@@ -2963,6 +3175,36 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return reply.code(202).send(delegationToResponse(failedDelegation));
     }
 
+    const requesterTask = await persistence.getTaskById(requesterTaskId);
+    const memoryProjectId = requesterTask?.project_id ?? null;
+    const memoryAgentRole = normalizeAgentRole(targetTemplate.role);
+    const memoryDisabled = payload["memory_disabled"] === true;
+    const memoryEntries =
+      memoryDisabled || !memoryProjectId
+        ? []
+        : await persistence.listAgentMemoryEntries({
+            project_id: memoryProjectId,
+            agent_role: memoryAgentRole,
+            is_active: true,
+            limit: MAX_MEMORY_CONTEXT_ENTRIES
+          });
+    const executionPrompt = buildMemoryAwarePrompt({
+      basePrompt: inputPrompt,
+      projectId: memoryProjectId ?? "unknown_project",
+      agentRole: memoryAgentRole,
+      memoryEntries
+    });
+    const executionPayload: Record<string, unknown> = {
+      ...payload,
+      prompt: executionPrompt,
+      memory_context: {
+        project_id: memoryProjectId,
+        agent_role: memoryAgentRole,
+        entries_used: memoryEntries.length,
+        disabled: memoryDisabled
+      }
+    };
+
     const selectedAuthProfile = await persistence.getActiveAuthProfile();
     const acceptedAt = new Date();
     const acceptedDelegation = await persistence.updateDelegationRequest(delegation.id, {
@@ -2999,7 +3241,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 500, "Failed to update delegation status", "INTERNAL_ERROR");
     }
 
-    let timeoutAttemptsRemaining = asNonNegativeInteger(payload["simulate_timeout_attempts"]) ?? 0;
+    let timeoutAttemptsRemaining =
+      asNonNegativeInteger(executionPayload["simulate_timeout_attempts"]) ?? 0;
 
     for (let attempt = 1; attempt <= DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT; attempt += 1) {
       let executionResult:
@@ -3021,7 +3264,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             trace_id: traceId,
             requester_task_id: requesterTaskId,
             capability,
-            payload,
+            payload: executionPayload,
             target_template: {
               id: targetTemplate.id,
               role: targetTemplate.role,
@@ -3079,7 +3322,13 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           execution_meta_json: {
             code: executionError.code,
             attempt,
-            reason: failureReason
+            reason: failureReason,
+            memory_context: {
+              project_id: memoryProjectId,
+              agent_role: memoryAgentRole,
+              entries_used: memoryEntries.length,
+              disabled: memoryDisabled
+            }
           },
           ended_at: new Date()
         });
@@ -3099,7 +3348,15 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         result_summary: executionResult.result_summary,
         execution_mode: executionResult.execution_mode,
         execution_log: trimToLimit(executionResult.output_text, MAX_DELEGATION_LOG_LENGTH),
-        execution_meta_json: executionResult.metadata ?? null,
+        execution_meta_json: {
+          ...(executionResult.metadata ?? {}),
+          memory_context: {
+            project_id: memoryProjectId,
+            agent_role: memoryAgentRole,
+            entries_used: memoryEntries.length,
+            disabled: memoryDisabled
+          }
+        },
         ended_at: new Date()
       });
       if (!completedDelegation) {

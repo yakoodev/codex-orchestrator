@@ -37,6 +37,12 @@ const I18N = {
     agent_preparing: "Готовятся",
     agent_running: "Запущены",
     agent_recent: "Недавние",
+    memory_title: "Память агентов",
+    memory_project_label: "Project ID",
+    memory_role_label: "Роль агента",
+    memory_note_title_label: "Заголовок памяти",
+    memory_note_content_label: "Содержимое памяти",
+    create_memory_note: "Сохранить память",
     accounts_title: "Аккаунты",
     profiles_title: "Auth-профили",
     profile_label_label: "Метка",
@@ -63,6 +69,7 @@ const I18N = {
     no_preparing_agents: "Нет агентов в состоянии подготовки.",
     no_running_agents: "Нет запущенных агентов.",
     no_recent_agents: "Нет завершенных/ошибочных запусков.",
+    no_memory_entries: "Записей памяти пока нет.",
     no_switch_events: "Событий переключения пока нет.",
     no_executions: "Исполнений модуля пока нет.",
     held_summary_count: "{count} задач(а/и) удержано guard-политикой.",
@@ -72,6 +79,8 @@ const I18N = {
     profile_state_inactive: "неактивен",
     action_activate: "Активировать",
     action_deactivate: "Деактивировать",
+    action_enable: "Включить",
+    action_disable: "Выключить",
     last_refresh_prefix: "Последнее обновление",
     log_protected_skipped: "Пропущены защищенные панели: сначала укажи X-Admin-Token.",
     log_refresh_complete: "Обновление завершено.",
@@ -88,6 +97,10 @@ const I18N = {
     log_profile_uploaded: "Профиль загружен",
     log_profile_action_accepted: "Операция по профилю принята",
     log_agent_cards_refreshed: "Карточки агентов обновлены.",
+    log_memory_refreshed: "Память агентов обновлена.",
+    log_memory_created: "Запись памяти создана",
+    log_memory_toggled: "Состояние записи памяти обновлено",
+    log_memory_requirements: "Для памяти нужны project_id, agent_role, title и content.",
     log_account_fleet_refreshed: "Карточки аккаунтов обновлены.",
     log_events_refreshed: "Switch events обновлены.",
     log_module_refreshed: "Конфиг модуля обновлен.",
@@ -131,6 +144,12 @@ const I18N = {
     agent_preparing: "Preparing",
     agent_running: "Running",
     agent_recent: "Recent",
+    memory_title: "Agent Memory",
+    memory_project_label: "Project ID",
+    memory_role_label: "Agent Role",
+    memory_note_title_label: "Memory title",
+    memory_note_content_label: "Memory content",
+    create_memory_note: "Save memory",
     accounts_title: "Account Fleet",
     profiles_title: "Auth Profiles",
     profile_label_label: "Label",
@@ -157,6 +176,7 @@ const I18N = {
     no_preparing_agents: "No agents in preparing state.",
     no_running_agents: "No running agents.",
     no_recent_agents: "No recent completed/failed agents.",
+    no_memory_entries: "No memory entries yet.",
     no_switch_events: "No switch events yet.",
     no_executions: "No module executions yet.",
     held_summary_count: "{count} task(s) are currently held by guard policy.",
@@ -166,6 +186,8 @@ const I18N = {
     profile_state_inactive: "inactive",
     action_activate: "Activate",
     action_deactivate: "Deactivate",
+    action_enable: "Enable",
+    action_disable: "Disable",
     last_refresh_prefix: "Last refresh",
     log_protected_skipped: "Protected panels skipped: set X-Admin-Token first.",
     log_refresh_complete: "Refresh complete.",
@@ -182,6 +204,10 @@ const I18N = {
     log_profile_uploaded: "Profile uploaded",
     log_profile_action_accepted: "Profile action accepted",
     log_agent_cards_refreshed: "Agent cards refreshed.",
+    log_memory_refreshed: "Agent memory refreshed.",
+    log_memory_created: "Memory entry created",
+    log_memory_toggled: "Memory entry state updated",
+    log_memory_requirements: "Memory requires project_id, agent_role, title, and content.",
     log_account_fleet_refreshed: "Account cards refreshed.",
     log_events_refreshed: "Switch events refreshed.",
     log_module_refreshed: "Module config refreshed.",
@@ -210,6 +236,9 @@ const ui = {
   agentsPreparing: document.getElementById("agents-preparing"),
   agentsRunning: document.getElementById("agents-running"),
   agentsRecent: document.getElementById("agents-recent"),
+  refreshMemory: document.getElementById("refresh-memory"),
+  memoryForm: document.getElementById("memory-form"),
+  memoryList: document.getElementById("memory-list"),
   refreshHeld: document.getElementById("refresh-held"),
   releaseHeld: document.getElementById("release-held"),
   heldSummary: document.getElementById("held-summary"),
@@ -240,6 +269,7 @@ const appState = {
   lang: "ru",
   tasks: [],
   agentCards: { preparing: [], running: [], recent: [] },
+  memoryEntries: [],
   held: [],
   profiles: [],
   accountFleet: [],
@@ -358,6 +388,7 @@ function applyI18n() {
 
   renderTasks(appState.tasks);
   renderAgentCards(appState.agentCards);
+  renderMemoryEntries(appState.memoryEntries);
   renderHeld(appState.held);
   renderProfiles(appState.profiles);
   renderAccountFleet(appState.accountFleet);
@@ -482,6 +513,36 @@ function renderAgentCards(cards) {
   renderBucket(ui.agentsPreparing, nextCards.preparing, "no_preparing_agents");
   renderBucket(ui.agentsRunning, nextCards.running, "no_running_agents");
   renderBucket(ui.agentsRecent, nextCards.recent, "no_recent_agents");
+}
+
+function renderMemoryEntries(items) {
+  appState.memoryEntries = Array.isArray(items) ? items : [];
+
+  if (appState.memoryEntries.length === 0) {
+    ui.memoryList.innerHTML = `<li class="muted">${escapeHtml(t("no_memory_entries"))}</li>`;
+    return;
+  }
+
+  ui.memoryList.innerHTML = appState.memoryEntries
+    .slice(0, 30)
+    .map((item) => {
+      const isActive = item.is_active === true;
+      const actionLabel = isActive ? t("action_disable") : t("action_enable");
+      const stateClass = isActive ? "pill pill-active" : "pill";
+      const stateLabel = isActive ? t("profile_state_active") : t("profile_state_inactive");
+      return `<li class="memory-item">
+        <div class="memory-item-head">
+          <span class="memory-item-title">${escapeHtml(item.title)}</span>
+          <span class="${stateClass}">${escapeHtml(stateLabel)}</span>
+        </div>
+        <div class="memory-item-meta"><code>${escapeHtml(item.project_id)}</code> role=${escapeHtml(item.agent_role)}</div>
+        <div class="memory-item-content">${escapeHtml(item.content)}</div>
+        <div class="actions">
+          <button type="button" class="ghost" data-action="memory-toggle" data-id="${escapeHtml(item.id)}" data-next="${escapeHtml(String(!isActive))}">${escapeHtml(actionLabel)}</button>
+        </div>
+      </li>`;
+    })
+    .join("");
 }
 
 function renderAccountFleet(items) {
@@ -645,6 +706,23 @@ async function refreshAgentCards() {
   renderAgentCards(response);
 }
 
+async function refreshMemoryEntries() {
+  const form = new FormData(ui.memoryForm);
+  const projectId = String(form.get("project_id") ?? "").trim();
+  const agentRole = String(form.get("agent_role") ?? "").trim();
+  const params = new URLSearchParams();
+  if (projectId) {
+    params.set("project_id", projectId);
+  }
+  if (agentRole) {
+    params.set("agent_role", agentRole.toLowerCase());
+  }
+  params.set("limit", "100");
+
+  const response = await requestJson(`/api/memory/entries?${params.toString()}`);
+  renderMemoryEntries(response.items);
+}
+
 async function refreshHeld() {
   const response = await requestJson("/api/queue/held");
   renderHeld(response.items);
@@ -744,6 +822,7 @@ async function refreshProtectedPanels() {
   const jobs = [
     ["tasks", refreshTasks],
     ["agent-cards", refreshAgentCards],
+    ["memory", refreshMemoryEntries],
     ["held", refreshHeld],
     ["profiles", refreshProfiles],
     ["account-fleet", refreshAccountFleet],
@@ -829,6 +908,86 @@ function installHandlers() {
       log(t("log_agent_cards_refreshed"));
     } catch (error) {
       log("agent cards refresh failed", { message: error.message, payload: error.payload });
+    }
+  });
+
+  ui.refreshMemory.addEventListener("click", async () => {
+    try {
+      await refreshMemoryEntries();
+      updateLastRefresh();
+      log(t("log_memory_refreshed"));
+    } catch (error) {
+      log("memory refresh failed", { message: error.message, payload: error.payload });
+    }
+  });
+
+  ui.memoryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(ui.memoryForm);
+    const payload = {
+      project_id: String(form.get("project_id") ?? "").trim(),
+      agent_role: String(form.get("agent_role") ?? "").trim().toLowerCase(),
+      title: String(form.get("title") ?? "").trim(),
+      content: String(form.get("content") ?? "").trim()
+    };
+
+    if (!payload.project_id || !payload.agent_role || !payload.title || !payload.content) {
+      log(t("log_memory_requirements"));
+      return;
+    }
+
+    try {
+      const created = await requestJson("/api/memory/entries", {
+        method: "POST",
+        json: payload
+      });
+      log(t("log_memory_created"), {
+        id: created.id,
+        project_id: created.project_id,
+        agent_role: created.agent_role
+      });
+      const contentInput = document.getElementById("memory-content");
+      const titleInput = document.getElementById("memory-title");
+      if (contentInput) {
+        contentInput.value = "";
+      }
+      if (titleInput) {
+        titleInput.value = "";
+      }
+      await refreshMemoryEntries();
+      updateLastRefresh();
+    } catch (error) {
+      log("memory create failed", { message: error.message, payload: error.payload });
+    }
+  });
+
+  ui.memoryList.addEventListener("click", async (event) => {
+    const target = event.target.closest("button[data-action='memory-toggle']");
+    if (!target) {
+      return;
+    }
+
+    const id = target.dataset.id;
+    const nextValue = target.dataset.next;
+    if (!id || (nextValue !== "true" && nextValue !== "false")) {
+      return;
+    }
+
+    try {
+      const response = await requestJson(`/api/memory/entries/${id}`, {
+        method: "PATCH",
+        json: {
+          is_active: nextValue === "true"
+        }
+      });
+      log(t("log_memory_toggled"), {
+        id: response.id,
+        is_active: response.is_active
+      });
+      await refreshMemoryEntries();
+      updateLastRefresh();
+    } catch (error) {
+      log("memory toggle failed", { message: error.message, payload: error.payload });
     }
   });
 

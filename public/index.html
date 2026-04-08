@@ -151,6 +151,31 @@
 
         <article class="card reveal">
           <div class="section-head">
+            <h2 data-i18n="memory_title">Agent Memory</h2>
+            <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
+          </div>
+          <form id="memory-form" class="row-form compact">
+            <div class="split">
+              <div>
+                <label for="memory-project" data-i18n="memory_project_label">Project ID</label>
+                <input id="memory-project" name="project_id" value="web-ui" required />
+              </div>
+              <div>
+                <label for="memory-role" data-i18n="memory_role_label">Agent Role</label>
+                <input id="memory-role" name="agent_role" value="reviewer" required />
+              </div>
+            </div>
+            <label for="memory-title" data-i18n="memory_note_title_label">Memory title</label>
+            <input id="memory-title" name="title" required />
+            <label for="memory-content" data-i18n="memory_note_content_label">Memory content</label>
+            <textarea id="memory-content" name="content" rows="3" required></textarea>
+            <button type="submit" data-i18n="create_memory_note">Save memory</button>
+          </form>
+          <ul id="memory-list" class="line-list"></ul>
+        </article>
+
+        <article class="card reveal">
+          <div class="section-head">
             <h2 data-i18n="held_title">Held Queue</h2>
             <div class="actions">
               <button id="refresh-held" class="ghost" data-i18n="refresh">Обновить</button>

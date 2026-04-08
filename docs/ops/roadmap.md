@@ -21,13 +21,21 @@
   - добавить более детальный drill-down по каждому запуску.
 
 ## Planned: Project/Agent Memory System
-- Статус: `planned`.
+- Статус: `in_progress`.
 - Цель: память по проекту и по ролям агентов (designer/tester/etc).
 - Базовый scope:
   - хранилище памяти с привязкой `project_id + agent_role`;
   - запись/чтение памяти в workflow задач и делегаций;
   - UI-представление памяти для оператора.
 - Пример сценария: дизайнер фиксирует GUI-контекст, тестировщик использует эту память для более быстрой навигации и регресс-проверок.
+- Текущий прогресс:
+  - добавлен API памяти: `POST/GET/PATCH /api/memory/entries`;
+  - добавлена Prisma-модель `AgentMemoryEntry` + миграция;
+  - память по `project_id + role` автоматически подмешивается в prompt делегации при `POST /api/delegation/dispatch`;
+  - в `/ui/` добавлен блок Agent Memory (создание, просмотр, enable/disable записей).
+- Остается:
+  - добавить role-aware память в Telegram workflow;
+  - добавить richer editor/версионирование памяти и историю изменений.
 
 ## Planned: Account Fleet Cards
 - Статус: `in_progress`.

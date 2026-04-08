@@ -6,6 +6,7 @@ import { createApp, SWITCH_MODULE_KEY } from "../src/app";
 import type { AppConfig } from "../src/config";
 import type {
   ActiveAuthProfileRuntimeEntity,
+  AgentMemoryEntryEntity,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -15,6 +16,7 @@ import type {
   AuthProfileRuntimeEntity,
   AuthContextType,
   AuthSwitchEventEntity,
+  CreateAgentMemoryEntryInput,
   CreateDelegationRequestInput,
   DelegationExecutor,
   CreateModuleExecutionInput,
@@ -67,6 +69,7 @@ class FakePersistence implements Persistence {
   public readonly modules: CustomModuleConfigEntity[] = [];
   public readonly moduleExecutions: ModuleExecutionEntity[] = [];
   public readonly delegations: DelegationRequestEntity[] = [];
+  public readonly memoryEntries: AgentMemoryEntryEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
 
@@ -81,6 +84,7 @@ class FakePersistence implements Persistence {
   private moduleCounter = 1;
   private moduleExecutionCounter = 1;
   private delegationCounter = 1;
+  private memoryEntryCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
 
@@ -408,6 +412,72 @@ class FakePersistence implements Persistence {
       ? sorted.filter((delegation) => statuses.includes(delegation.status))
       : sorted;
     return filtered.slice(0, limit);
+  }
+
+  public async createAgentMemoryEntry(
+    input: CreateAgentMemoryEntryInput
+  ): Promise<AgentMemoryEntryEntity> {
+    const now = new Date();
+    const entry: AgentMemoryEntryEntity = {
+      id: `memory-${this.memoryEntryCounter++}`,
+      project_id: input.project_id,
+      agent_role: input.agent_role,
+      title: input.title,
+      content: input.content,
+      is_active: input.is_active ?? true,
+      created_by: input.created_by,
+      updated_by: input.created_by,
+      created_at: now,
+      updated_at: now
+    };
+    this.memoryEntries.push(entry);
+    return entry;
+  }
+
+  public async listAgentMemoryEntries(options?: {
+    project_id?: string;
+    agent_role?: string;
+    is_active?: boolean;
+    limit?: number;
+  }): Promise<AgentMemoryEntryEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.memoryEntries
+      .filter((entry) => (options?.project_id ? entry.project_id === options.project_id : true))
+      .filter((entry) => (options?.agent_role ? entry.agent_role === options.agent_role : true))
+      .filter((entry) =>
+        typeof options?.is_active === "boolean" ? entry.is_active === options.is_active : true
+      )
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+    return filtered.slice(0, limit);
+  }
+
+  public async patchAgentMemoryEntry(
+    id: string,
+    patch: {
+      title?: string;
+      content?: string;
+      is_active?: boolean;
+      updated_by: string;
+    }
+  ): Promise<AgentMemoryEntryEntity | null> {
+    const entry = this.memoryEntries.find((item) => item.id === id);
+    if (!entry) {
+      return null;
+    }
+
+    if (patch.title !== undefined) {
+      entry.title = patch.title;
+    }
+    if (patch.content !== undefined) {
+      entry.content = patch.content;
+    }
+    if (patch.is_active !== undefined) {
+      entry.is_active = patch.is_active;
+    }
+    entry.updated_by = patch.updated_by;
+    entry.updated_at = new Date();
+
+    return entry;
   }
 
   public async updateDelegationRequest(
@@ -2449,6 +2519,145 @@ describe("smoke-core API", () => {
         id: template.id,
         name: template.name
       }
+    });
+  });
+
+  it("manages agent memory entries via API", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/memory/entries",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "proj-memory",
+        agent_role: "Designer",
+        title: "UI map",
+        content: "Landing page has two key tabs and sticky top nav."
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json()).toMatchObject({
+      project_id: "proj-memory",
+      agent_role: "designer",
+      title: "UI map",
+      is_active: true
+    });
+
+    const createdId = createResponse.json().id as string;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/memory/entries?project_id=proj-memory&agent_role=designer&is_active=true",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/memory/entries/${createdId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        is_active: false
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().is_active).toBe(false);
+
+    const inactiveListResponse = await app.inject({
+      method: "GET",
+      url: "/api/memory/entries?project_id=proj-memory&is_active=false",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(inactiveListResponse.statusCode).toBe(200);
+    expect(inactiveListResponse.json().items).toHaveLength(1);
+  });
+
+  it("injects project-role memory into delegation execution payload", async () => {
+    await app.close();
+
+    const executionCalls: Array<{
+      payload: Record<string, unknown>;
+    }> = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push({
+          payload: input.payload
+        });
+        return {
+          execution_mode: "mock",
+          result_summary: "ok",
+          output_text: "ok"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    const task = await persistence.createTask({
+      title: "Memory task",
+      description: "Needs memory-aware execution",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentMemoryEntry({
+      project_id: "proj-memory",
+      agent_role: "reviewer",
+      title: "UI observation",
+      content: "Tester already confirmed breadcrumbs are required on all pages.",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentTemplate({
+      name: "reviewer-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are reviewer",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-memory-delegation-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Собери review-план" },
+        priority: 50
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(executionCalls).toHaveLength(1);
+    const firstExecution = executionCalls[0];
+    if (!firstExecution) {
+      throw new Error("Expected delegation execution call to be captured");
+    }
+    expect(firstExecution.payload["prompt"]).toContain("Собери review-план");
+    expect(firstExecution.payload["prompt"]).toContain("Память проекта (proj-memory)");
+    expect(firstExecution.payload["prompt"]).toContain("breadcrumbs are required");
+    expect(firstExecution.payload["memory_context"]).toMatchObject({
+      project_id: "proj-memory",
+      agent_role: "reviewer",
+      entries_used: 1,
+      disabled: false
     });
   });
 

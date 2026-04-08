@@ -414,6 +414,33 @@ tbody tr:last-child td {
   font-family: "Consolas", "Lucida Console", monospace;
 }
 
+.memory-item {
+  display: grid;
+  gap: 6px;
+}
+
+.memory-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.memory-item-title {
+  font-weight: 700;
+}
+
+.memory-item-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-family: "Consolas", "Lucida Console", monospace;
+}
+
+.memory-item-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .log {
   margin: 0;
   min-height: 160px;

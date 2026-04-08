@@ -71,6 +71,7 @@ Method 1, API-backed operational history:
 - `GET /api/auth-profiles/chatgpt/switch-events`
 - `GET /api/delegation/{id}`
 - `GET /api/delegation/{id}/result`
+- `GET /api/memory/entries?project_id=<id>&agent_role=<role>`
 
 Method 2, container runtime logs:
 ```bash
@@ -145,6 +146,7 @@ Service integration (uploaded auth profiles):
   - inspect switch-events and held queue.
 - Use operator visibility panels:
   - `Agent Runtime Cards`: watch `preparing/running/recent` delegations with prompt, target template/model, selected account, and log preview.
+  - `Agent Memory`: keep role-specific notes per `project_id + agent_role`; active notes are auto-injected into delegation prompt context.
   - `Account Fleet`: inspect all uploaded profiles with live 5h/weekly limits and reset timestamps.
 
 Notes:

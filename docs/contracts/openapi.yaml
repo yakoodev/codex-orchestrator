@@ -17,6 +17,7 @@ tags:
   - name: ChatGPT Auth Profiles
   - name: Queue
   - name: Packs
+  - name: Memory
   - name: Delegation
   - name: Schedules
   - name: Health
@@ -805,6 +806,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/AcceptedResponse"
 
+  /api/memory/entries:
+    post:
+      tags: [Memory]
+      summary: Create agent memory entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryEntryCreateRequest"
+      responses:
+        "201":
+          description: Created memory entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryEntry"
+    get:
+      tags: [Memory]
+      summary: List agent memory entries
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+        - in: query
+          name: agent_role
+          schema:
+            type: string
+        - in: query
+          name: is_active
+          schema:
+            type: boolean
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Memory entries list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MemoryEntry"
+                required: [items]
+
+  /api/memory/entries/{id}:
+    patch:
+      tags: [Memory]
+      summary: Patch agent memory entry
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryEntryPatchRequest"
+      responses:
+        "200":
+          description: Updated memory entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryEntry"
+
   /api/delegation/capabilities:
     get:
       tags: [Delegation]
@@ -1554,6 +1628,69 @@ components:
         source_ref:
           type: string
       additionalProperties: false
+
+    MemoryEntryCreateRequest:
+      type: object
+      properties:
+        project_id:
+          type: string
+        agent_role:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        is_active:
+          type: boolean
+      required: [project_id, agent_role, title, content]
+      additionalProperties: false
+
+    MemoryEntryPatchRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        is_active:
+          type: boolean
+      additionalProperties: false
+
+    MemoryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        agent_role:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        is_active:
+          type: boolean
+        created_by:
+          type: string
+        updated_by:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - project_id
+        - agent_role
+        - title
+        - content
+        - is_active
+        - created_by
+        - created_at
+        - updated_at
 
     CapabilityDescriptor:
       type: object

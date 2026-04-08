@@ -17,12 +17,14 @@ import {
 } from "@prisma/client";
 import type {
   ActiveAuthProfileRuntimeEntity,
+  AgentMemoryEntryEntity,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
   AuthContextType,
   AuthProfileEntity,
   AuthSwitchEventEntity,
+  CreateAgentMemoryEntryInput,
   CreateAuthProfileInput,
   CreateAuthSwitchEventInput,
   CreateAgentTemplateInput,
@@ -231,6 +233,32 @@ function toDelegationRequestEntity(entity: {
     created_at: entity.created_at,
     started_at: entity.started_at,
     ended_at: entity.ended_at
+  };
+}
+
+function toAgentMemoryEntryEntity(entity: {
+  id: string;
+  project_id: string;
+  agent_role: string;
+  title: string;
+  content: string;
+  is_active: boolean;
+  created_by: string;
+  updated_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+}): AgentMemoryEntryEntity {
+  return {
+    id: entity.id,
+    project_id: entity.project_id,
+    agent_role: entity.agent_role,
+    title: entity.title,
+    content: entity.content,
+    is_active: entity.is_active,
+    created_by: entity.created_by,
+    updated_by: entity.updated_by,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
   };
 }
 
@@ -654,6 +682,79 @@ export class PrismaPersistence implements Persistence {
     });
 
     return delegations.map((delegation) => toDelegationRequestEntity(delegation));
+  }
+
+  public async createAgentMemoryEntry(
+    input: CreateAgentMemoryEntryInput
+  ): Promise<AgentMemoryEntryEntity> {
+    const created = await this.prisma.agentMemoryEntry.create({
+      data: {
+        project_id: input.project_id,
+        agent_role: input.agent_role,
+        title: input.title,
+        content: input.content,
+        is_active: input.is_active ?? true,
+        created_by: input.created_by,
+        updated_by: input.created_by
+      }
+    });
+
+    return toAgentMemoryEntryEntity(created);
+  }
+
+  public async listAgentMemoryEntries(options?: {
+    project_id?: string;
+    agent_role?: string;
+    is_active?: boolean;
+    limit?: number;
+  }): Promise<AgentMemoryEntryEntity[]> {
+    const where: Prisma.AgentMemoryEntryWhereInput = {};
+    if (options?.project_id) {
+      where.project_id = options.project_id;
+    }
+    if (options?.agent_role) {
+      where.agent_role = options.agent_role;
+    }
+    if (typeof options?.is_active === "boolean") {
+      where.is_active = options.is_active;
+    }
+
+    const entries = await this.prisma.agentMemoryEntry.findMany({
+      where,
+      orderBy: { updated_at: "desc" },
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return entries.map((entry) => toAgentMemoryEntryEntity(entry));
+  }
+
+  public async patchAgentMemoryEntry(
+    id: string,
+    patch: {
+      title?: string;
+      content?: string;
+      is_active?: boolean;
+      updated_by: string;
+    }
+  ): Promise<AgentMemoryEntryEntity | null> {
+    const existing = await this.prisma.agentMemoryEntry.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.agentMemoryEntry.update({
+      where: { id },
+      data: {
+        title: patch.title,
+        content: patch.content,
+        is_active: patch.is_active,
+        updated_by: patch.updated_by
+      }
+    });
+
+    return toAgentMemoryEntryEntity(updated);
   }
 
   public async updateDelegationRequest(
