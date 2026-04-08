@@ -50,11 +50,11 @@
 
       <section class="card reveal tabs-shell">
         <div class="tabs" role="tablist" aria-label="Admin UI Sections">
-          <button type="button" class="tab-button" data-tab-target="overview" data-i18n="tab_overview">Обзор</button>
-          <button type="button" class="tab-button" data-tab-target="tasks" data-i18n="tab_tasks">Задачи и очередь</button>
-          <button type="button" class="tab-button" data-tab-target="agents" data-i18n="tab_agents">Агенты</button>
-          <button type="button" class="tab-button" data-tab-target="accounts" data-i18n="tab_accounts">Аккаунты и лимиты</button>
-          <button type="button" class="tab-button" data-tab-target="system" data-i18n="tab_system">Система</button>
+          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="overview" data-i18n="tab_overview">Обзор</button>
+          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="tasks" data-i18n="tab_tasks">Задачи и очередь</button>
+          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="agents" data-i18n="tab_agents">Агенты</button>
+          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="accounts" data-i18n="tab_accounts">Аккаунты и лимиты</button>
+          <button type="button" class="tab-button" role="tab" aria-selected="false" data-tab-target="system" data-i18n="tab_system">Система</button>
         </div>
       </section>
 
@@ -109,46 +109,79 @@
         <article class="card reveal" data-tab-content="tasks">
           <div class="section-head">
             <h2 data-i18n="tasks_title">Tasks</h2>
-            <button id="refresh-tasks" class="ghost" data-i18n="refresh">Обновить</button>
+            <div class="actions action-bar">
+              <label class="checkbox small">
+                <input id="toggle-autorefresh-tasks" type="checkbox" />
+                <span data-i18n="autorefresh_label">Авто</span>
+              </label>
+              <span id="tasks-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+              <button id="refresh-tasks" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
           </div>
-          <form id="task-form" class="row-form compact">
-            <label for="task-title" data-i18n="task_title_label">Title</label>
-            <input id="task-title" name="title" required />
-            <label for="task-description" data-i18n="task_description_label">Description</label>
-            <textarea id="task-description" name="description" rows="2" required></textarea>
+          <details id="task-create-shell" class="create-task-shell" open>
+            <summary data-i18n="task_create_toggle">Создать задачу</summary>
+            <form id="task-form" class="row-form compact">
+              <label for="task-title" data-i18n="task_title_label">Title</label>
+              <input id="task-title" name="title" required />
+              <label for="task-description" data-i18n="task_description_label">Description</label>
+              <textarea id="task-description" name="description" rows="2" required></textarea>
+              <div class="split">
+                <div>
+                  <label for="task-project" data-i18n="task_project_label">Project ID</label>
+                  <input id="task-project" name="project_id" value="web-ui" required />
+                </div>
+                <div>
+                  <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
+                  <input id="task-repo" name="repo_id" value="web-ui" required />
+                </div>
+              </div>
+              <button type="submit" data-i18n="create_task">Create task</button>
+            </form>
+          </details>
+          <div class="task-filters split">
+            <div>
+              <label for="task-filter-search" data-i18n="task_filter_search_label">Поиск</label>
+              <input id="task-filter-search" data-i18n-placeholder="task_filter_search_placeholder" placeholder="id/заголовок/описание" />
+            </div>
             <div class="split">
               <div>
-                <label for="task-project" data-i18n="task_project_label">Project ID</label>
-                <input id="task-project" name="project_id" value="web-ui" required />
+                <label for="task-filter-project" data-i18n="task_filter_project_label">Project</label>
+                <select id="task-filter-project">
+                  <option value="all" data-i18n="task_filter_any_project">Все проекты</option>
+                </select>
               </div>
               <div>
-                <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
-                <input id="task-repo" name="repo_id" value="web-ui" required />
+                <label for="task-filter-status" data-i18n="task_filter_status_label">Status</label>
+                <select id="task-filter-status">
+                  <option value="all" data-i18n="task_filter_any_status">Все статусы</option>
+                </select>
               </div>
             </div>
-            <button type="submit" data-i18n="create_task">Create task</button>
-          </form>
+          </div>
+          <div class="actions action-bar">
+            <button id="task-filter-clear" type="button" class="ghost" data-i18n="task_filter_clear">Сбросить фильтры</button>
+          </div>
           <div class="task-board">
             <section class="task-column task-column-waiting">
               <div class="task-column-head">
                 <p class="tiny-label" data-i18n="task_board_waiting">Ожидает запуска</p>
                 <span id="tasks-waiting-count" class="count-pill">0</span>
               </div>
-              <ul id="tasks-waiting" class="line-list"></ul>
+              <ul id="tasks-waiting" class="line-list scroll-list"></ul>
             </section>
             <section class="task-column task-column-running">
               <div class="task-column-head">
                 <p class="tiny-label" data-i18n="task_board_running">Запущена</p>
                 <span id="tasks-running-count" class="count-pill">0</span>
               </div>
-              <ul id="tasks-running" class="line-list"></ul>
+              <ul id="tasks-running" class="line-list scroll-list"></ul>
             </section>
             <section class="task-column task-column-completed">
               <div class="task-column-head">
                 <p class="tiny-label" data-i18n="task_board_completed">Выполнена</p>
                 <span id="tasks-completed-count" class="count-pill">0</span>
               </div>
-              <ul id="tasks-completed" class="line-list"></ul>
+              <ul id="tasks-completed" class="line-list scroll-list"></ul>
             </section>
           </div>
         </article>
@@ -156,40 +189,97 @@
         <article class="card reveal" data-tab-content="agents">
           <div class="section-head">
             <h2 data-i18n="agent_cards_title">Agent Runtime Cards</h2>
-            <button id="refresh-agent-cards" class="ghost" data-i18n="refresh">Обновить</button>
+            <div class="actions action-bar">
+              <label class="checkbox small">
+                <input id="toggle-autorefresh-agents" type="checkbox" />
+                <span data-i18n="autorefresh_label">Авто</span>
+              </label>
+              <span id="agents-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+              <button id="refresh-agent-cards" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
           </div>
-          <div class="agent-columns">
-            <section>
-              <p class="tiny-label" data-i18n="agent_preparing">Preparing</p>
-              <ul id="agents-preparing" class="line-list"></ul>
-            </section>
-            <section>
-              <p class="tiny-label" data-i18n="agent_running">Running</p>
-              <ul id="agents-running" class="line-list"></ul>
-            </section>
-            <section>
-              <p class="tiny-label" data-i18n="agent_recent">Recent</p>
-              <ul id="agents-recent" class="line-list"></ul>
-            </section>
+          <div class="agents-workspace">
+            <div class="agent-columns">
+              <section>
+                <div class="task-column-head">
+                  <p class="tiny-label" data-i18n="agent_preparing">Preparing</p>
+                  <span id="agents-preparing-count" class="count-pill">0</span>
+                </div>
+                <ul id="agents-preparing" class="line-list scroll-list"></ul>
+              </section>
+              <section>
+                <div class="task-column-head">
+                  <p class="tiny-label" data-i18n="agent_running">Running</p>
+                  <span id="agents-running-count" class="count-pill">0</span>
+                </div>
+                <ul id="agents-running" class="line-list scroll-list"></ul>
+              </section>
+              <section>
+                <div class="task-column-head">
+                  <p class="tiny-label" data-i18n="agent_recent">Recent</p>
+                  <span id="agents-recent-count" class="count-pill">0</span>
+                </div>
+                <ul id="agents-recent" class="line-list scroll-list"></ul>
+              </section>
+            </div>
+            <aside class="agent-inspector">
+              <p class="tiny-label" data-i18n="agent_inspector_title">Инспектор агента</p>
+              <div id="agent-inspector-empty" class="muted" data-i18n="agent_inspector_empty">
+                Выбери карточку агента, чтобы посмотреть prompt и log.
+              </div>
+              <div id="agent-inspector-content" class="agent-inspector-content" hidden>
+                <div class="agent-inspector-row"><span data-i18n="agent_field_id">id</span><code id="agent-inspector-id"></code></div>
+                <div class="agent-inspector-row"><span data-i18n="agent_field_status">status</span><span id="agent-inspector-status"></span></div>
+                <div class="agent-inspector-row"><span data-i18n="agent_field_capability">capability</span><span id="agent-inspector-capability"></span></div>
+                <div class="agent-inspector-row"><span data-i18n="agent_field_template">template</span><span id="agent-inspector-template"></span></div>
+                <div class="agent-inspector-row"><span data-i18n="agent_field_account">account</span><span id="agent-inspector-account"></span></div>
+                <div class="agent-inspector-block">
+                  <p class="tiny-label" data-i18n="agent_field_prompt">prompt</p>
+                  <pre id="agent-inspector-prompt"></pre>
+                </div>
+                <div class="agent-inspector-block">
+                  <p class="tiny-label" data-i18n="agent_field_log">log</p>
+                  <pre id="agent-inspector-log"></pre>
+                </div>
+              </div>
+            </aside>
           </div>
         </article>
 
         <article class="card reveal" data-tab-content="tasks">
           <div class="section-head">
             <h2 data-i18n="held_title">Held Queue</h2>
-            <div class="actions">
+            <div class="actions action-bar">
+              <span id="held-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
               <button id="refresh-held" class="ghost" data-i18n="refresh">Обновить</button>
               <button id="release-held" class="warn" data-i18n="release">Release</button>
             </div>
           </div>
           <p class="muted" id="held-summary">No data yet.</p>
-          <ul id="held-list" class="line-list"></ul>
+          <ul id="held-list" class="line-list scroll-list held-scroll"></ul>
+          <section class="task-details-card">
+            <p class="tiny-label" data-i18n="task_details_title">Детали задачи</p>
+            <div id="task-details-content" class="muted" data-i18n="task_details_empty">
+              Выбери карточку задачи, чтобы посмотреть детали.
+            </div>
+          </section>
         </article>
 
         <article class="card reveal" data-tab-content="accounts">
+          <div class="tabs inner-tabs" role="tablist" aria-label="Accounts Sections">
+            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="profiles" data-i18n="accounts_subtab_profiles">Профили</button>
+            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="limits" data-i18n="accounts_subtab_limits">Лимиты</button>
+            <button type="button" class="account-tab-button" role="tab" aria-selected="false" data-accounts-target="history" data-i18n="accounts_subtab_history">История</button>
+          </div>
+        </article>
+
+        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="profiles">
           <div class="section-head">
             <h2 data-i18n="profiles_title">Auth Profiles</h2>
-            <button id="refresh-profiles" class="ghost" data-i18n="refresh">Обновить</button>
+            <div class="actions action-bar">
+              <span id="profiles-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+              <button id="refresh-profiles" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
           </div>
           <form id="upload-form" class="row-form compact">
             <label for="profile-label" data-i18n="profile_label_label">Label</label>
@@ -202,18 +292,51 @@
           <div id="profiles-body" class="profile-grid"></div>
         </article>
 
-        <article class="card reveal" data-tab-content="accounts">
+        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="history">
           <div class="section-head">
             <h2 data-i18n="events_title">Switch Events</h2>
-            <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
+            <div class="actions action-bar">
+              <label class="checkbox small">
+                <input id="toggle-autorefresh-events" type="checkbox" />
+                <span data-i18n="autorefresh_label">Авто</span>
+              </label>
+              <span id="events-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+              <button id="refresh-switch-events" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
           </div>
-          <ul id="switch-events" class="line-list"></ul>
+          <div class="split switch-filters">
+            <div>
+              <label for="switch-filter-search" data-i18n="switch_filter_search_label">Поиск</label>
+              <input id="switch-filter-search" data-i18n-placeholder="switch_filter_search_placeholder" placeholder="reason/profile/status" />
+            </div>
+            <div class="split">
+              <div>
+                <label for="switch-filter-status" data-i18n="switch_filter_status_label">Status</label>
+                <select id="switch-filter-status">
+                  <option value="all" data-i18n="switch_filter_any_status">Все статусы</option>
+                </select>
+              </div>
+              <div>
+                <label for="switch-filter-profile" data-i18n="switch_filter_profile_label">Profile</label>
+                <select id="switch-filter-profile">
+                  <option value="all" data-i18n="switch_filter_any_profile">Все профили</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="actions action-bar">
+            <button id="switch-filter-clear" type="button" class="ghost" data-i18n="switch_filter_clear">Сбросить фильтры</button>
+          </div>
+          <ul id="switch-events" class="line-list scroll-list"></ul>
         </article>
 
-        <article class="card reveal" data-tab-content="accounts">
+        <article class="card reveal" data-tab-content="accounts" data-accounts-panel="limits">
           <div class="section-head">
             <h2 data-i18n="accounts_title">Account Fleet</h2>
-            <button id="refresh-account-fleet" class="ghost" data-i18n="refresh">Обновить</button>
+            <div class="actions action-bar">
+              <span id="limits-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+              <button id="refresh-account-fleet" class="ghost" data-i18n="refresh">Обновить</button>
+            </div>
           </div>
           <div id="account-fleet" class="account-grid"></div>
         </article>
@@ -221,7 +344,8 @@
         <article class="card reveal" data-tab-content="system">
           <div class="section-head">
             <h2 data-i18n="module_title">Custom Module</h2>
-            <div class="actions">
+            <div class="actions action-bar">
+              <span id="module-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
               <button id="refresh-module" class="ghost" data-i18n="refresh">Обновить</button>
               <button id="refresh-executions" class="ghost" data-i18n="executions">Executions</button>
             </div>
@@ -243,12 +367,18 @@
             <summary>
               <span data-i18n="memory_manual_title">Ручная правка памяти (fallback)</span>
             </summary>
+            <p class="warning" data-i18n="memory_manual_warning">
+              Advanced mode: используй только для ручного восстановления потока, основной сценарий памяти автоматический.
+            </p>
             <p class="muted" data-i18n="memory_manual_hint">
               Память подмешивается в задачи автоматически. Этот блок нужен только для ручной коррекции.
             </p>
             <div class="section-head">
               <h2 data-i18n="memory_title">Agent Memory</h2>
-              <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
+              <div class="actions action-bar">
+                <span id="memory-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-memory" class="ghost" data-i18n="refresh">Обновить</button>
+              </div>
             </div>
             <form id="memory-form" class="row-form compact">
               <div class="split">
