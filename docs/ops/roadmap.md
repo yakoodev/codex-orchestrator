@@ -85,10 +85,11 @@
   - добавлен API `GET /api/delegation/cards` c группами `preparing/running/recent`;
   - добавлены UI-карточки агентов в встроенной панели `/ui/`;
   - в карточках показываются prompt, template/model, выбранный account и log preview;
-  - prompt/log вынесены из карточки в отдельный inspector, чтобы снизить визуальный шум и дать быстрый drill-down по месту.
+  - prompt/log вынесены из карточки в отдельный inspector, чтобы снизить визуальный шум и дать быстрый drill-down по месту;
+  - inspector теперь догружает run-level детали через `GET /api/delegation/{id}`: `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context`, полный `execution_log`.
 - Остается:
   - углубить потоковые runtime-логи по running-агентам;
-  - добавить более детальный drill-down по каждому запуску.
+  - [x] добавить более детальный drill-down по каждому запуску.
 
 ## Planned: Project/Agent Memory System
 - Статус: `in_progress`.

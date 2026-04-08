@@ -147,6 +147,15 @@ const I18N = {
     agent_field_capability: "Специализация",
     agent_field_template: "Шаблон",
     agent_field_account: "Аккаунт",
+    agent_field_trace: "Трейс",
+    agent_field_execution_mode: "Режим выполнения",
+    agent_field_created: "Создано",
+    agent_field_started: "Старт",
+    agent_field_ended: "Завершено",
+    agent_field_cwd: "Рабочая директория",
+    agent_field_cwd_source: "Источник cwd",
+    agent_field_memory_context: "Контекст памяти",
+    agent_field_result: "Результат",
     agent_field_prompt: "Промпт",
     agent_field_log: "Лог",
     accounts_title: "Аккаунты и лимиты",
@@ -353,6 +362,15 @@ I18N.en = {
   no_recent_agents: "No recent agents.",
   agent_inspector_title: "Agent inspector",
   agent_inspector_empty: "Select an agent card to inspect prompt and log.",
+  agent_field_trace: "Trace",
+  agent_field_execution_mode: "Execution mode",
+  agent_field_created: "Created",
+  agent_field_started: "Started",
+  agent_field_ended: "Ended",
+  agent_field_cwd: "CWD",
+  agent_field_cwd_source: "CWD source",
+  agent_field_memory_context: "Memory context",
+  agent_field_result: "Result",
   agent_field_prompt: "Prompt",
   agent_field_log: "Log",
   accounts_limits_title: "Profile limits",
@@ -452,6 +470,7 @@ const state = {
   health: { live: "unknown", ready: "unknown" },
   selectedTaskId: null,
   selectedAgentId: null,
+  selectedAgentDetails: null,
   logs: []
 }
 
@@ -1080,16 +1099,41 @@ function renderAgents(payload) {
     return
   }
 
+  const details = state.selectedAgentDetails && state.selectedAgentDetails.id === selected.id
+    ? state.selectedAgentDetails
+    : null
+
   const template = selected.target_template ? `${selected.target_template.name} (${selected.target_template.model})` : t("task_field_na")
   const account = selected.account ? `${selected.account.label} [${selected.account.status}]` : t("task_field_na")
+  const executionMeta = details && details.execution_meta_json && typeof details.execution_meta_json === "object"
+    ? details.execution_meta_json
+    : {}
+  const executionContext = executionMeta.execution_context && typeof executionMeta.execution_context === "object"
+    ? executionMeta.execution_context
+    : {}
+  const memoryContext = executionMeta.memory_context && typeof executionMeta.memory_context === "object"
+    ? executionMeta.memory_context
+    : {}
 
   ui.agentInspectorId.textContent = selected.id ?? t("task_field_na")
-  ui.agentInspectorStatus.textContent = selected.status ?? t("task_field_na")
+  ui.agentInspectorStatus.textContent = details?.status ?? selected.status ?? t("task_field_na")
   ui.agentInspectorCapability.textContent = selected.capability ?? t("task_field_na")
   ui.agentInspectorTemplate.textContent = template
   ui.agentInspectorAccount.textContent = account
-  ui.agentInspectorPrompt.textContent = selected.prompt ?? t("task_field_na")
-  ui.agentInspectorLog.textContent = selected.log_preview ?? t("task_field_na")
+  ui.agentInspectorTrace.textContent = details?.trace_id ?? selected.trace_id ?? t("task_field_na")
+  ui.agentInspectorExecMode.textContent = details?.execution_mode ?? selected.execution_mode ?? t("task_field_na")
+  ui.agentInspectorCreated.textContent = fmtDate(details?.created_at ?? selected.created_at)
+  ui.agentInspectorStarted.textContent = fmtDate(details?.started_at ?? selected.started_at)
+  ui.agentInspectorEnded.textContent = fmtDate(details?.ended_at ?? selected.ended_at)
+  ui.agentInspectorCwd.textContent = executionContext.cwd ?? t("task_field_na")
+  ui.agentInspectorCwdSource.textContent = executionContext.cwd_source ?? t("task_field_na")
+  const memoryText = memoryContext.project_id
+    ? `${memoryContext.project_id}/${memoryContext.agent_role ?? "n/a"} entries=${memoryContext.entries_used ?? 0} disabled=${memoryContext.disabled === true ? "true" : "false"}`
+    : t("task_field_na")
+  ui.agentInspectorMemory.textContent = memoryText
+  ui.agentInspectorResult.textContent = details?.result_summary ?? selected.log_preview ?? t("task_field_na")
+  ui.agentInspectorPrompt.textContent = details?.input_prompt ?? selected.prompt ?? t("task_field_na")
+  ui.agentInspectorLog.textContent = details?.execution_log ?? selected.log_preview ?? t("task_field_na")
   ui.agentInspectorEmpty.hidden = true
   ui.agentInspectorContent.hidden = false
 }
@@ -1361,7 +1405,31 @@ async function refreshHeld() {
 }
 
 async function refreshAgents() {
-  return withPanel(ui.agentsPanelState, "system", async () => renderAgents(await requestJson("/api/delegation/cards")))
+  return withPanel(ui.agentsPanelState, "system", async () => {
+    renderAgents(await requestJson("/api/delegation/cards"))
+    await refreshSelectedAgentDetails()
+  })
+}
+
+async function refreshSelectedAgentDetails() {
+  if (!state.selectedAgentId || !state.token) return
+
+  try {
+    const details = await requestJson(`/api/delegation/${encodeURIComponent(state.selectedAgentId)}`)
+    state.selectedAgentDetails = details && typeof details === "object" ? details : null
+  } catch (error) {
+    if (error?.status === 404) {
+      state.selectedAgentDetails = null
+      return
+    }
+    pushLog("warn", "ui", t("log_api_response"), {
+      route: `/api/delegation/${state.selectedAgentId}`,
+      message: error?.message ?? "failed_to_refresh_selected_agent"
+    })
+    return
+  }
+
+  renderAgents(state.agents)
 }
 
 async function refreshProfiles() {
@@ -1635,7 +1703,7 @@ function wireConsoleRefs() {
     refreshHealth: document.getElementById("refresh-health"), liveStatus: document.getElementById("live-status"), readyStatus: document.getElementById("ready-status"), dashboardSignals: document.getElementById("dashboard-signals"), dashboardSignalsState: document.getElementById("dashboard-signals-state"),
     projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
     toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"),
-    toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
+    toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
     modulePanelState: document.getElementById("module-panel-state"), refreshModule: document.getElementById("refresh-module"), refreshExecutions: document.getElementById("refresh-executions"), moduleForm: document.getElementById("module-form"), moduleEnabled: document.getElementById("module-enabled"), moduleConfig: document.getElementById("module-config"), executionsList: document.getElementById("executions-list"),
@@ -1859,7 +1927,9 @@ function wireConsoleHandlers() {
     const card = event.target.closest("[data-agent-id]")
     if (!card) return
     state.selectedAgentId = card.dataset.agentId
+    state.selectedAgentDetails = null
     renderAgents(state.agents)
+    void refreshSelectedAgentDetails()
   }
   ui.agentsPreparing.addEventListener("click", onAgentClick)
   ui.agentsRunning.addEventListener("click", onAgentClick)

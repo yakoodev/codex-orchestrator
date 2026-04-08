@@ -79,7 +79,9 @@ API-проверка:
 4. Проверь, что в каждой колонке есть счетчик карточек.
 5. Кликни по карточке агента и проверь Inspector справа:
    - `id/status/capability/template/account`;
-   - `prompt` и `log` в полном виде.
+   - `trace/execution_mode/created-started-ended`;
+   - `cwd/cwd_source` и `memory_context`;
+   - `prompt` и `log` в полном виде (не только preview).
 6. Проверь, что карточка агента показывает в компактном виде:
    - `status`, `capability`, `template/model`;
    - `account` (label + status);
