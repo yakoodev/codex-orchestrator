@@ -573,12 +573,46 @@ summary:focus-visible {
 .projects-layout,
 .tasks-layout,
 .agents-layout,
+.agent-profiles-layout,
 .memory-layout,
 .system-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   gap: 10px;
   align-items: start;
+}
+
+.agent-profile-subgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.inset-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.script-set-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.script-set-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  align-content: start;
 }
 
 .filters-grid,
@@ -935,12 +969,18 @@ summary:focus-visible {
   .projects-layout,
   .tasks-layout,
   .agents-layout,
+  .agent-profiles-layout,
   .memory-layout,
   .system-layout {
     grid-template-columns: 1fr;
   }
 
   .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-profile-subgrid,
+  .script-set-grid {
     grid-template-columns: 1fr;
   }
 }

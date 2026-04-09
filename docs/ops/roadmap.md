@@ -41,7 +41,7 @@
   - синхронизация с MCP bridge runtime.
 
 ## Planned: Agent Profiles + MCP Server Sets
-- Статус: `in_progress` (Phase 1 backend реализован, UI/runtime integration в работе).
+- Статус: `in_progress` (Phase 1 backend + UI-конфигуратор реализованы, runtime integration в работе).
 - Цель: дать каждому агенту собственный набор MCP-серверов и OS-специфичных script sets через web UI.
 - Зафиксированные решения:
   - primary entity: `AgentProfile`;
@@ -65,8 +65,14 @@
     - `POST/GET /api/mcp/servers`;
   - при создании профиля автоматически подключается обязательный `orchestrator-core`;
   - удаление binding для `orchestrator-core` блокируется как инвариант.
+- Дополнительно реализовано (UI-конфигуратор):
+  - новый маршрут `/ui/console.html#/agent-profiles`;
+  - управление профилями: create/list/filter/edit;
+  - управление MCP servers: register server, bind/unbind, required/priority/config;
+  - управление OS script sets (`windows/linux/macos`) с сохранением `script_type/content`.
 - Зависимости:
   - `MCP AuthZ ACL v2` (источник прав и audit);
+  - runtime-resolve профиля при реальном запуске делегаций;
   - `Project Registry` (привязка профилей к проектам);
   - `Topology UI` (визуализация профилей и их активных связей).
 
@@ -173,6 +179,7 @@
   - `#/projects`
   - `#/tasks`
   - `#/agents`
+  - `#/agent-profiles`
   - `#/accounts`
   - `#/memory`
   - `#/system`

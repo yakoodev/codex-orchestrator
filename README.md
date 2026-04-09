@@ -80,6 +80,7 @@ Built-in web control panel:
   - `#/projects` (project registry create/edit + summary)
   - `#/tasks` (create/filter/board/details + held queue)
   - `#/agents` (preparing/running/recent + inspector)
+  - `#/agent-profiles` (agent profiles + MCP server sets + OS scripts)
   - `#/accounts` (profiles/limits/history sections)
   - `#/memory` (agent memory create/list/toggle)
   - `#/system` (custom module config + executions)

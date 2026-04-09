@@ -203,6 +203,12 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - при создании профиля автоматически подключается обязательный `orchestrator-core`;
   - удаление `orchestrator-core` binding через API заблокировано (`MCP_SERVER_REQUIRED`);
   - OpenAPI/route-coverage и API-тесты синхронизированы.
+- [x] Реализован UI-конфигуратор `Agent Profiles` в `/ui/console.html#/agent-profiles`:
+  - добавлен отдельный экран профилей агентов (create/list/filter/edit);
+  - добавлено управление MCP server set профиля: регистрация MCP сервера, bind/unbind, required/priority/config;
+  - добавлено управление `OS script sets` (`windows/linux/macos`) с сохранением `script_type/content`;
+  - добавлен отдельный panel-state и route-level refresh для `agent-profiles`;
+  - состояние фильтров страницы сохраняется в `localStorage`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -221,7 +227,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 - [~] Agent Request Plane v2 (Phase 1 backend + MCP create/list_open/resolve реализованы; остаются governor automation, audit trail, topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
-- [~] Agent Profiles + MCP Server Sets (Phase 1 backend реализован; остаются UI-конфигуратор профилей, runtime-resolve по profile и интеграция с ACL/governor): `docs/ops/agent-profiles-mcp-servers.md`.
+- [~] Agent Profiles + MCP Server Sets (Phase 1 backend + UI-конфигуратор реализованы; остаются runtime-resolve по profile и интеграция с ACL/governor): `docs/ops/agent-profiles-mcp-servers.md`.
 - [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 
 ## Текущее состояние проверок (ветка PR1)

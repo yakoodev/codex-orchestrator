@@ -1,6 +1,6 @@
 
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit"
-const ROUTES = ["dashboard", "projects", "tasks", "agents", "accounts", "memory", "system", "logs"]
+const ROUTES = ["dashboard", "projects", "tasks", "agents", "agent-profiles", "accounts", "memory", "system", "logs"]
 const ACCOUNT_SECTIONS = ["profiles", "limits", "history"]
 const AUTOREFRESH_INTERVAL_MS = 15000
 const MAX_LOGS = 500
@@ -16,6 +16,7 @@ const KEYS = {
   taskFilters: "codex_orchestrator_task_filters",
   switchFilters: "codex_orchestrator_switch_filters",
   logFilters: "codex_orchestrator_log_filters",
+  agentProfileFilters: "codex_orchestrator_agent_profile_filters",
   taskCollapsed: "codex_orchestrator_task_create_collapsed"
 }
 
@@ -34,6 +35,7 @@ const I18N = {
     route_projects: "Проекты",
     route_tasks: "Задачи",
     route_agents: "Агенты",
+    route_agent_profiles: "Профили агентов",
     route_accounts: "Аккаунты",
     route_memory: "Память",
     route_system: "Система",
@@ -42,6 +44,7 @@ const I18N = {
     route_desc_projects: "Реестр проектов, summary и проектные настройки.",
     route_desc_tasks: "Создание, фильтрация и управление очередью задач.",
     route_desc_agents: "Мониторинг групп агентов и инспектор запуска.",
+    route_desc_agent_profiles: "Профили агентов, MCP server sets и OS-скрипты.",
     route_desc_accounts: "Профили auth.json, лимиты и история переключений.",
     route_desc_memory: "Память агентов по проекту и роли.",
     route_desc_system: "Конфигурация модуля и история исполнений.",
@@ -158,6 +161,67 @@ const I18N = {
     agent_field_result: "Результат",
     agent_field_prompt: "Промпт",
     agent_field_log: "Лог",
+    agent_profiles_title: "Профили агентов и MCP",
+    agent_profile_create_toggle: "Создать профиль агента",
+    agent_profile_project_label: "ID проекта",
+    agent_profile_name_label: "Название профиля",
+    agent_profile_role_label: "Роль",
+    agent_profile_source_policy_label: "Source policy",
+    agent_profile_description_label: "Описание",
+    agent_profile_enabled_label: "Профиль активен",
+    agent_profile_create_action: "Создать профиль",
+    agent_profile_filter_search_label: "Поиск",
+    agent_profile_filter_search_placeholder: "name/role/project",
+    agent_profile_filter_project_label: "Проект",
+    agent_profile_filter_role_label: "Роль",
+    agent_profile_filter_include_disabled: "Показывать отключенные",
+    agent_profile_filter_any_project: "Все проекты",
+    agent_profile_filter_any_role: "Все роли",
+    agent_profile_list_empty: "Профилей агентов пока нет.",
+    agent_profile_details_empty: "Выбери профиль агента в списке, чтобы управлять MCP серверами и script sets.",
+    agent_profile_summary_title: "Сводка профиля",
+    agent_profile_edit_title: "Редактирование профиля",
+    agent_profile_field_id: "ID",
+    agent_profile_field_project: "Проект",
+    agent_profile_field_role: "Роль",
+    agent_profile_field_source_policy: "Source policy",
+    agent_profile_field_status: "Статус",
+    agent_profile_field_updated: "Обновлено",
+    agent_profile_save_action: "Сохранить профиль",
+    agent_profile_mcp_title: "MCP серверы профиля",
+    mcp_server_create_toggle: "Зарегистрировать MCP сервер",
+    mcp_server_name_label: "Имя сервера",
+    mcp_server_transport_label: "Transport",
+    mcp_server_origin_label: "Origin type",
+    mcp_server_endpoint_label: "Endpoint / command",
+    mcp_server_meta_label: "Meta JSON",
+    mcp_server_approved_label: "Сервер одобрен",
+    mcp_server_create_action: "Создать MCP сервер",
+    agent_profile_bind_server_label: "Сервер",
+    agent_profile_bind_priority_label: "Priority",
+    agent_profile_bind_required_label: "Обязательный binding",
+    agent_profile_bind_optional: "опциональный",
+    agent_profile_bind_config_label: "Config JSON",
+    agent_profile_bind_action: "Привязать сервер",
+    agent_profile_unbind_action: "Отвязать",
+    agent_profile_bindings_empty: "Нет MCP binding для этого профиля.",
+    agent_profile_bindings_orchestrator_required: "orchestrator-core обязателен",
+    agent_profile_scripts_title: "OS script sets",
+    agent_profile_script_type_label: "Тип",
+    agent_profile_script_content_label: "Содержимое",
+    agent_profile_script_save_action: "Сохранить script",
+    agent_profile_script_empty: "Скрипт не задан",
+    agent_profile_script_version: "v{version} · {updated}",
+    log_agent_profile_created: "Профиль агента создан",
+    log_agent_profile_updated: "Профиль агента обновлён",
+    log_agent_profile_selected: "Профиль агента выбран",
+    log_agent_profile_server_created: "MCP сервер зарегистрирован",
+    log_agent_profile_server_bound: "MCP сервер привязан",
+    log_agent_profile_server_unbound: "MCP сервер отвязан",
+    log_agent_profile_script_saved: "OS script сохранён",
+    agent_profile_error_meta_json: "Ошибка парсинга Meta JSON",
+    agent_profile_error_config_json: "Ошибка парсинга Config JSON",
+    agent_profile_error_script_empty: "Содержимое script пустое",
     accounts_title: "Аккаунты и лимиты",
     accounts_limits_title: "Лимиты профилей",
     accounts_subtab_profiles: "Профили",
@@ -255,6 +319,7 @@ I18N.en = {
   route_projects: "Projects",
   route_tasks: "Tasks",
   route_agents: "Agents",
+  route_agent_profiles: "Agent Profiles",
   route_accounts: "Accounts",
   route_memory: "Memory",
   route_system: "System",
@@ -263,6 +328,7 @@ I18N.en = {
   route_desc_projects: "Project registry, summary, and project settings.",
   route_desc_tasks: "Create, filter, and operate task queue.",
   route_desc_agents: "Monitor preparing/running/recent agents and inspector.",
+  route_desc_agent_profiles: "Agent profiles, MCP server sets, and OS scripts.",
   route_desc_accounts: "auth.json profiles, limits, and switch history.",
   route_desc_memory: "Agent memory by project_id and role.",
   route_desc_system: "Module config and execution history.",
@@ -373,6 +439,67 @@ I18N.en = {
   agent_field_result: "Result",
   agent_field_prompt: "Prompt",
   agent_field_log: "Log",
+  agent_profiles_title: "Agent Profiles & MCP",
+  agent_profile_create_toggle: "Create agent profile",
+  agent_profile_project_label: "Project ID",
+  agent_profile_name_label: "Profile name",
+  agent_profile_role_label: "Role",
+  agent_profile_source_policy_label: "Source policy",
+  agent_profile_description_label: "Description",
+  agent_profile_enabled_label: "Profile enabled",
+  agent_profile_create_action: "Create profile",
+  agent_profile_filter_search_label: "Search",
+  agent_profile_filter_search_placeholder: "name/role/project",
+  agent_profile_filter_project_label: "Project",
+  agent_profile_filter_role_label: "Role",
+  agent_profile_filter_include_disabled: "Include disabled",
+  agent_profile_filter_any_project: "All projects",
+  agent_profile_filter_any_role: "All roles",
+  agent_profile_list_empty: "No agent profiles yet.",
+  agent_profile_details_empty: "Select an agent profile to manage MCP servers and script sets.",
+  agent_profile_summary_title: "Profile summary",
+  agent_profile_edit_title: "Edit profile",
+  agent_profile_field_id: "ID",
+  agent_profile_field_project: "Project",
+  agent_profile_field_role: "Role",
+  agent_profile_field_source_policy: "Source policy",
+  agent_profile_field_status: "Status",
+  agent_profile_field_updated: "Updated",
+  agent_profile_save_action: "Save profile",
+  agent_profile_mcp_title: "Profile MCP servers",
+  mcp_server_create_toggle: "Register MCP server",
+  mcp_server_name_label: "Server name",
+  mcp_server_transport_label: "Transport",
+  mcp_server_origin_label: "Origin type",
+  mcp_server_endpoint_label: "Endpoint / command",
+  mcp_server_meta_label: "Meta JSON",
+  mcp_server_approved_label: "Server approved",
+  mcp_server_create_action: "Create MCP server",
+  agent_profile_bind_server_label: "Server",
+  agent_profile_bind_priority_label: "Priority",
+  agent_profile_bind_required_label: "Required binding",
+  agent_profile_bind_optional: "optional",
+  agent_profile_bind_config_label: "Config JSON",
+  agent_profile_bind_action: "Bind server",
+  agent_profile_unbind_action: "Unbind",
+  agent_profile_bindings_empty: "No MCP bindings for this profile.",
+  agent_profile_bindings_orchestrator_required: "orchestrator-core is mandatory",
+  agent_profile_scripts_title: "OS script sets",
+  agent_profile_script_type_label: "Type",
+  agent_profile_script_content_label: "Content",
+  agent_profile_script_save_action: "Save script",
+  agent_profile_script_empty: "Script is not set",
+  agent_profile_script_version: "v{version} · {updated}",
+  log_agent_profile_created: "Agent profile created",
+  log_agent_profile_updated: "Agent profile updated",
+  log_agent_profile_selected: "Agent profile selected",
+  log_agent_profile_server_created: "MCP server registered",
+  log_agent_profile_server_bound: "MCP server bound",
+  log_agent_profile_server_unbound: "MCP server unbound",
+  log_agent_profile_script_saved: "OS script saved",
+  agent_profile_error_meta_json: "Meta JSON parse error",
+  agent_profile_error_config_json: "Config JSON parse error",
+  agent_profile_error_script_empty: "Script content is empty",
   accounts_limits_title: "Profile limits",
   accounts_subtab_profiles: "Profiles",
   accounts_subtab_limits: "Limits",
@@ -462,6 +589,12 @@ const state = {
   activeProfile: null,
   fleet: [],
   switches: [],
+  agentProfiles: [],
+  mcpServers: [],
+  agentProfileBindings: [],
+  agentProfileScripts: [],
+  selectedAgentProfileId: null,
+  agentProfileFilters: { search: "", project: "all", role: "all", includeDisabled: true },
   projects: [],
   selectedProjectKey: null,
   projectSummary: null,
@@ -519,6 +652,20 @@ function clampPercent(value) {
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim()
   return trimmed ? trimmed : null
+}
+
+function parseJsonObjectInput(rawValue, { allowNull = true } = {}) {
+  const raw = String(rawValue ?? "").trim()
+  if (!raw) return allowNull ? null : {}
+  const parsed = JSON.parse(raw)
+  if (parsed === null) {
+    if (allowNull) return null
+    throw new Error("JSON must be an object")
+  }
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("JSON must be an object")
+  }
+  return parsed
 }
 
 function sleep(ms) {
@@ -595,6 +742,7 @@ function applyI18n() {
   renderTasks(state.tasks)
   renderHeld(state.held)
   renderAgents(state.agents)
+  renderAgentProfiles(state.agentProfiles)
   renderProfiles(state.profiles)
   renderFleet(state.fleet)
   renderSwitches(state.switches)
@@ -677,7 +825,7 @@ function setPanelState(node, stateName, labelKey = null) {
 }
 
 function syncPanelStateLabels() {
-  const nodes = [ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
+  const nodes = [ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
   nodes.forEach((node) => {
     if (!node) return
     const key = node.dataset.labelKey ?? "panel_state_idle"
@@ -686,7 +834,7 @@ function syncPanelStateLabels() {
 }
 
 function requireTokenPanels() {
-  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
+  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
 }
 
 async function withPanel(node, scope, fn) {
@@ -762,6 +910,7 @@ function updateStats() {
 
 function renderRouteShell() {
   if (state.page !== "console") return
+  const routeKey = state.route.replaceAll("-", "_")
   ui.routeLinks.forEach((link) => {
     const active = link.dataset.routeLink === state.route
     link.classList.toggle("route-active", active)
@@ -773,9 +922,9 @@ function renderRouteShell() {
   if (ui.kpiStrip) {
     ui.kpiStrip.hidden = state.route !== "dashboard"
   }
-  ui.quickbarRoute.textContent = t(`route_${state.route}`).toUpperCase()
-  ui.quickbarTitle.textContent = t(`route_${state.route}`)
-  ui.quickbarSubtitle.textContent = t(`route_desc_${state.route}`)
+  ui.quickbarRoute.textContent = t(`route_${routeKey}`).toUpperCase()
+  ui.quickbarTitle.textContent = t(`route_${routeKey}`)
+  ui.quickbarSubtitle.textContent = t(`route_desc_${routeKey}`)
 }
 
 function renderAccountSection() {
@@ -858,11 +1007,14 @@ function syncProjectBindings() {
 
   const taskProject = applyProjectSelect(ui.taskProject, activeKeys, ui.taskProject?.value ?? "", t("project_option_none"))
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
+  const agentProfileProject = applyProjectSelect(ui.agentProfileProject, activeKeys, ui.agentProfileProject?.value ?? "", t("project_option_none"))
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
+  const agentProfileSubmit = ui.agentProfileCreateForm?.querySelector('button[type="submit"]')
   if (taskSubmit) taskSubmit.disabled = !taskProject
   if (memorySubmit) memorySubmit.disabled = !memoryProject
+  if (agentProfileSubmit) agentProfileSubmit.disabled = !agentProfileProject
 
   if (ui.taskFilterProject) {
     ui.taskFilterProject.innerHTML = [
@@ -871,6 +1023,15 @@ function syncProjectBindings() {
     ].join("")
     ui.taskFilterProject.value = taskFilterKeys.includes(state.taskFilters.project) ? state.taskFilters.project : "all"
     state.taskFilters.project = ui.taskFilterProject.value
+  }
+
+  if (ui.agentProfileFilterProject) {
+    ui.agentProfileFilterProject.innerHTML = [
+      `<option value="all">${escapeHtml(t("agent_profile_filter_any_project"))}</option>`,
+      ...allKeys.map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`)
+    ].join("")
+    ui.agentProfileFilterProject.value = allKeys.includes(state.agentProfileFilters.project) ? state.agentProfileFilters.project : "all"
+    state.agentProfileFilters.project = ui.agentProfileFilterProject.value
   }
 }
 
@@ -1136,6 +1297,219 @@ function renderAgents(payload) {
   ui.agentInspectorLog.textContent = details?.execution_log ?? selected.log_preview ?? t("task_field_na")
   ui.agentInspectorEmpty.hidden = true
   ui.agentInspectorContent.hidden = false
+}
+
+function selectedAgentProfile() {
+  return state.agentProfiles.find((item) => item.id === state.selectedAgentProfileId) ?? null
+}
+
+function syncAgentProfileRoleFilter(items) {
+  if (!ui.agentProfileFilterRole) return
+  const roles = Array.from(new Set((Array.isArray(items) ? items : [])
+    .map((item) => item.role)
+    .filter((value) => typeof value === "string" && value.trim()))).sort((a, b) => a.localeCompare(b))
+
+  ui.agentProfileFilterRole.innerHTML = [
+    `<option value="all">${escapeHtml(t("agent_profile_filter_any_role"))}</option>`,
+    ...roles.map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(role)}</option>`)
+  ].join("")
+
+  ui.agentProfileFilterRole.value = roles.includes(state.agentProfileFilters.role)
+    ? state.agentProfileFilters.role
+    : "all"
+  state.agentProfileFilters.role = ui.agentProfileFilterRole.value
+}
+
+function renderAgentProfileBindings(profile) {
+  if (!ui.agentProfileBindServer || !ui.agentProfileBindingsList) return
+
+  const availableServers = [...state.mcpServers].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
+  if (!availableServers.length) {
+    ui.agentProfileBindServer.innerHTML = `<option value="">${escapeHtml(t("task_field_na"))}</option>`
+    ui.agentProfileBindServer.disabled = true
+  } else {
+    ui.agentProfileBindServer.innerHTML = availableServers.map((server) => `<option value="${escapeHtml(server.id)}">${escapeHtml(server.name)} (${escapeHtml(server.transport)})</option>`).join("")
+    const current = ui.agentProfileBindServer.value
+    ui.agentProfileBindServer.disabled = false
+    ui.agentProfileBindServer.value = availableServers.some((server) => server.id === current) ? current : availableServers[0].id
+  }
+
+  const bindSubmit = ui.agentProfileBindForm?.querySelector('button[type="submit"]')
+  if (bindSubmit) bindSubmit.disabled = !profile || !availableServers.length
+
+  if (!profile || !state.agentProfileBindings.length) {
+    ui.agentProfileBindingsList.innerHTML = `<li class="meta-note">${escapeHtml(t("agent_profile_bindings_empty"))}</li>`
+    return
+  }
+
+  const rows = [...state.agentProfileBindings].sort((a, b) => {
+    const byPriority = Number(a.priority ?? 0) - Number(b.priority ?? 0)
+    if (byPriority !== 0) return byPriority
+    const nameA = String(a?.mcp_server?.name ?? a?.mcp_server_id ?? "")
+    const nameB = String(b?.mcp_server?.name ?? b?.mcp_server_id ?? "")
+    return nameA.localeCompare(nameB)
+  })
+
+  ui.agentProfileBindingsList.innerHTML = rows.map((binding) => {
+    const server = binding?.mcp_server && typeof binding.mcp_server === "object" ? binding.mcp_server : null
+    const serverName = server?.name ?? binding.mcp_server_id ?? t("task_field_na")
+    const transport = server?.transport ?? t("task_field_na")
+    const origin = server?.origin_type ?? t("task_field_na")
+    const config = binding.config_json && typeof binding.config_json === "object"
+      ? JSON.stringify(binding.config_json)
+      : ""
+    const configPreview = config ? config.slice(0, 180) : ""
+    const isRequired = binding.is_required === true
+    const removeButton = isRequired
+      ? `<span class="meta-note">${escapeHtml(t("agent_profile_bindings_orchestrator_required"))}</span>`
+      : `<button type="button" class="button-ghost" data-agent-profile-unbind="${escapeHtml(binding.mcp_server_id)}">${escapeHtml(t("agent_profile_unbind_action"))}</button>`
+
+    return `<li>
+      <div class="task-card-head">
+        <div class="task-card-title">${escapeHtml(serverName)}</div>
+        <div class="action-bar">
+          <span class="pill ${isRequired ? "pill-active" : ""}">${escapeHtml(isRequired ? t("agent_profile_bind_required_label") : t("agent_profile_bind_optional"))}</span>
+          <span class="pill">p${escapeHtml(String(binding.priority ?? 0))}</span>
+        </div>
+      </div>
+      <div class="meta-note">${escapeHtml(transport)} · ${escapeHtml(origin)}</div>
+      ${configPreview ? `<div class="meta-note"><code>${escapeHtml(configPreview)}</code></div>` : ""}
+      <div class="action-bar">${removeButton}</div>
+    </li>`
+  }).join("")
+}
+
+function renderAgentProfileScripts() {
+  const byOs = new Map(state.agentProfileScripts.map((item) => [item.os, item]))
+  const nodes = {
+    windows: {
+      type: ui.agentProfileScriptWindowsType,
+      content: ui.agentProfileScriptWindowsContent,
+      meta: ui.agentProfileScriptWindowsMeta
+    },
+    linux: {
+      type: ui.agentProfileScriptLinuxType,
+      content: ui.agentProfileScriptLinuxContent,
+      meta: ui.agentProfileScriptLinuxMeta
+    },
+    macos: {
+      type: ui.agentProfileScriptMacosType,
+      content: ui.agentProfileScriptMacosContent,
+      meta: ui.agentProfileScriptMacosMeta
+    }
+  }
+
+  for (const [os, refs] of Object.entries(nodes)) {
+    const script = byOs.get(os) ?? null
+    if (refs.type) refs.type.value = script?.script_type === "shell" ? "shell" : "instruction"
+    if (refs.content) refs.content.value = script?.content ?? ""
+    if (refs.meta) {
+      refs.meta.textContent = script
+        ? t("agent_profile_script_version", {
+          version: script.version ?? 1,
+          updated: fmtDate(script.updated_at)
+        })
+        : t("agent_profile_script_empty")
+    }
+  }
+}
+
+function renderAgentProfileDetails() {
+  const profile = selectedAgentProfile()
+  if (!profile) {
+    ui.agentProfileDetailsEmpty.hidden = false
+    ui.agentProfileDetailsContent.hidden = true
+    renderAgentProfileBindings(null)
+    renderAgentProfileScripts()
+    return
+  }
+
+  ui.agentProfileDetailsEmpty.hidden = true
+  ui.agentProfileDetailsContent.hidden = false
+
+  ui.agentProfileSummaryGrid.innerHTML = [
+    [t("agent_profile_field_id"), profile.id],
+    [t("agent_profile_field_project"), profile.project_id],
+    [t("agent_profile_field_role"), profile.role],
+    [t("agent_profile_field_source_policy"), profile.source_policy],
+    [t("agent_profile_field_status"), profile.is_enabled === true ? t("profile_state_active") : t("profile_state_inactive")],
+    [t("agent_profile_field_updated"), fmtDate(profile.updated_at)]
+  ].map(([label, value]) => `<div class="project-summary-item"><p class="tiny-label">${escapeHtml(label)}</p><p>${escapeHtml(value ?? t("task_field_na"))}</p></div>`).join("")
+
+  ui.agentProfileEditId.value = profile.id ?? ""
+  ui.agentProfileEditProject.value = profile.project_id ?? ""
+  ui.agentProfileEditName.value = profile.name ?? ""
+  ui.agentProfileEditRole.value = profile.role ?? ""
+  ui.agentProfileEditSourcePolicy.value = profile.source_policy ?? "catalog_only"
+  ui.agentProfileEditEnabled.checked = profile.is_enabled === true
+  ui.agentProfileEditDescription.value = profile.description ?? ""
+
+  renderAgentProfileBindings(profile)
+  renderAgentProfileScripts()
+}
+
+function renderAgentProfiles(items) {
+  state.agentProfiles = Array.isArray(items)
+    ? [...items].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
+    : state.agentProfiles
+  if (state.page !== "console") return
+
+  syncProjectBindings()
+  syncAgentProfileRoleFilter(state.agentProfiles)
+
+  ui.agentProfileFilterSearch.value = state.agentProfileFilters.search
+  ui.agentProfileFilterIncludeDisabled.checked = state.agentProfileFilters.includeDisabled
+
+  const search = state.agentProfileFilters.search.trim().toLowerCase()
+  const visible = state.agentProfiles.filter((profile) => {
+    if (!state.agentProfileFilters.includeDisabled && profile.is_enabled !== true) return false
+    if (state.agentProfileFilters.project !== "all" && profile.project_id !== state.agentProfileFilters.project) return false
+    if (state.agentProfileFilters.role !== "all" && profile.role !== state.agentProfileFilters.role) return false
+    if (!search) return true
+    const haystack = `${profile.id ?? ""} ${profile.name ?? ""} ${profile.role ?? ""} ${profile.project_id ?? ""} ${profile.description ?? ""} ${profile.source_policy ?? ""}`
+    return haystack.toLowerCase().includes(search)
+  })
+
+  const previousSelectedId = state.selectedAgentProfileId
+  if (!visible.some((item) => item.id === state.selectedAgentProfileId)) {
+    state.selectedAgentProfileId = visible[0]?.id ?? null
+  }
+  if (previousSelectedId !== state.selectedAgentProfileId) {
+    state.agentProfileBindings = []
+    state.agentProfileScripts = []
+    if (state.token && state.selectedAgentProfileId) {
+      void refreshSelectedAgentProfileContext().catch((error) => {
+        pushLog("warn", "ui", t("error_generic"), {
+          route: "/api/agent-profiles/:id/*",
+          message: error?.message ?? "failed_to_refresh_agent_profile_context"
+        })
+      })
+    }
+  }
+
+  if (!visible.length) {
+    ui.agentProfilesList.innerHTML = `<li class="meta-note">${escapeHtml(t("agent_profile_list_empty"))}</li>`
+    renderAgentProfileDetails()
+    return
+  }
+
+  ui.agentProfilesList.innerHTML = visible.map((profile) => {
+    const selected = profile.id === state.selectedAgentProfileId
+    const enabled = profile.is_enabled === true
+    return `<li class="project-card ${selected ? "project-card-selected" : ""}" data-agent-profile-id="${escapeHtml(profile.id)}">
+      <div class="task-card-head">
+        <div class="task-card-title">${escapeHtml(profile.name ?? profile.id)}</div>
+        <div class="action-bar">
+          <span class="pill">${escapeHtml(profile.role ?? t("task_field_na"))}</span>
+          <span class="pill ${enabled ? "pill-active" : ""}">${escapeHtml(enabled ? t("profile_state_active") : t("profile_state_inactive"))}</span>
+        </div>
+      </div>
+      <div class="meta-note"><code>${escapeHtml(profile.id)}</code></div>
+      <div class="meta-note">${escapeHtml(profile.project_id ?? t("task_field_na"))} · ${escapeHtml(profile.source_policy ?? t("task_field_na"))}</div>
+    </li>`
+  }).join("")
+
+  renderAgentProfileDetails()
 }
 
 function renderProfiles(items) {
@@ -1411,6 +1785,61 @@ async function refreshAgents() {
   })
 }
 
+async function refreshSelectedAgentProfileContext() {
+  if (!state.selectedAgentProfileId || !state.token) {
+    state.agentProfileBindings = []
+    state.agentProfileScripts = []
+    renderAgentProfileDetails()
+    return
+  }
+
+  const profileId = state.selectedAgentProfileId
+  try {
+    const [bindingsResponse, scriptsResponse] = await Promise.all([
+      requestJson(`/api/agent-profiles/${encodeURIComponent(profileId)}/mcp-servers`),
+      requestJson(`/api/agent-profiles/${encodeURIComponent(profileId)}/scripts`)
+    ])
+    state.agentProfileBindings = Array.isArray(bindingsResponse?.items) ? bindingsResponse.items : []
+    state.agentProfileScripts = Array.isArray(scriptsResponse?.items) ? scriptsResponse.items : []
+  } catch (error) {
+    if (error?.status === 404) {
+      state.selectedAgentProfileId = null
+      state.agentProfileBindings = []
+      state.agentProfileScripts = []
+      return
+    }
+    throw error
+  }
+
+  renderAgentProfileDetails()
+}
+
+async function refreshAgentProfilesRoute() {
+  if (state.token) {
+    try {
+      await fetchProjectRegistry({ includeInactive: true })
+    } catch {
+      // best-effort sync for project selects in agent profile forms
+    }
+  }
+
+  return withPanel(ui.agentProfilesPanelState, "system", async () => {
+    const [profilesResponse, serversResponse] = await Promise.all([
+      requestJson("/api/agent-profiles?include_disabled=true&limit=200"),
+      requestJson("/api/mcp/servers?include_unapproved=true")
+    ])
+    state.agentProfiles = Array.isArray(profilesResponse?.items) ? profilesResponse.items : []
+    state.mcpServers = Array.isArray(serversResponse?.items) ? serversResponse.items : []
+
+    if (!state.agentProfiles.some((item) => item.id === state.selectedAgentProfileId)) {
+      state.selectedAgentProfileId = state.agentProfiles[0]?.id ?? null
+    }
+
+    await refreshSelectedAgentProfileContext()
+    renderAgentProfiles(state.agentProfiles)
+  })
+}
+
 async function refreshSelectedAgentDetails() {
   if (!state.selectedAgentId || !state.token) return
 
@@ -1572,6 +2001,7 @@ async function refreshCurrentRoute() {
     ])
   }
   if (state.route === "agents") return refreshAgents()
+  if (state.route === "agent-profiles") return refreshAgentProfilesRoute()
   if (state.route === "accounts") {
     if (state.section === "profiles") return refreshProfiles()
     if (state.section === "limits") return refreshFleet()
@@ -1598,6 +2028,7 @@ async function refreshAll() {
     { name: "tasks", run: () => refreshTasks() },
     { name: "held", run: () => refreshHeld() },
     { name: "agents", run: () => refreshAgents() },
+    { name: "agent_profiles", run: () => refreshAgentProfilesRoute() },
     { name: "profiles", run: () => refreshProfiles() },
     { name: "fleet", run: () => refreshFleet() },
     { name: "switches", run: () => refreshSwitches() },
@@ -1704,6 +2135,7 @@ function wireConsoleRefs() {
     projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
     toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"),
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
+    agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileProject: document.getElementById("agent-profile-project"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterProject: document.getElementById("agent-profile-filter-project"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditProject: document.getElementById("agent-profile-edit-project"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
     modulePanelState: document.getElementById("module-panel-state"), refreshModule: document.getElementById("refresh-module"), refreshExecutions: document.getElementById("refresh-executions"), moduleForm: document.getElementById("module-form"), moduleEnabled: document.getElementById("module-enabled"), moduleConfig: document.getElementById("module-config"), executionsList: document.getElementById("executions-list"),
@@ -1720,6 +2152,8 @@ function wireConsoleHandlers() {
   ui.toggleAutoRefreshTasks.checked = state.auto.tasks
   ui.toggleAutoRefreshAgents.checked = state.auto.agents
   ui.toggleAutoRefreshEvents.checked = state.auto.history
+  ui.agentProfileFilterSearch.value = state.agentProfileFilters.search
+  ui.agentProfileFilterIncludeDisabled.checked = state.agentProfileFilters.includeDisabled
   if (readStorage(KEYS.taskCollapsed) === "1") ui.taskCreateShell.open = false
   syncProjectBindings()
 
@@ -1935,6 +2369,217 @@ function wireConsoleHandlers() {
   ui.agentsRunning.addEventListener("click", onAgentClick)
   ui.agentsRecent.addEventListener("click", onAgentClick)
 
+  ui.refreshAgentProfiles.addEventListener("click", async () => state.token ? refreshAgentProfilesRoute() : requireTokenPanels())
+  ui.agentProfileFilterSearch.addEventListener("input", () => {
+    state.agentProfileFilters.search = ui.agentProfileFilterSearch.value
+    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
+    renderAgentProfiles(state.agentProfiles)
+  })
+  ui.agentProfileFilterProject.addEventListener("change", () => {
+    state.agentProfileFilters.project = ui.agentProfileFilterProject.value
+    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
+    renderAgentProfiles(state.agentProfiles)
+  })
+  ui.agentProfileFilterRole.addEventListener("change", () => {
+    state.agentProfileFilters.role = ui.agentProfileFilterRole.value
+    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
+    renderAgentProfiles(state.agentProfiles)
+  })
+  ui.agentProfileFilterIncludeDisabled.addEventListener("change", () => {
+    state.agentProfileFilters.includeDisabled = ui.agentProfileFilterIncludeDisabled.checked
+    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
+    renderAgentProfiles(state.agentProfiles)
+  })
+  ui.agentProfileFilterClear.addEventListener("click", () => {
+    state.agentProfileFilters = { search: "", project: "all", role: "all", includeDisabled: true }
+    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
+    renderAgentProfiles(state.agentProfiles)
+  })
+
+  ui.agentProfilesList.addEventListener("click", async (event) => {
+    const card = event.target.closest("[data-agent-profile-id]")
+    if (!card) return
+    const profileId = card.dataset.agentProfileId
+    if (!profileId || profileId === state.selectedAgentProfileId) return
+    state.selectedAgentProfileId = profileId
+    state.agentProfileBindings = []
+    state.agentProfileScripts = []
+    renderAgentProfiles(state.agentProfiles)
+    pushLog("info", "ui", t("log_agent_profile_selected"), { id: profileId })
+    if (!state.token) return requireTokenPanels()
+    await withPanel(ui.agentProfilesPanelState, "system", async () => refreshSelectedAgentProfileContext())
+  })
+
+  ui.agentProfileCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    const payload = {
+      project_id: ui.agentProfileProject.value.trim(),
+      name: ui.agentProfileName.value.trim(),
+      role: ui.agentProfileRole.value.trim(),
+      source_policy: ui.agentProfileSourcePolicy.value,
+      description: toNullableString(ui.agentProfileDescription.value),
+      is_enabled: ui.agentProfileEnabled.checked
+    }
+    const created = await requestJson("/api/agent-profiles", { method: "POST", json: payload })
+    state.selectedAgentProfileId = created?.id ?? null
+    pushLog("success", "ui", t("log_agent_profile_created"), {
+      id: created?.id ?? "n/a",
+      project_id: payload.project_id
+    })
+    ui.agentProfileName.value = ""
+    ui.agentProfileRole.value = "reviewer"
+    ui.agentProfileDescription.value = ""
+    ui.agentProfileEnabled.checked = true
+    await refreshAgentProfilesRoute()
+  })
+
+  ui.agentProfileEditForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+    if (!state.selectedAgentProfileId) return
+
+    const payload = {
+      name: ui.agentProfileEditName.value.trim(),
+      role: ui.agentProfileEditRole.value.trim(),
+      source_policy: ui.agentProfileEditSourcePolicy.value,
+      description: toNullableString(ui.agentProfileEditDescription.value),
+      is_enabled: ui.agentProfileEditEnabled.checked
+    }
+    await requestJson(`/api/agent-profiles/${encodeURIComponent(state.selectedAgentProfileId)}`, { method: "PATCH", json: payload })
+    pushLog("success", "ui", t("log_agent_profile_updated"), { id: state.selectedAgentProfileId })
+    await refreshAgentProfilesRoute()
+  })
+
+  ui.mcpServerCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    let metaJson = null
+    try {
+      metaJson = parseJsonObjectInput(ui.mcpServerMeta.value, { allowNull: true })
+    } catch {
+      pushLog("error", "ui", t("agent_profile_error_meta_json"))
+      return
+    }
+
+    const payload = {
+      name: ui.mcpServerName.value.trim(),
+      transport: ui.mcpServerTransport.value,
+      endpoint_or_command: ui.mcpServerEndpoint.value.trim(),
+      origin_type: ui.mcpServerOrigin.value,
+      is_approved: ui.mcpServerApproved.checked,
+      meta_json: metaJson
+    }
+    const created = await requestJson("/api/mcp/servers", { method: "POST", json: payload })
+    pushLog("success", "ui", t("log_agent_profile_server_created"), { id: created?.id ?? "n/a", name: payload.name })
+    ui.mcpServerName.value = ""
+    ui.mcpServerEndpoint.value = ""
+    ui.mcpServerMeta.value = ""
+    ui.mcpServerApproved.checked = true
+    await refreshAgentProfilesRoute()
+    if (created?.id && ui.agentProfileBindServer) ui.agentProfileBindServer.value = created.id
+  })
+
+  ui.agentProfileBindForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+    if (!state.selectedAgentProfileId) return
+
+    const serverId = ui.agentProfileBindServer.value
+    if (!serverId) return
+
+    let configJson = null
+    try {
+      configJson = parseJsonObjectInput(ui.agentProfileBindConfig.value, { allowNull: true })
+    } catch {
+      pushLog("error", "ui", t("agent_profile_error_config_json"))
+      return
+    }
+
+    const rawPriority = Number(ui.agentProfileBindPriority.value)
+    const payload = {
+      is_required: ui.agentProfileBindRequired.checked,
+      priority: Number.isFinite(rawPriority) ? Math.max(0, Math.min(1000, Math.round(rawPriority))) : 100,
+      config_json: configJson
+    }
+
+    await requestJson(`/api/agent-profiles/${encodeURIComponent(state.selectedAgentProfileId)}/mcp-servers/${encodeURIComponent(serverId)}`, {
+      method: "POST",
+      json: payload
+    })
+    pushLog("success", "ui", t("log_agent_profile_server_bound"), {
+      profile_id: state.selectedAgentProfileId,
+      server_id: serverId
+    })
+    ui.agentProfileBindConfig.value = ""
+    await refreshSelectedAgentProfileContext()
+    renderAgentProfiles(state.agentProfiles)
+  })
+
+  ui.agentProfileBindingsList.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-agent-profile-unbind]")
+    if (!button) return
+    if (!state.token) return requireTokenPanels()
+    if (!state.selectedAgentProfileId) return
+
+    const serverId = button.dataset.agentProfileUnbind
+    if (!serverId) return
+
+    await requestJson(`/api/agent-profiles/${encodeURIComponent(state.selectedAgentProfileId)}/mcp-servers/${encodeURIComponent(serverId)}`, {
+      method: "DELETE"
+    })
+    pushLog("success", "ui", t("log_agent_profile_server_unbound"), {
+      profile_id: state.selectedAgentProfileId,
+      server_id: serverId
+    })
+    await refreshSelectedAgentProfileContext()
+    renderAgentProfiles(state.agentProfiles)
+  })
+
+  document.querySelectorAll("[data-agent-profile-script-save]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!state.token) return requireTokenPanels()
+      if (!state.selectedAgentProfileId) return
+      const os = button.getAttribute("data-agent-profile-script-save")
+      if (!os) return
+
+      let typeNode
+      let contentNode
+      if (os === "windows") {
+        typeNode = ui.agentProfileScriptWindowsType
+        contentNode = ui.agentProfileScriptWindowsContent
+      } else if (os === "linux") {
+        typeNode = ui.agentProfileScriptLinuxType
+        contentNode = ui.agentProfileScriptLinuxContent
+      } else {
+        typeNode = ui.agentProfileScriptMacosType
+        contentNode = ui.agentProfileScriptMacosContent
+      }
+
+      const content = contentNode.value.trim()
+      if (!content) {
+        pushLog("warn", "ui", t("agent_profile_error_script_empty"), { os })
+        return
+      }
+
+      await requestJson(`/api/agent-profiles/${encodeURIComponent(state.selectedAgentProfileId)}/scripts/${encodeURIComponent(os)}`, {
+        method: "PUT",
+        json: {
+          script_type: typeNode.value,
+          content
+        }
+      })
+      pushLog("success", "ui", t("log_agent_profile_script_saved"), {
+        profile_id: state.selectedAgentProfileId,
+        os
+      })
+      await refreshSelectedAgentProfileContext()
+      renderAgentProfiles(state.agentProfiles)
+    })
+  })
+
   ui.accountSectionButtons.forEach((btn) => btn.addEventListener("click", async () => {
     setSection(btn.dataset.accountsSection ?? "profiles", { persist: true, log: true })
     if (state.route === "accounts") await refreshCurrentRouteWithRetry("accounts_section_change")
@@ -2109,6 +2754,8 @@ function loadState() {
   state.taskFilters = { ...state.taskFilters, ...loadJson(KEYS.taskFilters, state.taskFilters) }
   state.switchFilters = { ...state.switchFilters, ...loadJson(KEYS.switchFilters, state.switchFilters) }
   state.logFilters = { ...state.logFilters, ...loadJson(KEYS.logFilters, state.logFilters) }
+  state.agentProfileFilters = { ...state.agentProfileFilters, ...loadJson(KEYS.agentProfileFilters, state.agentProfileFilters) }
+  state.agentProfileFilters.includeDisabled = state.agentProfileFilters.includeDisabled !== false
 }
 
 async function initConsole() {

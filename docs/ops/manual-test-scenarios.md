@@ -44,6 +44,7 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
    - `projects`
    - `tasks`
    - `agents`
+   - `agent-profiles`
    - `accounts`
    - `memory`
    - `system`
@@ -417,6 +418,26 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
 Ожидаемо:
 - возвращаются 3 script set записи (`windows/linux/macos`);
 - при повторном `PUT` по той же ОС инкрементируется `version`.
+
+## 3.15 Сценарий A15: Agent Profiles UI (`#/agent-profiles`)
+
+1. Открой `http://localhost:8080/ui/console.html#/agent-profiles`.
+2. Убедись, что экран содержит:
+   - левую колонку `create + filters + list`;
+   - правую колонку `profile summary/edit + MCP servers + OS scripts`.
+3. В форме `Создать профиль агента` выбери активный `project_id`, задай `name`, `role`, `source_policy` и нажми `Создать профиль`.
+4. Проверь, что:
+   - новый профиль появился в списке;
+   - справа открылся detail-инспектор профиля;
+   - в списке MCP binding присутствует обязательный `orchestrator-core`.
+5. Из блока `Зарегистрировать MCP сервер` создай новый server (`name`, `transport`, `origin`, `endpoint`).
+6. В форме `Привязать сервер` выбери созданный server, задай `priority`, опционально `config_json`, нажми `Привязать сервер`.
+7. Проверь, что binding появился в списке и кнопка `Отвязать` доступна для не-required binding.
+8. Нажми `Отвязать` для кастомного binding и проверь, что он исчез из списка.
+9. В блоке `OS script sets` сохрани `windows`, `linux`, `macos` script (`instruction` или `shell`).
+10. Проверь, что после сохранения у каждого OS-блока обновляется metadata (`version`, timestamp).
+11. Примени фильтры `search/project/role/include disabled` и убедись, что список профилей фильтруется без полного reload.
+12. Обнови страницу браузера и проверь восстановление фильтров (`localStorage`).
 
 ## 4. Сценарий B: Security boundary
 

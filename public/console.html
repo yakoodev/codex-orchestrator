@@ -21,6 +21,7 @@
           <a href="#/projects" class="route-link" data-route-link="projects" data-i18n="route_projects">Проекты</a>
           <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Задачи</a>
           <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Агенты</a>
+          <a href="#/agent-profiles" class="route-link" data-route-link="agent-profiles" data-i18n="route_agent_profiles">Профили агентов</a>
           <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Аккаунты</a>
           <a href="#/memory" class="route-link" data-route-link="memory" data-i18n="route_memory">Память</a>
           <a href="#/system" class="route-link" data-route-link="system" data-i18n="route_system">Система</a>
@@ -437,6 +438,254 @@
                   <div>
                     <p class="tiny-label" data-i18n="agent_field_log">Log</p>
                     <pre id="agent-inspector-log" class="mono-box"></pre>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="agent-profiles" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="agent_profiles_title">Профили агентов и MCP</h3>
+              <div class="action-bar">
+                <span id="agent-profiles-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-agent-profiles" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="agent-profiles-layout">
+              <article class="surface-card">
+                <details id="agent-profile-create-shell" class="compact-collapse" open>
+                  <summary data-i18n="agent_profile_create_toggle">Создать профиль агента</summary>
+                  <form id="agent-profile-create-form" class="form-grid">
+                    <div class="split-2">
+                      <div>
+                        <label for="agent-profile-project" data-i18n="agent_profile_project_label">Project ID</label>
+                        <select id="agent-profile-project" name="project_id" required></select>
+                      </div>
+                      <div>
+                        <label for="agent-profile-name" data-i18n="agent_profile_name_label">Название профиля</label>
+                        <input id="agent-profile-name" name="name" required />
+                      </div>
+                    </div>
+                    <div class="split-2">
+                      <div>
+                        <label for="agent-profile-role" data-i18n="agent_profile_role_label">Роль</label>
+                        <input id="agent-profile-role" name="role" value="reviewer" required />
+                      </div>
+                      <div>
+                        <label for="agent-profile-source-policy" data-i18n="agent_profile_source_policy_label">Source policy</label>
+                        <select id="agent-profile-source-policy" name="source_policy">
+                          <option value="catalog_only">catalog_only</option>
+                          <option value="catalog_plus_custom">catalog_plus_custom</option>
+                          <option value="custom_only">custom_only</option>
+                        </select>
+                      </div>
+                    </div>
+                    <label for="agent-profile-description" data-i18n="agent_profile_description_label">Описание</label>
+                    <textarea id="agent-profile-description" name="description" rows="2"></textarea>
+                    <label class="toggle">
+                      <input id="agent-profile-enabled" name="is_enabled" type="checkbox" checked />
+                      <span data-i18n="agent_profile_enabled_label">Профиль активен</span>
+                    </label>
+                    <button type="submit" data-i18n="agent_profile_create_action">Создать профиль</button>
+                  </form>
+                </details>
+
+                <div class="filters-grid">
+                  <div>
+                    <label for="agent-profile-filter-search" data-i18n="agent_profile_filter_search_label">Поиск</label>
+                    <input
+                      id="agent-profile-filter-search"
+                      data-i18n-placeholder="agent_profile_filter_search_placeholder"
+                      placeholder="name/role/project"
+                    />
+                  </div>
+                  <div class="split-2">
+                    <div>
+                      <label for="agent-profile-filter-project" data-i18n="agent_profile_filter_project_label">Project</label>
+                      <select id="agent-profile-filter-project"></select>
+                    </div>
+                    <div>
+                      <label for="agent-profile-filter-role" data-i18n="agent_profile_filter_role_label">Role</label>
+                      <select id="agent-profile-filter-role"></select>
+                    </div>
+                  </div>
+                  <label class="toggle">
+                    <input id="agent-profile-filter-include-disabled" type="checkbox" checked />
+                    <span data-i18n="agent_profile_filter_include_disabled">Показывать отключенные</span>
+                  </label>
+                </div>
+
+                <div class="action-bar">
+                  <button id="agent-profile-filter-clear" class="button-ghost" type="button" data-i18n="task_filter_clear">Сбросить фильтры</button>
+                </div>
+
+                <ul id="agent-profiles-list" class="compact-list fixed-list"></ul>
+              </article>
+
+              <article class="surface-card">
+                <div id="agent-profile-details-empty" class="meta-note" data-i18n="agent_profile_details_empty">
+                  Выбери профиль агента в списке, чтобы управлять MCP серверами и script sets.
+                </div>
+                <div id="agent-profile-details-content" class="form-grid" hidden>
+                  <p class="tiny-label" data-i18n="agent_profile_summary_title">Сводка профиля</p>
+                  <div id="agent-profile-summary-grid" class="project-summary-grid"></div>
+
+                  <form id="agent-profile-edit-form" class="form-grid">
+                    <p class="tiny-label" data-i18n="agent_profile_edit_title">Редактирование профиля</p>
+                    <div class="split-2">
+                      <div>
+                        <label for="agent-profile-edit-id" data-i18n="agent_profile_field_id">ID</label>
+                        <input id="agent-profile-edit-id" disabled />
+                      </div>
+                      <div>
+                        <label for="agent-profile-edit-project" data-i18n="agent_profile_project_label">Project ID</label>
+                        <input id="agent-profile-edit-project" disabled />
+                      </div>
+                    </div>
+                    <div class="split-2">
+                      <div>
+                        <label for="agent-profile-edit-name" data-i18n="agent_profile_name_label">Название профиля</label>
+                        <input id="agent-profile-edit-name" required />
+                      </div>
+                      <div>
+                        <label for="agent-profile-edit-role" data-i18n="agent_profile_role_label">Роль</label>
+                        <input id="agent-profile-edit-role" required />
+                      </div>
+                    </div>
+                    <div class="split-2">
+                      <div>
+                        <label for="agent-profile-edit-source-policy" data-i18n="agent_profile_source_policy_label">Source policy</label>
+                        <select id="agent-profile-edit-source-policy">
+                          <option value="catalog_only">catalog_only</option>
+                          <option value="catalog_plus_custom">catalog_plus_custom</option>
+                          <option value="custom_only">custom_only</option>
+                        </select>
+                      </div>
+                      <label class="toggle">
+                        <input id="agent-profile-edit-enabled" type="checkbox" />
+                        <span data-i18n="agent_profile_enabled_label">Профиль активен</span>
+                      </label>
+                    </div>
+                    <label for="agent-profile-edit-description" data-i18n="agent_profile_description_label">Описание</label>
+                    <textarea id="agent-profile-edit-description" rows="2"></textarea>
+                    <button type="submit" data-i18n="agent_profile_save_action">Сохранить профиль</button>
+                  </form>
+
+                  <div class="agent-profile-subgrid">
+                    <section class="inset-panel">
+                      <div class="panel-head compact">
+                        <h4 data-i18n="agent_profile_mcp_title">MCP серверы профиля</h4>
+                      </div>
+
+                      <details class="compact-collapse" open>
+                        <summary data-i18n="mcp_server_create_toggle">Зарегистрировать MCP сервер</summary>
+                        <form id="mcp-server-create-form" class="form-grid">
+                          <label for="mcp-server-name" data-i18n="mcp_server_name_label">Имя сервера</label>
+                          <input id="mcp-server-name" required />
+                          <div class="split-2">
+                            <div>
+                              <label for="mcp-server-transport" data-i18n="mcp_server_transport_label">Transport</label>
+                              <select id="mcp-server-transport">
+                                <option value="stdio">stdio</option>
+                                <option value="http">http</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label for="mcp-server-origin" data-i18n="mcp_server_origin_label">Origin type</label>
+                              <select id="mcp-server-origin">
+                                <option value="builtin">builtin</option>
+                                <option value="catalog">catalog</option>
+                                <option value="custom">custom</option>
+                              </select>
+                            </div>
+                          </div>
+                          <label for="mcp-server-endpoint" data-i18n="mcp_server_endpoint_label">Endpoint / command</label>
+                          <input id="mcp-server-endpoint" required />
+                          <label for="mcp-server-meta" data-i18n="mcp_server_meta_label">Meta JSON</label>
+                          <textarea id="mcp-server-meta" rows="2"></textarea>
+                          <label class="toggle">
+                            <input id="mcp-server-approved" type="checkbox" checked />
+                            <span data-i18n="mcp_server_approved_label">Сервер одобрен</span>
+                          </label>
+                          <button type="submit" data-i18n="mcp_server_create_action">Создать MCP сервер</button>
+                        </form>
+                      </details>
+
+                      <form id="agent-profile-bind-form" class="form-grid">
+                        <label for="agent-profile-bind-server" data-i18n="agent_profile_bind_server_label">Сервер</label>
+                        <select id="agent-profile-bind-server"></select>
+                        <div class="split-2">
+                          <div>
+                            <label for="agent-profile-bind-priority" data-i18n="agent_profile_bind_priority_label">Priority</label>
+                            <input id="agent-profile-bind-priority" type="number" min="0" max="1000" value="100" />
+                          </div>
+                          <label class="toggle">
+                            <input id="agent-profile-bind-required" type="checkbox" />
+                            <span data-i18n="agent_profile_bind_required_label">Обязательный binding</span>
+                          </label>
+                        </div>
+                        <label for="agent-profile-bind-config" data-i18n="agent_profile_bind_config_label">Config JSON</label>
+                        <textarea id="agent-profile-bind-config" rows="2"></textarea>
+                        <button type="submit" data-i18n="agent_profile_bind_action">Привязать сервер</button>
+                      </form>
+
+                      <ul id="agent-profile-bindings-list" class="compact-list fixed-list"></ul>
+                    </section>
+
+                    <section class="inset-panel">
+                      <div class="panel-head compact">
+                        <h4 data-i18n="agent_profile_scripts_title">OS script sets</h4>
+                      </div>
+
+                      <div class="script-set-grid">
+                        <article class="script-set-item">
+                          <div class="panel-head compact">
+                            <p class="tiny-label">Windows</p>
+                            <span id="agent-profile-script-windows-meta" class="meta-note">n/a</span>
+                          </div>
+                          <label for="agent-profile-script-windows-type" data-i18n="agent_profile_script_type_label">Тип</label>
+                          <select id="agent-profile-script-windows-type">
+                            <option value="instruction">instruction</option>
+                            <option value="shell">shell</option>
+                          </select>
+                          <label for="agent-profile-script-windows-content" data-i18n="agent_profile_script_content_label">Содержимое</label>
+                          <textarea id="agent-profile-script-windows-content" rows="4"></textarea>
+                          <button type="button" data-agent-profile-script-save="windows" data-i18n="agent_profile_script_save_action">Сохранить windows script</button>
+                        </article>
+
+                        <article class="script-set-item">
+                          <div class="panel-head compact">
+                            <p class="tiny-label">Linux</p>
+                            <span id="agent-profile-script-linux-meta" class="meta-note">n/a</span>
+                          </div>
+                          <label for="agent-profile-script-linux-type" data-i18n="agent_profile_script_type_label">Тип</label>
+                          <select id="agent-profile-script-linux-type">
+                            <option value="instruction">instruction</option>
+                            <option value="shell">shell</option>
+                          </select>
+                          <label for="agent-profile-script-linux-content" data-i18n="agent_profile_script_content_label">Содержимое</label>
+                          <textarea id="agent-profile-script-linux-content" rows="4"></textarea>
+                          <button type="button" data-agent-profile-script-save="linux" data-i18n="agent_profile_script_save_action">Сохранить linux script</button>
+                        </article>
+
+                        <article class="script-set-item">
+                          <div class="panel-head compact">
+                            <p class="tiny-label">macOS</p>
+                            <span id="agent-profile-script-macos-meta" class="meta-note">n/a</span>
+                          </div>
+                          <label for="agent-profile-script-macos-type" data-i18n="agent_profile_script_type_label">Тип</label>
+                          <select id="agent-profile-script-macos-type">
+                            <option value="instruction">instruction</option>
+                            <option value="shell">shell</option>
+                          </select>
+                          <label for="agent-profile-script-macos-content" data-i18n="agent_profile_script_content_label">Содержимое</label>
+                          <textarea id="agent-profile-script-macos-content" rows="4"></textarea>
+                          <button type="button" data-agent-profile-script-save="macos" data-i18n="agent_profile_script_save_action">Сохранить macOS script</button>
+                        </article>
+                      </div>
+                    </section>
                   </div>
                 </div>
               </article>
