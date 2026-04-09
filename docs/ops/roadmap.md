@@ -38,6 +38,23 @@
   - аудит и `last_used` обновления;
   - синхронизация с MCP bridge runtime.
 
+## Planned: Agent Tool Access Requests
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: дать агенту встроенный механизм запросить недостающий инструмент/доступ вместо немого падения задачи.
+- Ключевой кейс:
+  - тестировщику назначена задача web-тестирования, но у него нет доступа к browser tool.
+  - агент создает заявку на доступ, оператор/PM ее подтверждает или отклоняет.
+- Зафиксированные решения:
+  - заявка создается на уровне `project + task + agent template`;
+  - запрашивается конкретный инструмент (`tool_name`) и обоснование (`reason`);
+  - после `approved` применяется через ACL/template binding (без ручной правки в БД);
+  - заявка и ее статусы отображаются в UI и в topology inspector.
+- Документ дизайна: `docs/ops/agent-tool-access-requests.md`.
+- Зависимости:
+  - `MCP AuthZ ACL v2` (источник прав и template bindings);
+  - `Coordination Channel` (уведомления `request_created/approved/rejected/applied`);
+  - `Topology UI` (видимость заявок и текущего статуса применения).
+
 ## Planned: Secrets Plane v1
 - Статус: `planned` (decision-complete, реализация не начата).
 - Цель: безопасно хранить и выдавать секреты агентам без утечек в UI, API-логах и activity-log.

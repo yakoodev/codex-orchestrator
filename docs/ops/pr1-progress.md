@@ -171,6 +171,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
 - [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
+- [x] В docs добавлен отдельный feature backlog `Agent Tool Access Requests` (заявки на недостающие инструменты, например browser-доступ для тестировщика): roadmap + дизайн-док + manual acceptance.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -188,6 +189,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
+- [~] Agent Tool Access Requests (заявки агента на недостающие инструменты + approve/reject/apply через ACL/template binding): `docs/ops/agent-tool-access-requests.md`.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

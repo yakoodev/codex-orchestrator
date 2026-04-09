@@ -293,6 +293,22 @@ npm run mcp:serve
 4. Проверь, что события появились в topology inspector и в `GET /api/coordination/channels/{id}/messages`.
 5. Убедись, что runtime stdout/stderr и чувствительные payload не дублируются в coordination channel.
 
+## 3.12 Сценарий A12 (planned): Agent Tool Access Requests
+
+Статус: выполняется после реализации `docs/ops/agent-tool-access-requests.md`.
+
+1. Создай задачу web-тестирования для шаблона агента без browser-инструмента.
+2. Запусти делегацию и проверь создание заявки на недостающий tool:
+  - `POST /api/tool-access/requests` (авто от агента или вручную для smoke).
+3. Убедись, что заявка содержит:
+  - `project_id`, `task_id`, `agent_template_id`, `tool_name`, `reason`.
+4. Выполни `approve`, затем `apply`:
+  - `POST /api/tool-access/requests/{id}/approve`
+  - `POST /api/tool-access/requests/{id}/apply`
+5. Проверь, что ACL/template binding обновлен и повторный вызов инструмента больше не падает из-за доступа.
+6. Выполни негативный сценарий `reject` и проверь, что доступ не выдается.
+7. Проверь в UI/topology, что статус заявки (`new/in_review/approved/rejected/applied`) отображается корректно.
+
 ## 4. Сценарий B: Security boundary
 
 ```powershell
