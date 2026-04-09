@@ -82,7 +82,7 @@
   - `Topology UI` (визуализация профилей и их активных связей).
 
 ## Planned: Agent Request Plane v2
-- Статус: `in_progress` (Phase 1 backend started).
+- Статус: `in_progress` (backend + MCP governor baseline + audit trail).
 - Цель: заменить tool-only заявки универсальным механизмом запросов агента на недостающие возможности.
 - Зафиксированные решения:
   - универсальные типы заявок: `mcp_server_attach`, `mcp_tool_acl`, `script_set`, `runtime_dependency`, `other`;
@@ -94,14 +94,17 @@
   - `blocked_agent` включается в open-пул по умолчанию для повторной обработки;
   - есть manual fallback в UI: оператор/PM может вручную завершить или отклонить заявку.
 - Документ дизайна: `docs/ops/agent-request-plane-v2.md`.
-- Текущий прогресс (Phase 1):
+- Текущий прогресс:
   - добавлена Prisma-модель `AgentRequest` + миграция `0007_agent_request_plane_v2`;
+  - добавлена Prisma-модель `AgentRequestAuditEvent` + миграция `0009_agent_request_audit_events`;
   - добавлены REST endpoints:
     - `POST /api/agent-requests`
     - `GET /api/agent-requests`
     - `GET /api/agent-requests/{id}`
+    - `GET /api/agent-requests/{id}/audit`
     - `POST /api/agent-requests/{id}/resolve`
   - реализован open-pool фильтр (`open + blocked_agent`, опционально `in_progress`);
+  - реализован lifecycle audit trail по созданию и переходам статусов заявок (`from_status/to_status`, `actor_type/actor_id`, `trace_id`, `metadata_json`);
   - добавлены MCP tools:
     - `orchestrator.create_agent_request`
     - `orchestrator.list_open_agent_requests`

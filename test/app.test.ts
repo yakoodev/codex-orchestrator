@@ -10,6 +10,7 @@ import type {
   AgentProfileMcpServerBindingEntity,
   AgentProfileScriptSetEntity,
   AgentMemoryEntryEntity,
+  AgentRequestAuditEventEntity,
   AgentRequestEntity,
   AgentRequestStatus,
   AgentProfileScriptOs,
@@ -25,6 +26,7 @@ import type {
   AuthContextType,
   AuthSwitchEventEntity,
   CreateAgentProfileInput,
+  CreateAgentRequestAuditEventInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateDelegationRequestInput,
@@ -90,6 +92,7 @@ class FakePersistence implements Persistence {
   public readonly delegations: DelegationRequestEntity[] = [];
   public readonly memoryEntries: AgentMemoryEntryEntity[] = [];
   public readonly agentRequests: AgentRequestEntity[] = [];
+  public readonly agentRequestAuditEvents: AgentRequestAuditEventEntity[] = [];
   public readonly agentProfiles: AgentProfileEntity[] = [];
   public readonly mcpServerRegistryEntries: McpServerRegistryEntity[] = [];
   public readonly agentProfileMcpBindings: AgentProfileMcpServerBindingEntity[] = [];
@@ -111,6 +114,7 @@ class FakePersistence implements Persistence {
   private delegationCounter = 1;
   private memoryEntryCounter = 1;
   private agentRequestCounter = 1;
+  private agentRequestAuditEventCounter = 1;
   private agentProfileCounter = 1;
   private mcpServerCounter = 1;
   private agentProfileMcpBindingCounter = 1;
@@ -908,6 +912,37 @@ class FakePersistence implements Persistence {
 
   public async getAgentRequestById(id: string): Promise<AgentRequestEntity | null> {
     return this.agentRequests.find((item) => item.id === id) ?? null;
+  }
+
+  public async createAgentRequestAuditEvent(
+    input: CreateAgentRequestAuditEventInput
+  ): Promise<AgentRequestAuditEventEntity> {
+    const now = new Date();
+    const item: AgentRequestAuditEventEntity = {
+      id: `agent-request-audit-event-${this.agentRequestAuditEventCounter++}`,
+      request_id: input.request_id,
+      event_type: input.event_type,
+      from_status: input.from_status ?? null,
+      to_status: input.to_status ?? null,
+      actor_type: input.actor_type,
+      actor_id: input.actor_id ?? null,
+      trace_id: input.trace_id ?? null,
+      metadata_json: input.metadata_json ?? null,
+      created_at: now
+    };
+    this.agentRequestAuditEvents.push(item);
+    return item;
+  }
+
+  public async listAgentRequestAuditEvents(
+    requestId: string,
+    options?: { limit?: number }
+  ): Promise<AgentRequestAuditEventEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    return this.agentRequestAuditEvents
+      .filter((item) => item.request_id === requestId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+      .slice(0, limit);
   }
 
   public async resolveAgentRequest(
@@ -3440,6 +3475,83 @@ describe("smoke-core API", () => {
         .json()
         .items.some((item: { id: string }) => item.id === requestId)
     ).toBe(false);
+  });
+
+  it("records and returns agent request audit events", async () => {
+    const task = await persistence.createTask({
+      title: "Audit request seed",
+      description: "Request audit checks",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/agent-requests",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-request-create-1" },
+      payload: {
+        type: "runtime_dependency",
+        project_id: "project",
+        task_id: task.id,
+        title: "Need browser",
+        reason: "missing browser runtime",
+        request_payload: { governor_auto_resolve: false }
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const requestId = created.json().id as string;
+
+    const resolved = await app.inject({
+      method: "POST",
+      url: `/api/agent-requests/${requestId}/resolve`,
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-request-resolve-1" },
+      payload: {
+        status: "blocked_agent",
+        claimed_by_governor_id: "governor-main",
+        resolution_payload: { reason: "manual approval required" }
+      }
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json().status).toBe("blocked_agent");
+
+    const audit = await app.inject({
+      method: "GET",
+      url: `/api/agent-requests/${requestId}/audit?limit=10`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(audit.statusCode).toBe(200);
+    expect(audit.json().items).toHaveLength(2);
+    expect(audit.json().items[0]).toMatchObject({
+      request_id: requestId,
+      event_type: "request_blocked_agent",
+      from_status: "open",
+      to_status: "blocked_agent",
+      actor_type: "governor",
+      actor_id: "governor-main",
+      trace_id: "trace-agent-request-resolve-1"
+    });
+    expect(audit.json().items[1]).toMatchObject({
+      request_id: requestId,
+      event_type: "request_created",
+      from_status: null,
+      to_status: "open",
+      actor_type: "admin_api",
+      actor_id: "admin",
+      trace_id: "trace-agent-request-create-1"
+    });
+
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: `/api/agent-requests/${requestId}/audit?limit=0`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidLimit.json().code).toBe("REQUEST_VALIDATION_FAILED");
   });
 
   it("returns REQUEST_STATE_CONFLICT for terminal agent request transition", async () => {

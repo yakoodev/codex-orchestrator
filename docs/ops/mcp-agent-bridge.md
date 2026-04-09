@@ -1,7 +1,7 @@
 # MCP Agent Bridge (MVP + Request Plane + AuthZ v2)
 
 Обновлено: 2026-04-09  
-Статус: `completed` (MVP), `in_progress` (Request Plane v2 Phase 1), `planned` (AuthZ ACL v2)
+Статус: `completed` (MVP), `in_progress` (Request Plane v2 backend + governor baseline + audit trail), `planned` (AuthZ ACL v2)
 
 ## 1. Цель
 
@@ -50,6 +50,7 @@ Backend API, используемый bridge:
 - `POST /api/agent-requests`
 - `GET /api/agent-requests` (`open_pool=true` + optional `include_in_progress`)
 - `GET /api/agent-requests/{id}`
+- `GET /api/agent-requests/{id}/audit`
 - `POST /api/agent-requests/{id}/resolve`
 
 ### 3.2 Семантика
@@ -64,7 +65,8 @@ Backend API, используемый bridge:
   - `list_open -> claim(in_progress) -> finalize(resolved_by_agent|blocked_agent)`;
   - авто-`resolved_by_agent` выполняется только при явном флаге `request_payload.governor_auto_resolve=true`;
   - по умолчанию заявки без этого флага переводятся в `blocked_agent`.
-- Текущее ограничение: audit trail и backend-side governor orchestration остаются follow-up.
+- На backend реализован audit trail переходов заявок; через API доступен `GET /api/agent-requests/{id}/audit`.
+- Текущее ограничение: policy-driven governor orchestration по типам заявок остается follow-up.
 
 ### 3.3 Error mapping (request-plane)
 
@@ -120,7 +122,7 @@ npm run mcp:serve
 
 ## 7. Следующие шаги
 
-- Довести `Agent Request Plane v2`: audit trail + governor automation + UI fallback поток.
+- Довести `Agent Request Plane v2`: policy-driven governor automation + UI fallback поток.
 - Расширить governor automation: добавить policy-driven резолверы (MCP attach/ACL/script/runtime) вместо флага `governor_auto_resolve`.
 - Реализовать `MCP AuthZ ACL v2` с привязкой к `AgentProfile`.
 - Добавить streamable HTTP transport.

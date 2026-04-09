@@ -287,6 +287,19 @@ export interface AgentRequestEntity {
   updated_at: Date;
 }
 
+export interface AgentRequestAuditEventEntity {
+  id: string;
+  request_id: string;
+  event_type: string;
+  from_status: AgentRequestStatus | null;
+  to_status: AgentRequestStatus | null;
+  actor_type: string;
+  actor_id: string | null;
+  trace_id: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: Date;
+}
+
 export type AgentProfileSourcePolicy = "catalog_only" | "catalog_plus_custom" | "custom_only";
 export type McpServerTransport = "stdio" | "http";
 export type McpServerOriginType = "built_in" | "catalog" | "custom";
@@ -506,6 +519,17 @@ export interface CreateAgentRequestInput {
   created_by: string;
 }
 
+export interface CreateAgentRequestAuditEventInput {
+  request_id: string;
+  event_type: string;
+  from_status?: AgentRequestStatus | null;
+  to_status?: AgentRequestStatus | null;
+  actor_type: string;
+  actor_id?: string | null;
+  trace_id?: string | null;
+  metadata_json?: Record<string, unknown> | null;
+}
+
 export interface CreateAgentProfileInput {
   project_id: string;
   name: string;
@@ -694,6 +718,13 @@ export interface Persistence {
     limit?: number;
   }): Promise<AgentRequestEntity[]>;
   getAgentRequestById(id: string): Promise<AgentRequestEntity | null>;
+  createAgentRequestAuditEvent(
+    input: CreateAgentRequestAuditEventInput
+  ): Promise<AgentRequestAuditEventEntity>;
+  listAgentRequestAuditEvents(
+    requestId: string,
+    options?: { limit?: number }
+  ): Promise<AgentRequestAuditEventEntity[]>;
   resolveAgentRequest(
     id: string,
     input: {

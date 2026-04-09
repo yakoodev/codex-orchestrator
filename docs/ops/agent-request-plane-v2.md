@@ -1,7 +1,7 @@
 # Agent Request Plane v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `in_progress` (Phase 1 backend + MCP governor loop baseline)
+Статус: `in_progress` (backend + MCP governor loop baseline + audit trail)
 
 ## 1. Цель
 
@@ -45,7 +45,7 @@
   - `created_at`, `updated_at`
 
 - `AgentRequestAuditEvent`
-  - `id`, `request_id`, `event_type`, `actor_type`, `actor_id`
+  - `id`, `request_id`, `event_type`, `from_status`, `to_status`, `actor_type`, `actor_id`
   - `trace_id`, `metadata_json`, `created_at`
 
 ## 4. Статусы и open-пул
@@ -62,7 +62,7 @@
 - `list_open` по умолчанию возвращает `open` + `blocked_agent`.
 - `in_progress` может быть включен отдельным флагом фильтра.
 
-## 5. API-контракт (planned)
+## 5. API-контракт
 
 ### 5.1 MCP tools (для агентов и governor)
 
@@ -76,6 +76,7 @@
 - `POST /api/agent-requests`
 - `GET /api/agent-requests`
 - `GET /api/agent-requests/{id}`
+- `GET /api/agent-requests/{id}/audit`
 - `POST /api/agent-requests/{id}/resolve`
 
 Базовые фильтры:
@@ -96,6 +97,7 @@
 - governor tool выполняет `list_open -> claim -> finalize`;
 - `resolved_by_agent` ставится только при явном `request_payload.governor_auto_resolve=true`;
 - без этого флага заявка переводится в `blocked_agent`;
+- backend пишет audit события на create/resolve переходах с `from_status/to_status`, `trace_id`, `actor_type/actor_id`;
 - policy-driven резолверы по типам заявок остаются следующим этапом.
 
 ## 7. Интеграция с другими эпиками
@@ -105,7 +107,7 @@
 - `Coordination Channel`: сообщения `request_*` lifecycle.
 - `Topology UI`: узлы заявок и их текущие состояния.
 
-## 8. Error contract (planned)
+## 8. Error contract
 
 - `REQUEST_VALIDATION_FAILED`
 - `REQUEST_FORBIDDEN`
@@ -119,14 +121,15 @@
 - В payload/логах применяется redaction для чувствительных данных.
 - Governor и manual fallback должны быть идемпотентными на повторные запросы.
 
-## 10. Manual acceptance (planned)
+## 10. Manual acceptance
 
 1. Агент создает заявку через MCP метод.
 2. Governor получает заявку через `list_open`.
 3. Governor переводит заявку в `resolved_by_agent` или `blocked_agent`.
 4. Убедиться, что `blocked_agent` повторно возвращается в `list_open`.
 5. Оператор вручную закрывает одну `blocked_agent` заявку как `resolved_manual` и другую как `rejected_manual`.
-6. Проверить отображение всех переходов в topology/coordination и audit.
+6. Проверить через `GET /api/agent-requests/{id}/audit`, что переходы зафиксированы в правильном порядке и с корректными `from_status/to_status`.
+7. Проверить отображение переходов в topology/coordination после реализации соответствующих эпиков.
 
 ## 11. Out of scope v2
 

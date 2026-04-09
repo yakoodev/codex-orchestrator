@@ -1447,6 +1447,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/agent-requests/{id}/audit:
+    get:
+      tags: [Agent Requests]
+      summary: List audit events for agent request
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Agent request audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentRequestAuditEvent"
+                required: [items]
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/agent-requests/{id}/resolve:
     post:
       tags: [Agent Requests]
@@ -2766,6 +2804,42 @@ components:
         - created_by
         - created_at
         - updated_at
+
+    AgentRequestAuditEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        event_type:
+          type: string
+        from_status:
+          allOf:
+            - $ref: "#/components/schemas/AgentRequestStatus"
+          nullable: true
+        to_status:
+          allOf:
+            - $ref: "#/components/schemas/AgentRequestStatus"
+          nullable: true
+        actor_type:
+          type: string
+        actor_id:
+          type: [string, "null"]
+        trace_id:
+          type: [string, "null"]
+        metadata_json:
+          type: [object, "null"]
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - request_id
+        - event_type
+        - actor_type
+        - created_at
 
     CapabilityDescriptor:
       type: object

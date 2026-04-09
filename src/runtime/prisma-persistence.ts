@@ -30,6 +30,7 @@ import type {
   AgentProfileScriptSetEntity,
   AgentProfileScriptType,
   AgentProfileSourcePolicy,
+  AgentRequestAuditEventEntity,
   AgentRequestEntity,
   AgentRequestStatus,
   AgentRequestType,
@@ -42,6 +43,7 @@ import type {
   AuthSwitchEventEntity,
   CreateProjectInput,
   CreateAgentProfileInput,
+  CreateAgentRequestAuditEventInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateAuthProfileInput,
@@ -361,6 +363,32 @@ function toAgentRequestEntity(entity: {
     created_by: entity.created_by,
     created_at: entity.created_at,
     updated_at: entity.updated_at
+  };
+}
+
+function toAgentRequestAuditEventEntity(entity: {
+  id: string;
+  request_id: string;
+  event_type: string;
+  from_status: PrismaAgentRequestStatus | null;
+  to_status: PrismaAgentRequestStatus | null;
+  actor_type: string;
+  actor_id: string | null;
+  trace_id: string | null;
+  metadata_json: Prisma.JsonValue | null;
+  created_at: Date;
+}): AgentRequestAuditEventEntity {
+  return {
+    id: entity.id,
+    request_id: entity.request_id,
+    event_type: entity.event_type,
+    from_status: entity.from_status as AgentRequestStatus | null,
+    to_status: entity.to_status as AgentRequestStatus | null,
+    actor_type: entity.actor_type,
+    actor_id: entity.actor_id,
+    trace_id: entity.trace_id,
+    metadata_json: entity.metadata_json as Record<string, unknown> | null,
+    created_at: entity.created_at
   };
 }
 
@@ -1414,6 +1442,49 @@ export class PrismaPersistence implements Persistence {
     }
 
     return toAgentRequestEntity(request);
+  }
+
+  public async createAgentRequestAuditEvent(
+    input: CreateAgentRequestAuditEventInput
+  ): Promise<AgentRequestAuditEventEntity> {
+    const created = await this.prisma.agentRequestAuditEvent.create({
+      data: {
+        request_id: input.request_id,
+        event_type: input.event_type,
+        from_status:
+          input.from_status === undefined
+            ? undefined
+            : (input.from_status as PrismaAgentRequestStatus | null),
+        to_status:
+          input.to_status === undefined
+            ? undefined
+            : (input.to_status as PrismaAgentRequestStatus | null),
+        actor_type: input.actor_type,
+        actor_id: input.actor_id === undefined ? undefined : input.actor_id,
+        trace_id: input.trace_id === undefined ? undefined : input.trace_id,
+        metadata_json:
+          input.metadata_json === undefined
+            ? undefined
+            : ((input.metadata_json ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toAgentRequestAuditEventEntity(created);
+  }
+
+  public async listAgentRequestAuditEvents(
+    requestId: string,
+    options?: { limit?: number }
+  ): Promise<AgentRequestAuditEventEntity[]> {
+    const items = await this.prisma.agentRequestAuditEvent.findMany({
+      where: { request_id: requestId },
+      orderBy: { created_at: "desc" },
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toAgentRequestAuditEventEntity(item));
   }
 
   public async resolveAgentRequest(

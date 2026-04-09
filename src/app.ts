@@ -21,6 +21,7 @@ import type {
   AgentProfileScriptSetEntity,
   AgentProfileScriptType,
   AgentProfileSourcePolicy,
+  AgentRequestAuditEventEntity,
   AgentRequestEntity,
   AgentRequestStatus,
   AgentRequestType,
@@ -105,6 +106,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/agent-requests",
   "GET /api/agent-requests",
   "GET /api/agent-requests/{id}",
+  "GET /api/agent-requests/{id}/audit",
   "POST /api/agent-requests/{id}/resolve",
   "POST /api/agent-profiles",
   "GET /api/agent-profiles",
@@ -1603,6 +1605,43 @@ function agentRequestToResponse(agentRequest: AgentRequestEntity): Record<string
     created_at: agentRequest.created_at,
     updated_at: agentRequest.updated_at
   };
+}
+
+function agentRequestAuditEventToResponse(
+  event: AgentRequestAuditEventEntity
+): Record<string, unknown> {
+  return {
+    id: event.id,
+    request_id: event.request_id,
+    event_type: event.event_type,
+    from_status: event.from_status,
+    to_status: event.to_status,
+    actor_type: event.actor_type,
+    actor_id: event.actor_id,
+    trace_id: event.trace_id,
+    metadata_json: event.metadata_json,
+    created_at: event.created_at
+  };
+}
+
+function getAgentRequestStatusEventType(status: AgentRequestStatus): string {
+  if (status === "in_progress") {
+    return "request_claimed";
+  }
+  if (status === "blocked_agent") {
+    return "request_blocked_agent";
+  }
+  if (status === "resolved_by_agent") {
+    return "request_resolved_by_agent";
+  }
+  if (status === "resolved_manual") {
+    return "request_resolved_manual";
+  }
+  if (status === "rejected_manual") {
+    return "request_rejected_manual";
+  }
+
+  return "request_status_updated";
 }
 
 function agentProfileToResponse(profile: AgentProfileEntity): Record<string, unknown> {
@@ -3753,6 +3792,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/agent-requests", async (request, reply) => {
     const body = request.body as AgentRequestCreateRequest;
+    const traceId = getTraceId(request);
     const typeValue = asNonEmptyString(body.type);
     const projectId = asProjectKey(body.project_id);
     const taskId = asNonEmptyString(body.task_id);
@@ -3870,6 +3910,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       created_by: "admin"
     });
 
+    await persistence.createAgentRequestAuditEvent({
+      request_id: created.id,
+      event_type: "request_created",
+      from_status: null,
+      to_status: created.status,
+      actor_type: "admin_api",
+      actor_id: "admin",
+      trace_id: traceId,
+      metadata_json: {
+        type: created.type,
+        project_id: created.project_id,
+        task_id: created.task_id,
+        priority: created.priority
+      }
+    });
+
     return reply.code(201).send(agentRequestToResponse(created));
   });
 
@@ -3981,8 +4037,29 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send(agentRequestToResponse(item));
   });
 
+  app.get("/api/agent-requests/:id/audit", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const query = request.query as { limit?: unknown };
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    if (query.limit !== undefined && (!parsedLimit || parsedLimit < 1)) {
+      return sendError(reply, 400, "limit must be a positive integer", "REQUEST_VALIDATION_FAILED");
+    }
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+
+    const item = await persistence.getAgentRequestById(id);
+    if (!item) {
+      return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
+    }
+
+    const events = await persistence.listAgentRequestAuditEvents(id, { limit });
+    return reply.send({
+      items: events.map((event) => agentRequestAuditEventToResponse(event))
+    });
+  });
+
   app.post("/api/agent-requests/:id/resolve", async (request, reply) => {
     const { id } = request.params as { id: string };
+    const traceId = getTraceId(request);
     const body = request.body as AgentRequestResolveRequest;
     const statusValue = asNonEmptyString(body.status);
     if (!statusValue || !isAgentRequestStatus(statusValue)) {
@@ -4043,6 +4120,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     if (!existing) {
       return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
     }
+    const previousStatus = existing.status;
 
     if (
       AGENT_REQUEST_TERMINAL_STATUSES.has(existing.status) &&
@@ -4076,6 +4154,22 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     if (!updated) {
       return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
     }
+
+    await persistence.createAgentRequestAuditEvent({
+      request_id: updated.id,
+      event_type: getAgentRequestStatusEventType(statusValue),
+      from_status: previousStatus,
+      to_status: updated.status,
+      actor_type: claimedByGovernorId ? "governor" : "admin_api",
+      actor_id: claimedByGovernorId ?? resolvedBy ?? "admin",
+      trace_id: traceId,
+      metadata_json: {
+        requested_status: statusValue,
+        previous_status: previousStatus,
+        current_status: updated.status,
+        resolution_payload: updated.resolution_payload_json
+      }
+    });
 
     return reply.send(agentRequestToResponse(updated));
   });

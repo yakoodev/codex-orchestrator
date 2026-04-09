@@ -294,9 +294,9 @@ npm run mcp:serve
 4. Проверь, что события появились в topology inspector и в `GET /api/coordination/channels/{id}/messages`.
 5. Убедись, что runtime stdout/stderr и чувствительные payload не дублируются в coordination channel.
 
-## 3.12 Сценарий A12: Agent Request Plane v2 через MCP (Phase 1)
+## 3.12 Сценарий A12: Agent Request Plane v2 через MCP + audit trail
 
-Статус: доступно в backend + MCP bridge (без governor automation и topology UI).
+Статус: доступно в backend + MCP bridge (governor baseline + request audit trail, без topology UI).
 
 1. Запусти агента без нужной возможности (например, без browser MCP) и получи блокер.
 2. Через MCP вызови `orchestrator.create_agent_request` с типом `mcp_server_attach`.
@@ -316,6 +316,17 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests?open_pool=true&project_id=<PROJ
 Ожидаемо:
 - в open-пул входят `open` и `blocked_agent` (и `in_progress`, если явно включен флаг);
 - после `resolved_*` заявка больше не возвращается в open-пуле.
+8. Проверь audit trail заявки:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/agent-requests/<REQUEST_ID>/audit?limit=20" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+9. Ожидаемо в `items`:
+- есть `request_created` (с `from_status = null`, `to_status = open`);
+- есть событие перехода (`request_claimed` / `request_blocked_agent` / `request_resolved_*`);
+- заполнены `trace_id`, `actor_type/actor_id`, `from_status/to_status`.
 
 ## 3.13 Сценарий A13: Governor loop в MCP bridge и повторная выдача blocked_agent
 
