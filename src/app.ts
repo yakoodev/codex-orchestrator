@@ -15,6 +15,12 @@ import {
   createAuthProfileRateLimitsReader
 } from "./runtime/auth-profile-rate-limits";
 import type {
+  AgentProfileEntity,
+  AgentProfileMcpServerBindingEntity,
+  AgentProfileScriptOs,
+  AgentProfileScriptSetEntity,
+  AgentProfileScriptType,
+  AgentProfileSourcePolicy,
   AgentRequestEntity,
   AgentRequestStatus,
   AgentRequestType,
@@ -30,6 +36,9 @@ import type {
   DelegationRequestEntity,
   EventPublishInput,
   EventPublisher,
+  McpServerOriginType,
+  McpServerRegistryEntity,
+  McpServerTransport,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
@@ -97,6 +106,17 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/agent-requests",
   "GET /api/agent-requests/{id}",
   "POST /api/agent-requests/{id}/resolve",
+  "POST /api/agent-profiles",
+  "GET /api/agent-profiles",
+  "GET /api/agent-profiles/{id}",
+  "PATCH /api/agent-profiles/{id}",
+  "GET /api/agent-profiles/{id}/mcp-servers",
+  "POST /api/agent-profiles/{id}/mcp-servers/{server_id}",
+  "DELETE /api/agent-profiles/{id}/mcp-servers/{server_id}",
+  "GET /api/agent-profiles/{id}/scripts",
+  "PUT /api/agent-profiles/{id}/scripts/{os}",
+  "POST /api/mcp/servers",
+  "GET /api/mcp/servers",
   "POST /api/memory/entries",
   "GET /api/memory/entries",
   "PATCH /api/memory/entries/{id}",
@@ -274,6 +294,43 @@ interface AgentRequestResolveRequest {
   resolved_by?: unknown;
 }
 
+interface AgentProfileCreateRequest {
+  project_id?: unknown;
+  name?: unknown;
+  role?: unknown;
+  description?: unknown;
+  source_policy?: unknown;
+  is_enabled?: unknown;
+}
+
+interface AgentProfilePatchRequest {
+  name?: unknown;
+  role?: unknown;
+  description?: unknown;
+  source_policy?: unknown;
+  is_enabled?: unknown;
+}
+
+interface AgentProfileMcpBindingRequest {
+  is_required?: unknown;
+  priority?: unknown;
+  config_json?: unknown;
+}
+
+interface AgentProfileScriptUpsertRequest {
+  script_type?: unknown;
+  content?: unknown;
+}
+
+interface McpServerCreateRequest {
+  name?: unknown;
+  transport?: unknown;
+  endpoint_or_command?: unknown;
+  origin_type?: unknown;
+  is_approved?: unknown;
+  meta_json?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
@@ -328,6 +385,16 @@ const AGENT_REQUEST_RESOLVE_ALLOWED_STATUSES = new Set<AgentRequestStatus>([
   "resolved_manual",
   "rejected_manual"
 ]);
+const AGENT_PROFILE_SOURCE_POLICIES = new Set<AgentProfileSourcePolicy>([
+  "catalog_only",
+  "catalog_plus_custom",
+  "custom_only"
+]);
+const MCP_SERVER_TRANSPORTS = new Set<McpServerTransport>(["stdio", "http"]);
+const MCP_SERVER_ORIGIN_TYPES = new Set<McpServerOriginType>(["built_in", "catalog", "custom"]);
+const AGENT_PROFILE_SCRIPT_OSES = new Set<AgentProfileScriptOs>(["windows", "linux", "macos"]);
+const AGENT_PROFILE_SCRIPT_TYPES = new Set<AgentProfileScriptType>(["instruction", "shell"]);
+const ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator-core";
 const SCHEDULE_SCOPES = new Set<ScheduleScope>(["global", "project"]);
 const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_skip"]);
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
@@ -340,6 +407,7 @@ const MAX_DELEGATION_EXECUTION_PROMPT_LENGTH = 12_000;
 const MAX_DELEGATION_LOG_LENGTH = 12_000;
 const MAX_MEMORY_CONTENT_LENGTH = 8_000;
 const MAX_MEMORY_CONTEXT_ENTRIES = 6;
+const MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH = 20_000;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
@@ -560,6 +628,26 @@ function isAgentRequestType(value: string): value is AgentRequestType {
 
 function isAgentRequestStatus(value: string): value is AgentRequestStatus {
   return AGENT_REQUEST_STATUSES.has(value as AgentRequestStatus);
+}
+
+function isAgentProfileSourcePolicy(value: string): value is AgentProfileSourcePolicy {
+  return AGENT_PROFILE_SOURCE_POLICIES.has(value as AgentProfileSourcePolicy);
+}
+
+function isMcpServerTransport(value: string): value is McpServerTransport {
+  return MCP_SERVER_TRANSPORTS.has(value as McpServerTransport);
+}
+
+function isMcpServerOriginType(value: string): value is McpServerOriginType {
+  return MCP_SERVER_ORIGIN_TYPES.has(value as McpServerOriginType);
+}
+
+function isAgentProfileScriptOs(value: string): value is AgentProfileScriptOs {
+  return AGENT_PROFILE_SCRIPT_OSES.has(value as AgentProfileScriptOs);
+}
+
+function isAgentProfileScriptType(value: string): value is AgentProfileScriptType {
+  return AGENT_PROFILE_SCRIPT_TYPES.has(value as AgentProfileScriptType);
 }
 
 function isScheduleScope(value: string): value is ScheduleScope {
@@ -1428,6 +1516,64 @@ function agentRequestToResponse(agentRequest: AgentRequestEntity): Record<string
     created_by: agentRequest.created_by,
     created_at: agentRequest.created_at,
     updated_at: agentRequest.updated_at
+  };
+}
+
+function agentProfileToResponse(profile: AgentProfileEntity): Record<string, unknown> {
+  return {
+    id: profile.id,
+    project_id: profile.project_id,
+    name: profile.name,
+    role: profile.role,
+    description: profile.description,
+    source_policy: profile.source_policy,
+    is_enabled: profile.is_enabled,
+    created_at: profile.created_at,
+    updated_at: profile.updated_at
+  };
+}
+
+function mcpServerRegistryToResponse(server: McpServerRegistryEntity): Record<string, unknown> {
+  return {
+    id: server.id,
+    name: server.name,
+    transport: server.transport,
+    endpoint_or_command: server.endpoint_or_command,
+    origin_type: server.origin_type,
+    is_approved: server.is_approved,
+    meta_json: server.meta_json,
+    created_at: server.created_at,
+    updated_at: server.updated_at
+  };
+}
+
+function agentProfileMcpBindingToResponse(
+  binding: AgentProfileMcpServerBindingEntity,
+  server?: McpServerRegistryEntity | null
+): Record<string, unknown> {
+  return {
+    id: binding.id,
+    agent_profile_id: binding.agent_profile_id,
+    mcp_server_id: binding.mcp_server_id,
+    is_required: binding.is_required,
+    priority: binding.priority,
+    config_json: binding.config_json,
+    created_at: binding.created_at,
+    updated_at: binding.updated_at,
+    mcp_server: server ? mcpServerRegistryToResponse(server) : null
+  };
+}
+
+function agentProfileScriptSetToResponse(scriptSet: AgentProfileScriptSetEntity): Record<string, unknown> {
+  return {
+    id: scriptSet.id,
+    agent_profile_id: scriptSet.agent_profile_id,
+    os: scriptSet.os,
+    script_type: scriptSet.script_type,
+    content: scriptSet.content,
+    version: scriptSet.version,
+    created_at: scriptSet.created_at,
+    updated_at: scriptSet.updated_at
   };
 }
 
@@ -3846,6 +3992,522 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return reply.send(agentRequestToResponse(updated));
+  });
+
+  app.post("/api/agent-profiles", async (request, reply) => {
+    const body = request.body as AgentProfileCreateRequest;
+    const projectId = asProjectKey(body.project_id);
+    const name = asNonEmptyString(body.name);
+    const roleValue = asNonEmptyString(body.role);
+
+    if (!projectId || !name || !roleValue) {
+      return sendError(
+        reply,
+        400,
+        "project_id, name and role are required",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    const sourcePolicyCandidate = asNonEmptyString(body.source_policy);
+    if (body.source_policy !== undefined && !sourcePolicyCandidate) {
+      return sendError(
+        reply,
+        400,
+        "source_policy must be a non-empty string",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+    let sourcePolicy: AgentProfileSourcePolicy = "catalog_only";
+    if (sourcePolicyCandidate) {
+      if (!isAgentProfileSourcePolicy(sourcePolicyCandidate)) {
+        return sendError(reply, 400, "Invalid source_policy", "REQUEST_VALIDATION_FAILED");
+      }
+      sourcePolicy = sourcePolicyCandidate;
+    }
+
+    let description: string | null | undefined;
+    if (body.description !== undefined) {
+      if (body.description === null) {
+        description = null;
+      } else {
+        const parsed = asNonEmptyString(body.description);
+        if (!parsed) {
+          return sendError(
+            reply,
+            400,
+            "description must be a non-empty string or null",
+            "REQUEST_VALIDATION_FAILED"
+          );
+        }
+        description = parsed;
+      }
+    }
+
+    let isEnabled = true;
+    if (body.is_enabled !== undefined) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "REQUEST_VALIDATION_FAILED");
+      }
+      isEnabled = body.is_enabled;
+    }
+
+    const project = await persistence.getProjectByKey(projectId);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+    if (!project.is_active) {
+      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
+    }
+
+    const created = await persistence.createAgentProfile({
+      project_id: projectId,
+      name,
+      role: normalizeAgentRole(roleValue),
+      description,
+      source_policy: sourcePolicy,
+      is_enabled: isEnabled
+    });
+
+    const orchestratorServer = await persistence.ensureOrchestratorMcpServer();
+    await persistence.bindMcpServerToAgentProfile(created.id, orchestratorServer.id, {
+      is_required: true,
+      priority: 0,
+      config_json: null
+    });
+
+    return reply.code(201).send(agentProfileToResponse(created));
+  });
+
+  app.get("/api/agent-profiles", async (request, reply) => {
+    const query = request.query as {
+      project_id?: unknown;
+      include_disabled?: unknown;
+      role?: unknown;
+      limit?: unknown;
+    };
+
+    const rawProjectId = query.project_id;
+    const projectId = asProjectKey(rawProjectId) ?? undefined;
+    if (rawProjectId !== undefined && rawProjectId !== null && !projectId) {
+      return sendError(reply, 400, "Invalid project_id", "REQUEST_VALIDATION_FAILED");
+    }
+
+    let includeDisabled = true;
+    if (query.include_disabled !== undefined) {
+      const parsed = parseBooleanLike(query.include_disabled);
+      if (parsed === null) {
+        return sendError(
+          reply,
+          400,
+          "include_disabled must be boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      includeDisabled = parsed;
+    }
+
+    const roleCandidate = asNonEmptyString(query.role);
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    if (query.limit !== undefined && (!parsedLimit || parsedLimit < 1)) {
+      return sendError(reply, 400, "limit must be a positive integer", "REQUEST_VALIDATION_FAILED");
+    }
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+
+    const items = await persistence.listAgentProfiles({
+      project_id: projectId,
+      include_disabled: includeDisabled,
+      role: roleCandidate ? normalizeAgentRole(roleCandidate) : undefined,
+      limit
+    });
+
+    return reply.send({
+      items: items.map((item) => agentProfileToResponse(item))
+    });
+  });
+
+  app.get("/api/agent-profiles/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const profile = await persistence.getAgentProfileById(id);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    return reply.send(agentProfileToResponse(profile));
+  });
+
+  app.patch("/api/agent-profiles/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as AgentProfilePatchRequest;
+    const patch: Parameters<Persistence["patchAgentProfile"]>[1] = {};
+
+    if (body.name !== undefined) {
+      const name = asNonEmptyString(body.name);
+      if (!name) {
+        return sendError(reply, 400, "name must be a non-empty string", "REQUEST_VALIDATION_FAILED");
+      }
+      patch.name = name;
+    }
+
+    if (body.role !== undefined) {
+      const roleValue = asNonEmptyString(body.role);
+      if (!roleValue) {
+        return sendError(reply, 400, "role must be a non-empty string", "REQUEST_VALIDATION_FAILED");
+      }
+      patch.role = normalizeAgentRole(roleValue);
+    }
+
+    if (body.description !== undefined) {
+      if (body.description === null) {
+        patch.description = null;
+      } else {
+        const description = asNonEmptyString(body.description);
+        if (!description) {
+          return sendError(
+            reply,
+            400,
+            "description must be a non-empty string or null",
+            "REQUEST_VALIDATION_FAILED"
+          );
+        }
+        patch.description = description;
+      }
+    }
+
+    if (body.source_policy !== undefined) {
+      const sourcePolicy = asNonEmptyString(body.source_policy);
+      if (!sourcePolicy) {
+        return sendError(
+          reply,
+          400,
+          "source_policy must be a non-empty string",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      if (!isAgentProfileSourcePolicy(sourcePolicy)) {
+        return sendError(reply, 400, "Invalid source_policy", "REQUEST_VALIDATION_FAILED");
+      }
+      patch.source_policy = sourcePolicy;
+    }
+
+    if (body.is_enabled !== undefined) {
+      if (typeof body.is_enabled !== "boolean") {
+        return sendError(reply, 400, "is_enabled must be a boolean", "REQUEST_VALIDATION_FAILED");
+      }
+      patch.is_enabled = body.is_enabled;
+    }
+
+    if (
+      patch.name === undefined &&
+      patch.role === undefined &&
+      patch.description === undefined &&
+      patch.source_policy === undefined &&
+      patch.is_enabled === undefined
+    ) {
+      return sendError(reply, 400, "No fields to update", "REQUEST_VALIDATION_FAILED");
+    }
+
+    const updated = await persistence.patchAgentProfile(id, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    return reply.send(agentProfileToResponse(updated));
+  });
+
+  app.get("/api/agent-profiles/:id/mcp-servers", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const profile = await persistence.getAgentProfileById(id);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const [bindings, servers] = await Promise.all([
+      persistence.listAgentProfileMcpBindings(id),
+      persistence.listMcpServerRegistry({ include_unapproved: true })
+    ]);
+    const serverById = new Map(servers.map((server) => [server.id, server]));
+
+    return reply.send({
+      items: bindings.map((binding) =>
+        agentProfileMcpBindingToResponse(binding, serverById.get(binding.mcp_server_id) ?? null)
+      )
+    });
+  });
+
+  app.post("/api/agent-profiles/:id/mcp-servers/:serverId", async (request, reply) => {
+    const { id, serverId } = request.params as { id: string; serverId: string };
+    const body = request.body as AgentProfileMcpBindingRequest;
+    const profile = await persistence.getAgentProfileById(id);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const server = await persistence.getMcpServerRegistryById(serverId);
+    if (!server) {
+      return sendError(reply, 404, "MCP server not found", "MCP_SERVER_NOT_FOUND");
+    }
+
+    let isRequired: boolean | undefined;
+    if (body.is_required !== undefined) {
+      if (typeof body.is_required !== "boolean") {
+        return sendError(
+          reply,
+          400,
+          "is_required must be a boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      isRequired = body.is_required;
+    }
+    if (server.name === ORCHESTRATOR_MCP_SERVER_NAME && isRequired === false) {
+      return sendError(
+        reply,
+        409,
+        "orchestrator MCP binding is mandatory",
+        "MCP_SERVER_REQUIRED"
+      );
+    }
+
+    let priority: number | undefined;
+    if (body.priority !== undefined) {
+      if (
+        typeof body.priority !== "number" ||
+        !Number.isInteger(body.priority) ||
+        body.priority < 0 ||
+        body.priority > 1_000
+      ) {
+        return sendError(
+          reply,
+          400,
+          "priority must be an integer between 0 and 1000",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      priority = body.priority;
+    }
+
+    let configJson: Record<string, unknown> | null | undefined;
+    if (body.config_json !== undefined) {
+      if (body.config_json === null) {
+        configJson = null;
+      } else if (!isPlainObject(body.config_json)) {
+        return sendError(
+          reply,
+          400,
+          "config_json must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        configJson = body.config_json;
+      }
+    }
+
+    const bound = await persistence.bindMcpServerToAgentProfile(id, serverId, {
+      is_required:
+        server.name === ORCHESTRATOR_MCP_SERVER_NAME
+          ? true
+          : isRequired,
+      priority:
+        server.name === ORCHESTRATOR_MCP_SERVER_NAME && priority === undefined
+          ? 0
+          : priority,
+      config_json: configJson
+    });
+    if (!bound) {
+      return sendError(reply, 404, "Profile or MCP server not found", "REQUEST_VALIDATION_FAILED");
+    }
+
+    return reply.send(agentProfileMcpBindingToResponse(bound, server));
+  });
+
+  app.delete("/api/agent-profiles/:id/mcp-servers/:serverId", async (request, reply) => {
+    const { id, serverId } = request.params as { id: string; serverId: string };
+    const profile = await persistence.getAgentProfileById(id);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const server = await persistence.getMcpServerRegistryById(serverId);
+    if (!server) {
+      return sendError(reply, 404, "MCP server not found", "MCP_SERVER_NOT_FOUND");
+    }
+    if (server.name === ORCHESTRATOR_MCP_SERVER_NAME) {
+      return sendError(
+        reply,
+        409,
+        "orchestrator MCP binding cannot be removed",
+        "MCP_SERVER_REQUIRED"
+      );
+    }
+
+    const deleted = await persistence.unbindMcpServerFromAgentProfile(id, serverId);
+    if (!deleted) {
+      return sendError(reply, 404, "MCP binding not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
+  });
+
+  app.get("/api/agent-profiles/:id/scripts", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const profile = await persistence.getAgentProfileById(id);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const items = await persistence.listAgentProfileScriptSets(id);
+    return reply.send({
+      items: items.map((item) => agentProfileScriptSetToResponse(item))
+    });
+  });
+
+  app.put("/api/agent-profiles/:id/scripts/:os", async (request, reply) => {
+    const { id, os } = request.params as { id: string; os: string };
+    if (!isAgentProfileScriptOs(os)) {
+      return sendError(reply, 400, "Invalid script os", "REQUEST_VALIDATION_FAILED");
+    }
+
+    const body = request.body as AgentProfileScriptUpsertRequest;
+    const content = asNonEmptyString(body.content);
+    if (!content) {
+      return sendError(reply, 400, "content must be a non-empty string", "REQUEST_VALIDATION_FAILED");
+    }
+    if (content.length > MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH) {
+      return sendError(
+        reply,
+        400,
+        `content must be <= ${MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH} chars`,
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    const scriptTypeCandidate = asNonEmptyString(body.script_type);
+    if (body.script_type !== undefined && !scriptTypeCandidate) {
+      return sendError(
+        reply,
+        400,
+        "script_type must be a non-empty string",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+    let scriptType: AgentProfileScriptType = "instruction";
+    if (scriptTypeCandidate) {
+      if (!isAgentProfileScriptType(scriptTypeCandidate)) {
+        return sendError(reply, 400, "Invalid script_type", "REQUEST_VALIDATION_FAILED");
+      }
+      scriptType = scriptTypeCandidate;
+    }
+
+    const upserted = await persistence.upsertAgentProfileScriptSet(id, {
+      os,
+      script_type: scriptType,
+      content
+    });
+    if (!upserted) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    return reply.send(agentProfileScriptSetToResponse(upserted));
+  });
+
+  app.post("/api/mcp/servers", async (request, reply) => {
+    const body = request.body as McpServerCreateRequest;
+    const name = asNonEmptyString(body.name);
+    const transport = asNonEmptyString(body.transport);
+    const endpointOrCommand = asNonEmptyString(body.endpoint_or_command);
+    const originType = asNonEmptyString(body.origin_type);
+
+    if (!name || !transport || !endpointOrCommand || !originType) {
+      return sendError(
+        reply,
+        400,
+        "name, transport, endpoint_or_command and origin_type are required",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+    if (!isMcpServerTransport(transport)) {
+      return sendError(reply, 400, "Invalid transport", "REQUEST_VALIDATION_FAILED");
+    }
+    if (!isMcpServerOriginType(originType)) {
+      return sendError(reply, 400, "Invalid origin_type", "REQUEST_VALIDATION_FAILED");
+    }
+
+    let isApproved: boolean | undefined;
+    if (body.is_approved !== undefined) {
+      if (typeof body.is_approved !== "boolean") {
+        return sendError(
+          reply,
+          400,
+          "is_approved must be a boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      isApproved = body.is_approved;
+    }
+
+    let metaJson: Record<string, unknown> | null | undefined;
+    if (body.meta_json !== undefined) {
+      if (body.meta_json === null) {
+        metaJson = null;
+      } else if (!isPlainObject(body.meta_json)) {
+        return sendError(
+          reply,
+          400,
+          "meta_json must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        metaJson = body.meta_json;
+      }
+    }
+
+    try {
+      const created = await persistence.createMcpServerRegistryEntry({
+        name,
+        transport,
+        endpoint_or_command: endpointOrCommand,
+        origin_type: originType,
+        is_approved: isApproved,
+        meta_json: metaJson
+      });
+
+      return reply.code(201).send(mcpServerRegistryToResponse(created));
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        return sendError(reply, 409, "MCP server name already exists", "MCP_SERVER_NAME_EXISTS");
+      }
+      throw error;
+    }
+  });
+
+  app.get("/api/mcp/servers", async (request, reply) => {
+    const query = request.query as {
+      include_unapproved?: unknown;
+    };
+
+    let includeUnapproved = false;
+    if (query.include_unapproved !== undefined) {
+      const parsed = parseBooleanLike(query.include_unapproved);
+      if (parsed === null) {
+        return sendError(
+          reply,
+          400,
+          "include_unapproved must be boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      includeUnapproved = parsed;
+    }
+
+    await persistence.ensureOrchestratorMcpServer();
+    const items = await persistence.listMcpServerRegistry({
+      include_unapproved: includeUnapproved
+    });
+
+    return reply.send({
+      items: items.map((item) => mcpServerRegistryToResponse(item))
+    });
   });
 
   app.get("/api/delegation/capabilities", async (_request, reply) => {

@@ -188,6 +188,44 @@ enum AgentRequestStatus {
   @@map("agent_request_status")
 }
 
+enum AgentProfileSourcePolicy {
+  catalog_only
+  catalog_plus_custom
+  custom_only
+
+  @@map("agent_profile_source_policy")
+}
+
+enum McpServerTransport {
+  stdio
+  http
+
+  @@map("mcp_server_transport")
+}
+
+enum McpServerOriginType {
+  built_in
+  catalog
+  custom
+
+  @@map("mcp_server_origin_type")
+}
+
+enum AgentProfileScriptOs {
+  windows
+  linux
+  macos
+
+  @@map("agent_profile_script_os")
+}
+
+enum AgentProfileScriptType {
+  instruction
+  shell
+
+  @@map("agent_profile_script_type")
+}
+
 model AgentTemplate {
   id                     String   @id @default(cuid())
   name                   String
@@ -627,4 +665,75 @@ model AgentRequest {
   @@index([task_id, created_at])
   @@index([type, status, created_at])
   @@map("agent_requests")
+}
+
+model AgentProfile {
+  id            String                   @id @default(cuid())
+  project_id    String
+  name          String
+  role          String
+  description   String?
+  source_policy AgentProfileSourcePolicy @default(catalog_only)
+  is_enabled    Boolean                  @default(true)
+  created_at    DateTime                 @default(now())
+  updated_at    DateTime                 @updatedAt
+
+  mcp_bindings AgentProfileMcpServerBinding[]
+  script_sets  AgentProfileScriptSet[]
+
+  @@index([project_id, is_enabled, updated_at])
+  @@index([project_id, role, updated_at])
+  @@map("agent_profiles")
+}
+
+model McpServerRegistry {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  transport           McpServerTransport
+  endpoint_or_command String
+  origin_type         McpServerOriginType
+  is_approved         Boolean              @default(false)
+  meta_json           Json?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
+
+  profile_bindings AgentProfileMcpServerBinding[]
+
+  @@index([origin_type, is_approved, updated_at])
+  @@map("mcp_server_registry")
+}
+
+model AgentProfileMcpServerBinding {
+  id               String   @id @default(cuid())
+  agent_profile_id String
+  mcp_server_id    String
+  is_required      Boolean  @default(false)
+  priority         Int      @default(100)
+  config_json      Json?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  agent_profile AgentProfile      @relation(fields: [agent_profile_id], references: [id], onDelete: Cascade)
+  mcp_server    McpServerRegistry @relation(fields: [mcp_server_id], references: [id], onDelete: Cascade)
+
+  @@unique([agent_profile_id, mcp_server_id])
+  @@index([agent_profile_id, priority, updated_at])
+  @@map("agent_profile_mcp_server_bindings")
+}
+
+model AgentProfileScriptSet {
+  id               String                 @id @default(cuid())
+  agent_profile_id String
+  os               AgentProfileScriptOs
+  script_type      AgentProfileScriptType @default(instruction)
+  content          String
+  version          Int                    @default(1)
+  created_at       DateTime               @default(now())
+  updated_at       DateTime               @updatedAt
+
+  agent_profile AgentProfile @relation(fields: [agent_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([agent_profile_id, os])
+  @@index([agent_profile_id, updated_at])
+  @@map("agent_profile_script_sets")
 }

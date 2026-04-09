@@ -332,23 +332,91 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests?open_pool=true&project_id=<PROJ
   - `request_resolved_by_agent`
   - `request_blocked_agent`
 
-## 3.14 Сценарий A14 (planned): Agent Profiles + MCP Server Sets + OS scripts
+## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 1 backend)
 
-Статус: выполняется после реализации `docs/ops/agent-profiles-mcp-servers.md`.
+Статус: доступно на API-уровне (UI-редактор профилей и runtime-резолв остаются следующим этапом).
 
-1. Создай два профиля:
-  - `tester-profile`
-  - `devops-profile`
-2. Для `tester-profile` добавь browser MCP, для `devops-profile` — docker MCP.
-3. Проверь, что наборы MCP-серверов различаются.
-4. Попробуй удалить orchestrator MCP из профиля.
-5. Ожидаемо: удаление запрещено (инвариант обязательного orchestrator MCP).
-6. Для одного профиля заполни скрипты:
-  - `PUT /api/agent-profiles/{id}/scripts/windows`
-  - `PUT /api/agent-profiles/{id}/scripts/linux`
-  - `PUT /api/agent-profiles/{id}/scripts/macos`
-7. Проверь в UI, что отображаются отдельные script sets по ОС.
-8. Выполни запуск на конкретной ОС и проверь, что используется соответствующий script set.
+1. Создай профиль:
+
+```powershell
+$profileBody = @{
+  project_id = "project"
+  name = "tester-profile"
+  role = "tester"
+  source_policy = "catalog_plus_custom"
+} | ConvertTo-Json
+
+$profile = Invoke-RestMethod -Uri "$BASE/api/agent-profiles" -Method POST -Headers $HEADERS -Body $profileBody
+$profile | ConvertTo-Json -Depth 8
+```
+
+2. Проверь, что у нового профиля автоматически привязан `orchestrator-core`:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/mcp-servers" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+3. Зарегистрируй кастомный MCP сервер и привяжи его к профилю:
+
+```powershell
+$mcpBody = @{
+  name = "browser-mcp"
+  transport = "stdio"
+  endpoint_or_command = "npx @playwright/mcp"
+  origin_type = "catalog"
+  is_approved = $true
+} | ConvertTo-Json
+
+$mcp = Invoke-RestMethod -Uri "$BASE/api/mcp/servers" -Method POST -Headers $HEADERS -Body $mcpBody
+
+$bindingBody = @{
+  is_required = $false
+  priority = 40
+  config_json = @{ channel = "stable" }
+} | ConvertTo-Json -Depth 8
+
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/mcp-servers/$($mcp.id)" `
+  -Method POST -Headers $HEADERS -Body $bindingBody | ConvertTo-Json -Depth 8
+```
+
+4. Попробуй удалить orchestrator binding:
+
+```powershell
+$bindings = Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/mcp-servers" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
+$orchestratorBinding = $bindings.items | Where-Object { $_.mcp_server.name -eq "orchestrator-core" } | Select-Object -First 1
+
+$deleteOrch = Invoke-WebRequest -UseBasicParsing `
+  "$BASE/api/agent-profiles/$($profile.id)/mcp-servers/$($orchestratorBinding.mcp_server_id)" `
+  -Method DELETE -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } -SkipHttpErrorCheck
+
+$deleteOrch.StatusCode
+$deleteOrch.Content
+```
+
+Ожидаемо:
+- `StatusCode = 409`;
+- body содержит `MCP_SERVER_REQUIRED`.
+
+5. Запиши скрипты для `windows/linux/macos`:
+
+```powershell
+$scriptWin = @{ script_type = "shell"; content = "Write-Host 'run windows checks'" } | ConvertTo-Json
+$scriptLinux = @{ script_type = "shell"; content = "echo 'run linux checks'" } | ConvertTo-Json
+$scriptMac = @{ script_type = "instruction"; content = "Use macOS-specific smoke checklist first." } | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts/windows" -Method PUT -Headers $HEADERS -Body $scriptWin
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts/linux" -Method PUT -Headers $HEADERS -Body $scriptLinux
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts/macos" -Method PUT -Headers $HEADERS -Body $scriptMac
+
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- возвращаются 3 script set записи (`windows/linux/macos`);
+- при повторном `PUT` по той же ОС инкрементируется `version`.
 
 ## 4. Сценарий B: Security boundary
 

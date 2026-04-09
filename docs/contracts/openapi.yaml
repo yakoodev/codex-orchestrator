@@ -19,6 +19,8 @@ tags:
   - name: Queue
   - name: Packs
   - name: Memory
+  - name: Agent Profiles
+  - name: MCP Servers
   - name: Agent Requests
   - name: Delegation
   - name: Schedules
@@ -1031,6 +1033,312 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MemoryEntry"
+
+  /api/agent-profiles:
+    post:
+      tags: [Agent Profiles]
+      summary: Create agent profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProfileCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [Agent Profiles]
+      summary: List agent profiles
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        - in: query
+          name: include_disabled
+          schema:
+            type: boolean
+        - in: query
+          name: role
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Agent profile list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentProfile"
+                required: [items]
+        "400":
+          description: Invalid filter query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-profiles/{id}:
+    get:
+      tags: [Agent Profiles]
+      summary: Get agent profile by id
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Agent profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+        "404":
+          description: Agent profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      tags: [Agent Profiles]
+      summary: Patch agent profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProfilePatchRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+        "404":
+          description: Agent profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-profiles/{id}/mcp-servers:
+    get:
+      tags: [Agent Profiles]
+      summary: List MCP server bindings for profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Bindings list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentProfileMcpServerBinding"
+                required: [items]
+        "404":
+          description: Agent profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-profiles/{id}/mcp-servers/{server_id}:
+    post:
+      tags: [Agent Profiles]
+      summary: Create or update MCP server binding for profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: server_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProfileMcpServerBindingRequest"
+      responses:
+        "200":
+          description: Binding updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfileMcpServerBinding"
+        "404":
+          description: Profile or server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Orchestrator MCP invariant violation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Agent Profiles]
+      summary: Remove MCP server binding from profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: server_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Profile/server/binding not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Orchestrator MCP cannot be removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-profiles/{id}/scripts:
+    get:
+      tags: [Agent Profiles]
+      summary: List profile script sets
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Script sets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentProfileScriptSet"
+                required: [items]
+        "404":
+          description: Agent profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-profiles/{id}/scripts/{os}:
+    put:
+      tags: [Agent Profiles]
+      summary: Upsert profile script set by OS
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: os
+          required: true
+          schema:
+            $ref: "#/components/schemas/AgentProfileScriptOs"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProfileScriptUpsertRequest"
+      responses:
+        "200":
+          description: Upserted script set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfileScriptSet"
+        "404":
+          description: Agent profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/servers:
+    post:
+      tags: [MCP Servers]
+      summary: Register MCP server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpServerCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpServerRegistryEntry"
+        "409":
+          description: MCP server name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [MCP Servers]
+      summary: List MCP servers from registry
+      parameters:
+        - in: query
+          name: include_unapproved
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: MCP server list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/McpServerRegistryEntry"
+                required: [items]
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/agent-requests:
     post:
@@ -2108,6 +2416,237 @@ components:
         - content
         - is_active
         - created_by
+        - created_at
+        - updated_at
+
+    AgentProfileSourcePolicy:
+      type: string
+      enum: [catalog_only, catalog_plus_custom, custom_only]
+
+    McpServerTransport:
+      type: string
+      enum: [stdio, http]
+
+    McpServerOriginType:
+      type: string
+      enum: [built_in, catalog, custom]
+
+    AgentProfileScriptOs:
+      type: string
+      enum: [windows, linux, macos]
+
+    AgentProfileScriptType:
+      type: string
+      enum: [instruction, shell]
+
+    AgentProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: [string, "null"]
+        source_policy:
+          $ref: "#/components/schemas/AgentProfileSourcePolicy"
+        is_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - project_id
+        - name
+        - role
+        - source_policy
+        - is_enabled
+        - created_at
+        - updated_at
+
+    AgentProfileCreateRequest:
+      type: object
+      properties:
+        project_id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: [string, "null"]
+        source_policy:
+          $ref: "#/components/schemas/AgentProfileSourcePolicy"
+        is_enabled:
+          type: boolean
+      required: [project_id, name, role]
+      additionalProperties: false
+
+    AgentProfilePatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: [string, "null"]
+        source_policy:
+          $ref: "#/components/schemas/AgentProfileSourcePolicy"
+        is_enabled:
+          type: boolean
+      additionalProperties: false
+
+    McpServerRegistryEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        transport:
+          $ref: "#/components/schemas/McpServerTransport"
+        endpoint_or_command:
+          type: string
+        origin_type:
+          $ref: "#/components/schemas/McpServerOriginType"
+        is_approved:
+          type: boolean
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - transport
+        - endpoint_or_command
+        - origin_type
+        - is_approved
+        - created_at
+        - updated_at
+
+    McpServerCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        transport:
+          $ref: "#/components/schemas/McpServerTransport"
+        endpoint_or_command:
+          type: string
+        origin_type:
+          $ref: "#/components/schemas/McpServerOriginType"
+        is_approved:
+          type: boolean
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+      required: [name, transport, endpoint_or_command, origin_type]
+      additionalProperties: false
+
+    AgentProfileMcpServerBindingRequest:
+      type: object
+      properties:
+        is_required:
+          type: boolean
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        config_json:
+          type: [object, "null"]
+          additionalProperties: true
+      additionalProperties: false
+
+    AgentProfileMcpServerBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_profile_id:
+          type: string
+        mcp_server_id:
+          type: string
+        is_required:
+          type: boolean
+        priority:
+          type: integer
+        config_json:
+          type: [object, "null"]
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        mcp_server:
+          oneOf:
+            - $ref: "#/components/schemas/McpServerRegistryEntry"
+            - type: "null"
+      required:
+        - id
+        - agent_profile_id
+        - mcp_server_id
+        - is_required
+        - priority
+        - created_at
+        - updated_at
+        - mcp_server
+
+    AgentProfileScriptUpsertRequest:
+      type: object
+      properties:
+        script_type:
+          $ref: "#/components/schemas/AgentProfileScriptType"
+        content:
+          type: string
+      required: [content]
+      additionalProperties: false
+
+    AgentProfileScriptSet:
+      type: object
+      properties:
+        id:
+          type: string
+        agent_profile_id:
+          type: string
+        os:
+          $ref: "#/components/schemas/AgentProfileScriptOs"
+        script_type:
+          $ref: "#/components/schemas/AgentProfileScriptType"
+        content:
+          type: string
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agent_profile_id
+        - os
+        - script_type
+        - content
+        - version
         - created_at
         - updated_at
 

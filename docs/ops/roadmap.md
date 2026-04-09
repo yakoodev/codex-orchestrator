@@ -41,7 +41,7 @@
   - синхронизация с MCP bridge runtime.
 
 ## Planned: Agent Profiles + MCP Server Sets
-- Статус: `planned` (decision-complete, реализация не начата).
+- Статус: `in_progress` (Phase 1 backend реализован, UI/runtime integration в работе).
 - Цель: дать каждому агенту собственный набор MCP-серверов и OS-специфичных script sets через web UI.
 - Зафиксированные решения:
   - primary entity: `AgentProfile`;
@@ -49,6 +49,22 @@
   - per-agent source policy определяет, откуда агент может подключать MCP-серверы;
   - per-agent script sets хранятся отдельно для `windows/linux/macos`.
 - Документ дизайна: `docs/ops/agent-profiles-mcp-servers.md`.
+- Текущий прогресс (Phase 1 backend):
+  - добавлены Prisma сущности и миграция `0008_agent_profiles_mcp_servers`:
+    - `AgentProfile`
+    - `McpServerRegistry`
+    - `AgentProfileMcpServerBinding`
+    - `AgentProfileScriptSet`;
+  - реализованы API endpoints:
+    - `POST/GET /api/agent-profiles`
+    - `GET/PATCH /api/agent-profiles/{id}`
+    - `GET /api/agent-profiles/{id}/mcp-servers`
+    - `POST/DELETE /api/agent-profiles/{id}/mcp-servers/{server_id}`
+    - `GET /api/agent-profiles/{id}/scripts`
+    - `PUT /api/agent-profiles/{id}/scripts/{os}`
+    - `POST/GET /api/mcp/servers`;
+  - при создании профиля автоматически подключается обязательный `orchestrator-core`;
+  - удаление binding для `orchestrator-core` блокируется как инвариант.
 - Зависимости:
   - `MCP AuthZ ACL v2` (источник прав и audit);
   - `Project Registry` (привязка профилей к проектам);

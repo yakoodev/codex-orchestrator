@@ -1,7 +1,7 @@
 # Agent Profiles + MCP Server Sets v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `planned` (decision-complete)
+Статус: `in_progress` (Phase 1 backend реализован)
 
 ## 1. Цель
 
@@ -49,6 +49,26 @@
 
 Опционально (UI lookup):
 - `GET /api/mcp/servers/catalog`
+
+## 4.1 Что уже реализовано (Phase 1 backend)
+
+- Prisma data model + миграция `0008_agent_profiles_mcp_servers`:
+  - `AgentProfile`
+  - `McpServerRegistry`
+  - `AgentProfileMcpServerBinding`
+  - `AgentProfileScriptSet`
+- REST endpoints:
+  - `POST/GET /api/agent-profiles`
+  - `GET/PATCH /api/agent-profiles/{id}`
+  - `GET /api/agent-profiles/{id}/mcp-servers`
+  - `POST/DELETE /api/agent-profiles/{id}/mcp-servers/{server_id}`
+  - `GET /api/agent-profiles/{id}/scripts`
+  - `PUT /api/agent-profiles/{id}/scripts/{os}`
+  - `POST/GET /api/mcp/servers`
+- Инварианты:
+  - при создании `AgentProfile` автоматически привязывается `orchestrator-core`;
+  - удаление `orchestrator-core` binding через API запрещено (`MCP_SERVER_REQUIRED`).
+- Контракт синхронизирован в OpenAPI (`docs/contracts/openapi.yaml`) и покрыт API-тестами.
 
 ## 5. UI-контур
 

@@ -1,4 +1,7 @@
 import {
+  AgentProfileScriptOs as PrismaAgentProfileScriptOs,
+  AgentProfileScriptType as PrismaAgentProfileScriptType,
+  AgentProfileSourcePolicy as PrismaAgentProfileSourcePolicy,
   AgentRequestStatus as PrismaAgentRequestStatus,
   AgentRequestType as PrismaAgentRequestType,
   AuthContextType as PrismaAuthContextType,
@@ -6,6 +9,8 @@ import {
   DelegationStatus as PrismaDelegationStatus,
   InterventionType as PrismaInterventionType,
   ModuleExecutionStatus as PrismaModuleExecutionStatus,
+  McpServerOriginType as PrismaMcpServerOriginType,
+  McpServerTransport as PrismaMcpServerTransport,
   Prisma,
   PrismaClient,
   ProfileStatus,
@@ -19,6 +24,12 @@ import {
 } from "@prisma/client";
 import type {
   ActiveAuthProfileRuntimeEntity,
+  AgentProfileEntity,
+  AgentProfileMcpServerBindingEntity,
+  AgentProfileScriptOs,
+  AgentProfileScriptSetEntity,
+  AgentProfileScriptType,
+  AgentProfileSourcePolicy,
   AgentRequestEntity,
   AgentRequestStatus,
   AgentRequestType,
@@ -30,6 +41,7 @@ import type {
   AuthProfileEntity,
   AuthSwitchEventEntity,
   CreateProjectInput,
+  CreateAgentProfileInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateAuthProfileInput,
@@ -42,11 +54,15 @@ import type {
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
   CreatePackRegistryInput,
+  CreateMcpServerRegistryInput,
   CreateTaskInput,
   CustomModuleConfigEntity,
   DelegationRequestEntity,
   ListAuthSwitchEventsOptions,
   ModuleExecutionEntity,
+  McpServerOriginType,
+  McpServerRegistryEntity,
+  McpServerTransport,
   PackRegistryEntity,
   Persistence,
   ProjectEntity,
@@ -348,6 +364,98 @@ function toAgentRequestEntity(entity: {
   };
 }
 
+function toAgentProfileEntity(entity: {
+  id: string;
+  project_id: string;
+  name: string;
+  role: string;
+  description: string | null;
+  source_policy: PrismaAgentProfileSourcePolicy;
+  is_enabled: boolean;
+  created_at: Date;
+  updated_at: Date;
+}): AgentProfileEntity {
+  return {
+    id: entity.id,
+    project_id: entity.project_id,
+    name: entity.name,
+    role: entity.role,
+    description: entity.description,
+    source_policy: entity.source_policy as AgentProfileSourcePolicy,
+    is_enabled: entity.is_enabled,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toMcpServerRegistryEntity(entity: {
+  id: string;
+  name: string;
+  transport: PrismaMcpServerTransport;
+  endpoint_or_command: string;
+  origin_type: PrismaMcpServerOriginType;
+  is_approved: boolean;
+  meta_json: Prisma.JsonValue | null;
+  created_at: Date;
+  updated_at: Date;
+}): McpServerRegistryEntity {
+  return {
+    id: entity.id,
+    name: entity.name,
+    transport: entity.transport as McpServerTransport,
+    endpoint_or_command: entity.endpoint_or_command,
+    origin_type: entity.origin_type as McpServerOriginType,
+    is_approved: entity.is_approved,
+    meta_json: entity.meta_json as Record<string, unknown> | null,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toAgentProfileMcpServerBindingEntity(entity: {
+  id: string;
+  agent_profile_id: string;
+  mcp_server_id: string;
+  is_required: boolean;
+  priority: number;
+  config_json: Prisma.JsonValue | null;
+  created_at: Date;
+  updated_at: Date;
+}): AgentProfileMcpServerBindingEntity {
+  return {
+    id: entity.id,
+    agent_profile_id: entity.agent_profile_id,
+    mcp_server_id: entity.mcp_server_id,
+    is_required: entity.is_required,
+    priority: entity.priority,
+    config_json: entity.config_json as Record<string, unknown> | null,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toAgentProfileScriptSetEntity(entity: {
+  id: string;
+  agent_profile_id: string;
+  os: PrismaAgentProfileScriptOs;
+  script_type: PrismaAgentProfileScriptType;
+  content: string;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}): AgentProfileScriptSetEntity {
+  return {
+    id: entity.id,
+    agent_profile_id: entity.agent_profile_id,
+    os: entity.os as AgentProfileScriptOs,
+    script_type: entity.script_type as AgentProfileScriptType,
+    content: entity.content,
+    version: entity.version,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
 function toScheduledRuleEntity(entity: {
   id: string;
   name: string;
@@ -467,6 +575,9 @@ function toModuleExecutionEntity(entity: {
     ended_at: entity.ended_at
   };
 }
+
+const ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator-core";
+const ORCHESTRATOR_MCP_SERVER_COMMAND = "orchestrator://core";
 
 export class PrismaPersistence implements Persistence {
   public constructor(private readonly prisma: PrismaClient) {}
@@ -954,6 +1065,277 @@ export class PrismaPersistence implements Persistence {
     });
 
     return entries.map((entry) => toAgentMemoryEntryEntity(entry));
+  }
+
+  public async createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity> {
+    const created = await this.prisma.agentProfile.create({
+      data: {
+        project_id: input.project_id,
+        name: input.name,
+        role: input.role,
+        description: input.description ?? null,
+        source_policy: (input.source_policy ?? "catalog_only") as PrismaAgentProfileSourcePolicy,
+        is_enabled: input.is_enabled ?? true
+      }
+    });
+
+    return toAgentProfileEntity(created);
+  }
+
+  public async listAgentProfiles(options?: {
+    project_id?: string;
+    include_disabled?: boolean;
+    role?: string;
+    limit?: number;
+  }): Promise<AgentProfileEntity[]> {
+    const includeDisabled = options?.include_disabled ?? true;
+    const where: Prisma.AgentProfileWhereInput = {};
+    if (!includeDisabled) {
+      where.is_enabled = true;
+    }
+    if (options?.project_id) {
+      where.project_id = options.project_id;
+    }
+    if (options?.role) {
+      where.role = options.role;
+    }
+
+    const items = await this.prisma.agentProfile.findMany({
+      where,
+      orderBy: [{ is_enabled: "desc" }, { updated_at: "desc" }],
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toAgentProfileEntity(item));
+  }
+
+  public async getAgentProfileById(id: string): Promise<AgentProfileEntity | null> {
+    const profile = await this.prisma.agentProfile.findUnique({
+      where: { id }
+    });
+    if (!profile) {
+      return null;
+    }
+
+    return toAgentProfileEntity(profile);
+  }
+
+  public async patchAgentProfile(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string | null;
+      source_policy?: AgentProfileSourcePolicy;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentProfileEntity | null> {
+    const existing = await this.prisma.agentProfile.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.agentProfile.update({
+      where: { id },
+      data: {
+        name: patch.name,
+        role: patch.role,
+        description: patch.description,
+        source_policy: patch.source_policy as PrismaAgentProfileSourcePolicy | undefined,
+        is_enabled: patch.is_enabled
+      }
+    });
+
+    return toAgentProfileEntity(updated);
+  }
+
+  public async createMcpServerRegistryEntry(
+    input: CreateMcpServerRegistryInput
+  ): Promise<McpServerRegistryEntity> {
+    const created = await this.prisma.mcpServerRegistry.create({
+      data: {
+        name: input.name,
+        transport: input.transport as PrismaMcpServerTransport,
+        endpoint_or_command: input.endpoint_or_command,
+        origin_type: input.origin_type as PrismaMcpServerOriginType,
+        is_approved: input.is_approved ?? false,
+        meta_json:
+          input.meta_json === undefined
+            ? undefined
+            : ((input.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toMcpServerRegistryEntity(created);
+  }
+
+  public async listMcpServerRegistry(options?: {
+    include_unapproved?: boolean;
+  }): Promise<McpServerRegistryEntity[]> {
+    const includeUnapproved = options?.include_unapproved ?? false;
+    const items = await this.prisma.mcpServerRegistry.findMany({
+      where: includeUnapproved ? undefined : { is_approved: true },
+      orderBy: [{ is_approved: "desc" }, { updated_at: "desc" }]
+    });
+
+    return items.map((item) => toMcpServerRegistryEntity(item));
+  }
+
+  public async getMcpServerRegistryById(id: string): Promise<McpServerRegistryEntity | null> {
+    const item = await this.prisma.mcpServerRegistry.findUnique({
+      where: { id }
+    });
+    if (!item) {
+      return null;
+    }
+
+    return toMcpServerRegistryEntity(item);
+  }
+
+  public async ensureOrchestratorMcpServer(): Promise<McpServerRegistryEntity> {
+    const existing = await this.prisma.mcpServerRegistry.findUnique({
+      where: { name: ORCHESTRATOR_MCP_SERVER_NAME }
+    });
+    if (existing) {
+      return toMcpServerRegistryEntity(existing);
+    }
+
+    const created = await this.prisma.mcpServerRegistry.create({
+      data: {
+        name: ORCHESTRATOR_MCP_SERVER_NAME,
+        transport: "stdio",
+        endpoint_or_command: ORCHESTRATOR_MCP_SERVER_COMMAND,
+        origin_type: "built_in",
+        is_approved: true,
+        meta_json: {
+          builtin_key: "orchestrator_core"
+        }
+      }
+    });
+
+    return toMcpServerRegistryEntity(created);
+  }
+
+  public async bindMcpServerToAgentProfile(
+    profileId: string,
+    serverId: string,
+    options?: {
+      is_required?: boolean;
+      priority?: number;
+      config_json?: Record<string, unknown> | null;
+    }
+  ): Promise<AgentProfileMcpServerBindingEntity | null> {
+    const [profile, server] = await Promise.all([
+      this.prisma.agentProfile.findUnique({ where: { id: profileId }, select: { id: true } }),
+      this.prisma.mcpServerRegistry.findUnique({ where: { id: serverId }, select: { id: true } })
+    ]);
+    if (!profile || !server) {
+      return null;
+    }
+
+    const upserted = await this.prisma.agentProfileMcpServerBinding.upsert({
+      where: {
+        agent_profile_id_mcp_server_id: {
+          agent_profile_id: profileId,
+          mcp_server_id: serverId
+        }
+      },
+      create: {
+        agent_profile_id: profileId,
+        mcp_server_id: serverId,
+        is_required: options?.is_required ?? false,
+        priority: options?.priority ?? 100,
+        config_json:
+          options?.config_json === undefined
+            ? undefined
+            : ((options.config_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      },
+      update: {
+        is_required: options?.is_required,
+        priority: options?.priority,
+        config_json:
+          options?.config_json === undefined
+            ? undefined
+            : ((options.config_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toAgentProfileMcpServerBindingEntity(upserted);
+  }
+
+  public async unbindMcpServerFromAgentProfile(profileId: string, serverId: string): Promise<boolean> {
+    const deleted = await this.prisma.agentProfileMcpServerBinding.deleteMany({
+      where: {
+        agent_profile_id: profileId,
+        mcp_server_id: serverId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listAgentProfileMcpBindings(
+    profileId: string
+  ): Promise<AgentProfileMcpServerBindingEntity[]> {
+    const items = await this.prisma.agentProfileMcpServerBinding.findMany({
+      where: { agent_profile_id: profileId },
+      orderBy: [{ priority: "asc" }, { updated_at: "desc" }]
+    });
+
+    return items.map((item) => toAgentProfileMcpServerBindingEntity(item));
+  }
+
+  public async upsertAgentProfileScriptSet(
+    profileId: string,
+    input: {
+      os: AgentProfileScriptOs;
+      script_type: AgentProfileScriptType;
+      content: string;
+    }
+  ): Promise<AgentProfileScriptSetEntity | null> {
+    const profile = await this.prisma.agentProfile.findUnique({
+      where: { id: profileId },
+      select: { id: true }
+    });
+    if (!profile) {
+      return null;
+    }
+
+    const upserted = await this.prisma.agentProfileScriptSet.upsert({
+      where: {
+        agent_profile_id_os: {
+          agent_profile_id: profileId,
+          os: input.os as PrismaAgentProfileScriptOs
+        }
+      },
+      create: {
+        agent_profile_id: profileId,
+        os: input.os as PrismaAgentProfileScriptOs,
+        script_type: input.script_type as PrismaAgentProfileScriptType,
+        content: input.content,
+        version: 1
+      },
+      update: {
+        script_type: input.script_type as PrismaAgentProfileScriptType,
+        content: input.content,
+        version: {
+          increment: 1
+        }
+      }
+    });
+
+    return toAgentProfileScriptSetEntity(upserted);
+  }
+
+  public async listAgentProfileScriptSets(profileId: string): Promise<AgentProfileScriptSetEntity[]> {
+    const items = await this.prisma.agentProfileScriptSet.findMany({
+      where: { agent_profile_id: profileId },
+      orderBy: { updated_at: "desc" }
+    });
+
+    return items.map((item) => toAgentProfileScriptSetEntity(item));
   }
 
   public async createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity> {

@@ -186,6 +186,23 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
     - `orchestrator.list_open_agent_requests`
     - `orchestrator.resolve_agent_request`;
   - добавлены unit/API тесты для request-plane и MCP bridge.
+- [x] Стартована кодовая реализация `Agent Profiles + MCP Server Sets` (Phase 1 backend):
+  - добавлены Prisma-сущности + миграция `0008_agent_profiles_mcp_servers`:
+    - `AgentProfile`
+    - `McpServerRegistry`
+    - `AgentProfileMcpServerBinding`
+    - `AgentProfileScriptSet`;
+  - добавлены API:
+    - `POST/GET /api/agent-profiles`
+    - `GET/PATCH /api/agent-profiles/{id}`
+    - `GET /api/agent-profiles/{id}/mcp-servers`
+    - `POST/DELETE /api/agent-profiles/{id}/mcp-servers/{server_id}`
+    - `GET /api/agent-profiles/{id}/scripts`
+    - `PUT /api/agent-profiles/{id}/scripts/{os}`
+    - `POST/GET /api/mcp/servers`;
+  - при создании профиля автоматически подключается обязательный `orchestrator-core`;
+  - удаление `orchestrator-core` binding через API заблокировано (`MCP_SERVER_REQUIRED`);
+  - OpenAPI/route-coverage и API-тесты синхронизированы.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -204,7 +221,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 - [~] Agent Request Plane v2 (Phase 1 backend + MCP create/list_open/resolve реализованы; остаются governor automation, audit trail, topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
-- [~] Agent Profiles + MCP Server Sets (per-agent MCP servers, source policy, OS script sets): `docs/ops/agent-profiles-mcp-servers.md`.
+- [~] Agent Profiles + MCP Server Sets (Phase 1 backend реализован; остаются UI-конфигуратор профилей, runtime-resolve по profile и интеграция с ACL/governor): `docs/ops/agent-profiles-mcp-servers.md`.
 - [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 
 ## Текущее состояние проверок (ветка PR1)

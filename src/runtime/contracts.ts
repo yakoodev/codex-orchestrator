@@ -287,6 +287,58 @@ export interface AgentRequestEntity {
   updated_at: Date;
 }
 
+export type AgentProfileSourcePolicy = "catalog_only" | "catalog_plus_custom" | "custom_only";
+export type McpServerTransport = "stdio" | "http";
+export type McpServerOriginType = "built_in" | "catalog" | "custom";
+export type AgentProfileScriptOs = "windows" | "linux" | "macos";
+export type AgentProfileScriptType = "instruction" | "shell";
+
+export interface AgentProfileEntity {
+  id: string;
+  project_id: string;
+  name: string;
+  role: string;
+  description: string | null;
+  source_policy: AgentProfileSourcePolicy;
+  is_enabled: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface McpServerRegistryEntity {
+  id: string;
+  name: string;
+  transport: McpServerTransport;
+  endpoint_or_command: string;
+  origin_type: McpServerOriginType;
+  is_approved: boolean;
+  meta_json: Record<string, unknown> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface AgentProfileMcpServerBindingEntity {
+  id: string;
+  agent_profile_id: string;
+  mcp_server_id: string;
+  is_required: boolean;
+  priority: number;
+  config_json: Record<string, unknown> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface AgentProfileScriptSetEntity {
+  id: string;
+  agent_profile_id: string;
+  os: AgentProfileScriptOs;
+  script_type: AgentProfileScriptType;
+  content: string;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export type ScheduleScope = "global" | "project";
 export type ScheduleOverlapPolicy = "one_active_skip";
 export type ScheduleMisfirePolicy = "recompute_due_on_restart";
@@ -454,6 +506,24 @@ export interface CreateAgentRequestInput {
   created_by: string;
 }
 
+export interface CreateAgentProfileInput {
+  project_id: string;
+  name: string;
+  role: string;
+  description?: string | null;
+  source_policy?: AgentProfileSourcePolicy;
+  is_enabled?: boolean;
+}
+
+export interface CreateMcpServerRegistryInput {
+  name: string;
+  transport: McpServerTransport;
+  endpoint_or_command: string;
+  origin_type: McpServerOriginType;
+  is_approved?: boolean;
+  meta_json?: Record<string, unknown> | null;
+}
+
 export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
@@ -571,6 +641,48 @@ export interface Persistence {
     is_active?: boolean;
     limit?: number;
   }): Promise<AgentMemoryEntryEntity[]>;
+  createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity>;
+  listAgentProfiles(options?: {
+    project_id?: string;
+    include_disabled?: boolean;
+    role?: string;
+    limit?: number;
+  }): Promise<AgentProfileEntity[]>;
+  getAgentProfileById(id: string): Promise<AgentProfileEntity | null>;
+  patchAgentProfile(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string | null;
+      source_policy?: AgentProfileSourcePolicy;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentProfileEntity | null>;
+  createMcpServerRegistryEntry(input: CreateMcpServerRegistryInput): Promise<McpServerRegistryEntity>;
+  listMcpServerRegistry(options?: { include_unapproved?: boolean }): Promise<McpServerRegistryEntity[]>;
+  getMcpServerRegistryById(id: string): Promise<McpServerRegistryEntity | null>;
+  ensureOrchestratorMcpServer(): Promise<McpServerRegistryEntity>;
+  bindMcpServerToAgentProfile(
+    profileId: string,
+    serverId: string,
+    options?: {
+      is_required?: boolean;
+      priority?: number;
+      config_json?: Record<string, unknown> | null;
+    }
+  ): Promise<AgentProfileMcpServerBindingEntity | null>;
+  unbindMcpServerFromAgentProfile(profileId: string, serverId: string): Promise<boolean>;
+  listAgentProfileMcpBindings(profileId: string): Promise<AgentProfileMcpServerBindingEntity[]>;
+  upsertAgentProfileScriptSet(
+    profileId: string,
+    input: {
+      os: AgentProfileScriptOs;
+      script_type: AgentProfileScriptType;
+      content: string;
+    }
+  ): Promise<AgentProfileScriptSetEntity | null>;
+  listAgentProfileScriptSets(profileId: string): Promise<AgentProfileScriptSetEntity[]>;
   createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity>;
   listAgentRequests(options?: {
     project_id?: string;

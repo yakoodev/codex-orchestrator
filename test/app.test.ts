@@ -6,9 +6,15 @@ import { createApp, SWITCH_MODULE_KEY } from "../src/app";
 import type { AppConfig } from "../src/config";
 import type {
   ActiveAuthProfileRuntimeEntity,
+  AgentProfileEntity,
+  AgentProfileMcpServerBindingEntity,
+  AgentProfileScriptSetEntity,
   AgentMemoryEntryEntity,
   AgentRequestEntity,
   AgentRequestStatus,
+  AgentProfileScriptOs,
+  AgentProfileScriptType,
+  AgentProfileSourcePolicy,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -18,9 +24,11 @@ import type {
   AuthProfileRuntimeEntity,
   AuthContextType,
   AuthSwitchEventEntity,
+  CreateAgentProfileInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateDelegationRequestInput,
+  CreateMcpServerRegistryInput,
   CreateProjectInput,
   DelegationExecutor,
   CreateModuleExecutionInput,
@@ -31,6 +39,7 @@ import type {
   EventPublishInput,
   EventPublisher,
   ListAuthSwitchEventsOptions,
+  McpServerRegistryEntity,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
@@ -47,6 +56,9 @@ import type {
 import type { TaskStatus } from "../src/types";
 
 class FakePersistence implements Persistence {
+  private static readonly ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator-core";
+  private static readonly ORCHESTRATOR_MCP_SERVER_COMMAND = "orchestrator://core";
+
   public readonly tasks: TaskEntity[] = [];
   public readonly agentTemplates: AgentTemplateEntity[] = [];
   public readonly packs: PackRegistryEntity[] = [];
@@ -78,6 +90,10 @@ class FakePersistence implements Persistence {
   public readonly delegations: DelegationRequestEntity[] = [];
   public readonly memoryEntries: AgentMemoryEntryEntity[] = [];
   public readonly agentRequests: AgentRequestEntity[] = [];
+  public readonly agentProfiles: AgentProfileEntity[] = [];
+  public readonly mcpServerRegistryEntries: McpServerRegistryEntity[] = [];
+  public readonly agentProfileMcpBindings: AgentProfileMcpServerBindingEntity[] = [];
+  public readonly agentProfileScriptSets: AgentProfileScriptSetEntity[] = [];
   public readonly projects: ProjectEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
@@ -95,6 +111,10 @@ class FakePersistence implements Persistence {
   private delegationCounter = 1;
   private memoryEntryCounter = 1;
   private agentRequestCounter = 1;
+  private agentProfileCounter = 1;
+  private mcpServerCounter = 1;
+  private agentProfileMcpBindingCounter = 1;
+  private agentProfileScriptSetCounter = 1;
   private projectCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
@@ -584,6 +604,253 @@ class FakePersistence implements Persistence {
       )
       .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
     return filtered.slice(0, limit);
+  }
+
+  public async createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity> {
+    const now = new Date();
+    const profile: AgentProfileEntity = {
+      id: `agent-profile-${this.agentProfileCounter++}`,
+      project_id: input.project_id,
+      name: input.name,
+      role: input.role,
+      description: input.description ?? null,
+      source_policy: input.source_policy ?? "catalog_only",
+      is_enabled: input.is_enabled ?? true,
+      created_at: now,
+      updated_at: now
+    };
+    this.agentProfiles.push(profile);
+    return profile;
+  }
+
+  public async listAgentProfiles(options?: {
+    project_id?: string;
+    include_disabled?: boolean;
+    role?: string;
+    limit?: number;
+  }): Promise<AgentProfileEntity[]> {
+    const includeDisabled = options?.include_disabled ?? true;
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.agentProfiles
+      .filter((item) => (options?.project_id ? item.project_id === options.project_id : true))
+      .filter((item) => (options?.role ? item.role === options.role : true))
+      .filter((item) => (includeDisabled ? true : item.is_enabled))
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+    return filtered.slice(0, limit);
+  }
+
+  public async getAgentProfileById(id: string): Promise<AgentProfileEntity | null> {
+    return this.agentProfiles.find((item) => item.id === id) ?? null;
+  }
+
+  public async patchAgentProfile(
+    id: string,
+    patch: {
+      name?: string;
+      role?: string;
+      description?: string | null;
+      source_policy?: AgentProfileSourcePolicy;
+      is_enabled?: boolean;
+    }
+  ): Promise<AgentProfileEntity | null> {
+    const profile = this.agentProfiles.find((item) => item.id === id);
+    if (!profile) {
+      return null;
+    }
+
+    if (patch.name !== undefined) {
+      profile.name = patch.name;
+    }
+    if (patch.role !== undefined) {
+      profile.role = patch.role;
+    }
+    if (patch.description !== undefined) {
+      profile.description = patch.description;
+    }
+    if (patch.source_policy !== undefined) {
+      profile.source_policy = patch.source_policy;
+    }
+    if (patch.is_enabled !== undefined) {
+      profile.is_enabled = patch.is_enabled;
+    }
+    profile.updated_at = new Date();
+
+    return profile;
+  }
+
+  public async createMcpServerRegistryEntry(
+    input: CreateMcpServerRegistryInput
+  ): Promise<McpServerRegistryEntity> {
+    const existing = this.mcpServerRegistryEntries.find((item) => item.name === input.name);
+    if (existing) {
+      const duplicateError = new Error("MCP server name already exists") as Error & { code?: string };
+      duplicateError.code = "P2002";
+      throw duplicateError;
+    }
+
+    const now = new Date();
+    const server: McpServerRegistryEntity = {
+      id: `mcp-server-${this.mcpServerCounter++}`,
+      name: input.name,
+      transport: input.transport,
+      endpoint_or_command: input.endpoint_or_command,
+      origin_type: input.origin_type,
+      is_approved: input.is_approved ?? false,
+      meta_json: input.meta_json ?? null,
+      created_at: now,
+      updated_at: now
+    };
+    this.mcpServerRegistryEntries.push(server);
+    return server;
+  }
+
+  public async listMcpServerRegistry(options?: {
+    include_unapproved?: boolean;
+  }): Promise<McpServerRegistryEntity[]> {
+    const includeUnapproved = options?.include_unapproved ?? false;
+    const filtered = includeUnapproved
+      ? this.mcpServerRegistryEntries
+      : this.mcpServerRegistryEntries.filter((item) => item.is_approved);
+    return [...filtered].sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+  }
+
+  public async getMcpServerRegistryById(id: string): Promise<McpServerRegistryEntity | null> {
+    return this.mcpServerRegistryEntries.find((item) => item.id === id) ?? null;
+  }
+
+  public async ensureOrchestratorMcpServer(): Promise<McpServerRegistryEntity> {
+    const existing = this.mcpServerRegistryEntries.find(
+      (item) => item.name === FakePersistence.ORCHESTRATOR_MCP_SERVER_NAME
+    );
+    if (existing) {
+      return existing;
+    }
+
+    return this.createMcpServerRegistryEntry({
+      name: FakePersistence.ORCHESTRATOR_MCP_SERVER_NAME,
+      transport: "stdio",
+      endpoint_or_command: FakePersistence.ORCHESTRATOR_MCP_SERVER_COMMAND,
+      origin_type: "built_in",
+      is_approved: true,
+      meta_json: { builtin_key: "orchestrator_core" }
+    });
+  }
+
+  public async bindMcpServerToAgentProfile(
+    profileId: string,
+    serverId: string,
+    options?: {
+      is_required?: boolean;
+      priority?: number;
+      config_json?: Record<string, unknown> | null;
+    }
+  ): Promise<AgentProfileMcpServerBindingEntity | null> {
+    const profile = this.agentProfiles.find((item) => item.id === profileId);
+    const server = this.mcpServerRegistryEntries.find((item) => item.id === serverId);
+    if (!profile || !server) {
+      return null;
+    }
+
+    const existing = this.agentProfileMcpBindings.find(
+      (item) => item.agent_profile_id === profileId && item.mcp_server_id === serverId
+    );
+    if (existing) {
+      if (options?.is_required !== undefined) {
+        existing.is_required = options.is_required;
+      }
+      if (options?.priority !== undefined) {
+        existing.priority = options.priority;
+      }
+      if (options?.config_json !== undefined) {
+        existing.config_json = options.config_json;
+      }
+      existing.updated_at = new Date();
+      return existing;
+    }
+
+    const now = new Date();
+    const binding: AgentProfileMcpServerBindingEntity = {
+      id: `agent-profile-mcp-binding-${this.agentProfileMcpBindingCounter++}`,
+      agent_profile_id: profileId,
+      mcp_server_id: serverId,
+      is_required: options?.is_required ?? false,
+      priority: options?.priority ?? 100,
+      config_json: options?.config_json ?? null,
+      created_at: now,
+      updated_at: now
+    };
+    this.agentProfileMcpBindings.push(binding);
+    return binding;
+  }
+
+  public async unbindMcpServerFromAgentProfile(profileId: string, serverId: string): Promise<boolean> {
+    const index = this.agentProfileMcpBindings.findIndex(
+      (item) => item.agent_profile_id === profileId && item.mcp_server_id === serverId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.agentProfileMcpBindings.splice(index, 1);
+    return true;
+  }
+
+  public async listAgentProfileMcpBindings(
+    profileId: string
+  ): Promise<AgentProfileMcpServerBindingEntity[]> {
+    return this.agentProfileMcpBindings
+      .filter((item) => item.agent_profile_id === profileId)
+      .sort((a, b) => {
+        if (a.priority === b.priority) {
+          return b.updated_at.getTime() - a.updated_at.getTime();
+        }
+        return a.priority - b.priority;
+      });
+  }
+
+  public async upsertAgentProfileScriptSet(
+    profileId: string,
+    input: {
+      os: AgentProfileScriptOs;
+      script_type: AgentProfileScriptType;
+      content: string;
+    }
+  ): Promise<AgentProfileScriptSetEntity | null> {
+    const profile = this.agentProfiles.find((item) => item.id === profileId);
+    if (!profile) {
+      return null;
+    }
+
+    const existing = this.agentProfileScriptSets.find(
+      (item) => item.agent_profile_id === profileId && item.os === input.os
+    );
+    if (existing) {
+      existing.script_type = input.script_type;
+      existing.content = input.content;
+      existing.version += 1;
+      existing.updated_at = new Date();
+      return existing;
+    }
+
+    const now = new Date();
+    const item: AgentProfileScriptSetEntity = {
+      id: `agent-profile-script-set-${this.agentProfileScriptSetCounter++}`,
+      agent_profile_id: profileId,
+      os: input.os,
+      script_type: input.script_type,
+      content: input.content,
+      version: 1,
+      created_at: now,
+      updated_at: now
+    };
+    this.agentProfileScriptSets.push(item);
+    return item;
+  }
+
+  public async listAgentProfileScriptSets(profileId: string): Promise<AgentProfileScriptSetEntity[]> {
+    return this.agentProfileScriptSets
+      .filter((item) => item.agent_profile_id === profileId)
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
   }
 
   public async createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity> {
@@ -3224,6 +3491,204 @@ describe("smoke-core API", () => {
     });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().code).toBe("REQUEST_STATE_CONFLICT");
+  });
+
+  it("creates agent profile and auto-binds orchestrator MCP server", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "UI tester",
+        role: "Tester",
+        source_policy: "catalog_plus_custom"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json()).toMatchObject({
+      project_id: "project",
+      name: "UI tester",
+      role: "tester",
+      source_policy: "catalog_plus_custom",
+      is_enabled: true
+    });
+    const profileId = createResponse.json().id as string;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/agent-profiles?project_id=project&include_disabled=false",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(
+      listResponse
+        .json()
+        .items.some((item: { id: string }) => item.id === profileId)
+    ).toBe(true);
+
+    const bindingsResponse = await app.inject({
+      method: "GET",
+      url: `/api/agent-profiles/${profileId}/mcp-servers`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(bindingsResponse.statusCode).toBe(200);
+    expect(bindingsResponse.json().items).toHaveLength(1);
+    expect(bindingsResponse.json().items[0].is_required).toBe(true);
+    expect(bindingsResponse.json().items[0].mcp_server.name).toBe("orchestrator-core");
+  });
+
+  it("manages custom MCP bindings and prevents orchestrator unbind", async () => {
+    const createProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "browser profile",
+        role: "reviewer"
+      }
+    });
+    expect(createProfileResponse.statusCode).toBe(201);
+    const profileId = createProfileResponse.json().id as string;
+
+    const createServerResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/servers",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "browser-mcp",
+        transport: "stdio",
+        endpoint_or_command: "npx @playwright/mcp",
+        origin_type: "catalog",
+        is_approved: true
+      }
+    });
+    expect(createServerResponse.statusCode).toBe(201);
+    const serverId = createServerResponse.json().id as string;
+
+    const bindResponse = await app.inject({
+      method: "POST",
+      url: `/api/agent-profiles/${profileId}/mcp-servers/${serverId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        is_required: false,
+        priority: 40,
+        config_json: { channel: "stable" }
+      }
+    });
+    expect(bindResponse.statusCode).toBe(200);
+    expect(bindResponse.json()).toMatchObject({
+      agent_profile_id: profileId,
+      mcp_server_id: serverId,
+      is_required: false,
+      priority: 40
+    });
+
+    const profileServersResponse = await app.inject({
+      method: "GET",
+      url: `/api/agent-profiles/${profileId}/mcp-servers`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(profileServersResponse.statusCode).toBe(200);
+    expect(profileServersResponse.json().items).toHaveLength(2);
+    const orchestratorBinding = profileServersResponse
+      .json()
+      .items.find((item: { mcp_server: { name: string } }) => item.mcp_server.name === "orchestrator-core");
+    expect(orchestratorBinding).toBeDefined();
+
+    const deleteCustomBindingResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/agent-profiles/${profileId}/mcp-servers/${serverId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteCustomBindingResponse.statusCode).toBe(204);
+
+    const deleteOrchestratorBindingResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/agent-profiles/${profileId}/mcp-servers/${orchestratorBinding.mcp_server_id as string}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteOrchestratorBindingResponse.statusCode).toBe(409);
+    expect(deleteOrchestratorBindingResponse.json().code).toBe("MCP_SERVER_REQUIRED");
+  });
+
+  it("upserts profile scripts and applies include_disabled filter", async () => {
+    const createProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "ops profile",
+        role: "DevOps"
+      }
+    });
+    expect(createProfileResponse.statusCode).toBe(201);
+    const profileId = createProfileResponse.json().id as string;
+
+    const firstScript = await app.inject({
+      method: "PUT",
+      url: `/api/agent-profiles/${profileId}/scripts/windows`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        script_type: "shell",
+        content: "Write-Host 'hello'"
+      }
+    });
+    expect(firstScript.statusCode).toBe(200);
+    expect(firstScript.json().version).toBe(1);
+
+    const secondScript = await app.inject({
+      method: "PUT",
+      url: `/api/agent-profiles/${profileId}/scripts/windows`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        script_type: "shell",
+        content: "Write-Host 'updated'"
+      }
+    });
+    expect(secondScript.statusCode).toBe(200);
+    expect(secondScript.json().version).toBe(2);
+
+    const scriptsResponse = await app.inject({
+      method: "GET",
+      url: `/api/agent-profiles/${profileId}/scripts`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(scriptsResponse.statusCode).toBe(200);
+    expect(scriptsResponse.json().items).toHaveLength(1);
+    expect(scriptsResponse.json().items[0]).toMatchObject({
+      os: "windows",
+      script_type: "shell",
+      version: 2
+    });
+
+    const disableProfileResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/agent-profiles/${profileId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        is_enabled: false,
+        source_policy: "custom_only"
+      }
+    });
+    expect(disableProfileResponse.statusCode).toBe(200);
+    expect(disableProfileResponse.json().is_enabled).toBe(false);
+    expect(disableProfileResponse.json().source_policy).toBe("custom_only");
+
+    const enabledOnlyResponse = await app.inject({
+      method: "GET",
+      url: "/api/agent-profiles?project_id=project&include_disabled=false",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(enabledOnlyResponse.statusCode).toBe(200);
+    expect(
+      enabledOnlyResponse
+        .json()
+        .items.some((item: { id: string }) => item.id === profileId)
+    ).toBe(false);
   });
 
   it("injects project-role memory into delegation execution payload", async () => {
