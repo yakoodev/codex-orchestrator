@@ -98,9 +98,11 @@
 - policy v1 поддерживает:
   - `mcp_server_attach`: bind MCP server к `AgentProfile` (по `server_id` или резолву `server_name`);
   - `script_set`: upsert OS script set (`windows/linux/macos`) в `AgentProfile`;
+  - `mcp_tool_acl`: попытка удовлетворения через server-attach (`mcp_server_*` или эвристика `tool_name -> server`);
+  - `runtime_dependency`: server/script resolution по payload/dependency hints (и fallback `governor_auto_resolve=true`);
 - backend пишет audit события на create/resolve переходах с `from_status/to_status`, `trace_id`, `actor_type/actor_id`;
 - для validation/domain `4xx` в policy-action заявка финализируется как `blocked_agent` с diagnostic metadata;
-- policy-driven резолверы для `mcp_tool_acl` и части `runtime_dependency` остаются следующим этапом.
+- полноценный ACL-plane и глубокие runtime/secrets dependency resolver'ы остаются следующим этапом.
 
 ## 7. Интеграция с другими эпиками
 
@@ -132,6 +134,8 @@
 5. Проверить policy v1:
   - `mcp_server_attach` с валидными `profile + server` уходит в `resolved_by_agent`;
   - `script_set` с валидными `profile + os + content` уходит в `resolved_by_agent`;
+  - `mcp_tool_acl` с `tool_name`/`mcp_server_*` уходит в `resolved_by_agent` или `blocked_agent` с диагностическим reason;
+  - `runtime_dependency` по server/script hints уходит в `resolved_by_agent`, неподдержанные зависимости — в `blocked_agent`;
   - невалидные payload/4xx кейсы уходят в `blocked_agent`.
 6. Оператор вручную закрывает одну `blocked_agent` заявку как `resolved_manual` и другую как `rejected_manual`.
 7. Проверить через `GET /api/agent-requests/{id}/audit`, что переходы зафиксированы в правильном порядке и с корректными `from_status/to_status`.

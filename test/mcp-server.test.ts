@@ -537,6 +537,152 @@ describe("MCP Bridge Server", () => {
     expect(content["blocked_agent"]).toBe(0);
   });
 
+  it("автоматически обрабатывает mcp_tool_acl через привязку server по tool-name", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-acl-1",
+          status: "open",
+          type: "mcp_tool_acl",
+          agent_profile_id: "profile-3",
+          request_payload: {
+            tool_name: "browser.navigate"
+          }
+        }
+      ]
+    });
+    apiClientMock.listMcpServers.mockResolvedValue({
+      items: [{ id: "server-browser", name: "browser-mcp" }]
+    });
+    apiClientMock.bindAgentProfileMcpServer.mockResolvedValue({
+      id: "binding-2",
+      agent_profile_id: "profile-3",
+      mcp_server_id: "server-browser"
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-acl-1",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-acl-1",
+        status: "resolved_by_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.listMcpServers).toHaveBeenCalledWith({
+      include_unapproved: false
+    });
+    expect(apiClientMock.bindAgentProfileMcpServer).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[0]).toBe("profile-3");
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[1]).toBe("server-browser");
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "resolved_by_agent",
+      resolution_payload: expect.objectContaining({
+        decision_reason: "mcp_tool_acl_satisfied_by_server_attach"
+      })
+    });
+  });
+
+  it("автоматически обрабатывает runtime_dependency через inferred server binding", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-runtime-1",
+          status: "open",
+          type: "runtime_dependency",
+          agent_profile_id: "profile-4",
+          request_payload: {
+            dependency_type: "browser_mcp"
+          }
+        }
+      ]
+    });
+    apiClientMock.listMcpServers.mockResolvedValue({
+      items: [{ id: "server-browser", name: "browser-mcp" }]
+    });
+    apiClientMock.bindAgentProfileMcpServer.mockResolvedValue({
+      id: "binding-3",
+      agent_profile_id: "profile-4",
+      mcp_server_id: "server-browser"
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-runtime-1",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-runtime-1",
+        status: "resolved_by_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.bindAgentProfileMcpServer).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[0]).toBe("profile-4");
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[1]).toBe("server-browser");
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "resolved_by_agent",
+      resolution_payload: expect.objectContaining({
+        decision_reason: "runtime_dependency_satisfied_by_inferred_server"
+      })
+    });
+  });
+
+  it("блокирует mcp_tool_acl без server hints как policy_unavailable", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-acl-2",
+          status: "open",
+          type: "mcp_tool_acl",
+          agent_profile_id: "profile-5",
+          request_payload: {
+            tool_name: "unknown.tool"
+          }
+        }
+      ]
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-acl-2",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-acl-2",
+        status: "blocked_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.bindAgentProfileMcpServer).not.toHaveBeenCalled();
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "blocked_agent",
+      resolution_payload: expect.objectContaining({
+        decision_reason: "mcp_tool_acl_policy_unavailable"
+      })
+    });
+  });
+
   it("возвращает fleet snapshot с частичными ошибками в orchestrator.get_limits", async () => {
     apiClientMock.listAuthProfiles.mockResolvedValue({
       items: [

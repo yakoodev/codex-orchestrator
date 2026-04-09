@@ -113,6 +113,8 @@
   - в governor policy v1 добавлены auto-resolver'ы:
     - `mcp_server_attach` -> bind MCP server к `AgentProfile` (по `server_id` или резолву по `server_name`);
     - `script_set` -> upsert OS script set (`windows/linux/macos`) в `AgentProfile`;
+    - `mcp_tool_acl` -> попытка удовлетворения через server-attach (`mcp_server_*` или эвристика `tool_name -> server`), иначе `blocked_agent`;
+    - `runtime_dependency` -> auto server/script resolution по payload/dependency hints + fallback `governor_auto_resolve=true`;
     - для валидационных/domain `4xx` заявка финализируется как `blocked_agent` с diagnostic metadata.
 - Зависимости:
   - `MCP AuthZ ACL v2`;

@@ -39,6 +39,24 @@ const GOVERNOR_DEFAULT_ID = "mcp-governor-bridge";
 const GOVERNOR_STRATEGY_VERSION = "mcp_bridge_governor_v1";
 const AGENT_PROFILE_SCRIPT_OS_VALUES = ["windows", "linux", "macos"] as const;
 const AGENT_PROFILE_SCRIPT_TYPE_VALUES = ["instruction", "shell"] as const;
+const TOOL_NAME_SERVER_HINTS = [
+  { prefix: "browser.", serverName: "browser-mcp" },
+  { prefix: "playwright.", serverName: "browser-mcp" },
+  { prefix: "docker.", serverName: "docker-mcp" }
+] as const;
+const RUNTIME_DEPENDENCY_SERVER_HINTS: Record<string, string> = {
+  browser: "browser-mcp",
+  browser_mcp: "browser-mcp",
+  playwright: "browser-mcp",
+  docker: "docker-mcp",
+  docker_mcp: "docker-mcp"
+};
+const RUNTIME_DEPENDENCY_SCRIPT_HINTS = new Set([
+  "script_set",
+  "os_script",
+  "runbook_script",
+  "instructions"
+]);
 
 interface GovernorDecision {
   finalStatus: "resolved_by_agent" | "blocked_agent";
@@ -180,6 +198,76 @@ function getAgentRequestPayload(request: Record<string, unknown>): Record<string
   return asRecord(request["request_payload"]);
 }
 
+function withAgentRequestPayload(
+  request: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...request,
+    request_payload: {
+      ...getAgentRequestPayload(request),
+      ...patch
+    }
+  };
+}
+
+function hasMcpServerHint(payload: Record<string, unknown>): boolean {
+  return Boolean(
+    asStringValue(payload["mcp_server_id"]) ??
+      asStringValue(payload["server_id"]) ??
+      asStringValue(payload["mcp_server_name"]) ??
+      asStringValue(payload["server_name"])
+  );
+}
+
+function hasScriptSetHint(payload: Record<string, unknown>): boolean {
+  return (
+    asAgentProfileScriptOs(payload["os"]) !== null ||
+    asStringValue(payload["content"]) !== null
+  );
+}
+
+function normalizeRuntimeDependencyKey(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  return value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+function extractRuntimeDependencyKey(payload: Record<string, unknown>): string | null {
+  return normalizeRuntimeDependencyKey(
+    asStringValue(payload["dependency_type"]) ??
+      asStringValue(payload["dependency_kind"]) ??
+      asStringValue(payload["kind"]) ??
+      asStringValue(payload["dependency"])
+  );
+}
+
+function inferServerNameFromToolName(toolName: string | null): string | null {
+  if (!toolName) {
+    return null;
+  }
+
+  const normalized = toolName.trim().toLowerCase();
+  for (const hint of TOOL_NAME_SERVER_HINTS) {
+    if (normalized.startsWith(hint.prefix)) {
+      return hint.serverName;
+    }
+  }
+
+  return null;
+}
+
+function inferServerNameFromRuntimeDependency(payload: Record<string, unknown>): string | null {
+  const key = extractRuntimeDependencyKey(payload);
+  if (!key) {
+    return null;
+  }
+
+  return RUNTIME_DEPENDENCY_SERVER_HINTS[key] ?? null;
+}
+
 function toGovernorDecision(request: Record<string, unknown>): GovernorDecision {
   const type = asStringValue(request["type"]) ?? "other";
   const requestPayload = getAgentRequestPayload(request);
@@ -204,6 +292,20 @@ function toGovernorDecision(request: Record<string, unknown>): GovernorDecision 
     return {
       finalStatus: "resolved_by_agent",
       reason: "policy_script_set"
+    };
+  }
+
+  if (type === "mcp_tool_acl") {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "policy_mcp_tool_acl"
+    };
+  }
+
+  if (type === "runtime_dependency") {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "policy_runtime_dependency"
     };
   }
 
@@ -498,6 +600,152 @@ async function executeScriptSetPolicy(
   }
 }
 
+async function executeMcpToolAclPolicy(
+  apiClient: OrchestratorApiClient,
+  request: Record<string, unknown>,
+  traceId: string
+): Promise<GovernorDecision> {
+  const requestPayload = getAgentRequestPayload(request);
+  const toolName = asStringValue(requestPayload["tool_name"]);
+  let patchedRequest = request;
+
+  if (!hasMcpServerHint(requestPayload)) {
+    const inferredServerName = inferServerNameFromToolName(toolName);
+    if (!inferredServerName) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "mcp_tool_acl_policy_unavailable",
+        metadata: {
+          tool_name: toolName,
+          hint: "Provide mcp_server_id/mcp_server_name or supported tool prefix"
+        }
+      };
+    }
+
+    patchedRequest = withAgentRequestPayload(request, {
+      mcp_server_name: inferredServerName
+    });
+  }
+
+  const attachDecision = await executeMcpServerAttachPolicy(apiClient, patchedRequest, traceId);
+  if (attachDecision.finalStatus === "resolved_by_agent") {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "mcp_tool_acl_satisfied_by_server_attach",
+      metadata: {
+        tool_name: toolName,
+        attach_result: attachDecision.metadata ?? null
+      }
+    };
+  }
+
+  return {
+    finalStatus: "blocked_agent",
+    reason: "mcp_tool_acl_blocked_server_attach",
+    metadata: {
+      tool_name: toolName,
+      attach_result: attachDecision.metadata ?? null
+    }
+  };
+}
+
+async function executeRuntimeDependencyPolicy(
+  apiClient: OrchestratorApiClient,
+  request: Record<string, unknown>,
+  traceId: string
+): Promise<GovernorDecision> {
+  const requestPayload = getAgentRequestPayload(request);
+  const dependencyKey = extractRuntimeDependencyKey(requestPayload);
+
+  if (hasMcpServerHint(requestPayload)) {
+    const attachDecision = await executeMcpServerAttachPolicy(apiClient, request, traceId);
+    return attachDecision.finalStatus === "resolved_by_agent"
+      ? {
+          finalStatus: "resolved_by_agent",
+          reason: "runtime_dependency_satisfied_by_mcp_server",
+          metadata: {
+            dependency: dependencyKey,
+            attach_result: attachDecision.metadata ?? null
+          }
+        }
+      : {
+          finalStatus: "blocked_agent",
+          reason: "runtime_dependency_blocked_mcp_server",
+          metadata: {
+            dependency: dependencyKey,
+            attach_result: attachDecision.metadata ?? null
+          }
+        };
+  }
+
+  if ((dependencyKey && RUNTIME_DEPENDENCY_SCRIPT_HINTS.has(dependencyKey)) || hasScriptSetHint(requestPayload)) {
+    const scriptDecision = await executeScriptSetPolicy(apiClient, request, traceId);
+    return scriptDecision.finalStatus === "resolved_by_agent"
+      ? {
+          finalStatus: "resolved_by_agent",
+          reason: "runtime_dependency_satisfied_by_script_set",
+          metadata: {
+            dependency: dependencyKey,
+            script_result: scriptDecision.metadata ?? null
+          }
+        }
+      : {
+          finalStatus: "blocked_agent",
+          reason: "runtime_dependency_blocked_script_set",
+          metadata: {
+            dependency: dependencyKey,
+            script_result: scriptDecision.metadata ?? null
+          }
+        };
+  }
+
+  const inferredServerName = inferServerNameFromRuntimeDependency(requestPayload);
+  if (inferredServerName) {
+    const attachDecision = await executeMcpServerAttachPolicy(
+      apiClient,
+      withAgentRequestPayload(request, { mcp_server_name: inferredServerName }),
+      traceId
+    );
+    return attachDecision.finalStatus === "resolved_by_agent"
+      ? {
+          finalStatus: "resolved_by_agent",
+          reason: "runtime_dependency_satisfied_by_inferred_server",
+          metadata: {
+            dependency: dependencyKey,
+            inferred_server_name: inferredServerName,
+            attach_result: attachDecision.metadata ?? null
+          }
+        }
+      : {
+          finalStatus: "blocked_agent",
+          reason: "runtime_dependency_blocked_inferred_server",
+          metadata: {
+            dependency: dependencyKey,
+            inferred_server_name: inferredServerName,
+            attach_result: attachDecision.metadata ?? null
+          }
+      };
+  }
+
+  if (asBooleanValue(requestPayload["governor_auto_resolve"]) === true) {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "explicit_auto_resolve_flag",
+      metadata: {
+        dependency: dependencyKey
+      }
+    };
+  }
+
+  return {
+    finalStatus: "blocked_agent",
+    reason: "runtime_dependency_policy_unavailable",
+    metadata: {
+      dependency: dependencyKey
+    }
+  };
+}
+
 async function executeGovernorDecision(
   apiClient: OrchestratorApiClient,
   request: Record<string, unknown>,
@@ -514,6 +762,14 @@ async function executeGovernorDecision(
 
   if (decision.reason === "policy_script_set") {
     return executeScriptSetPolicy(apiClient, request, traceId);
+  }
+
+  if (decision.reason === "policy_mcp_tool_acl") {
+    return executeMcpToolAclPolicy(apiClient, request, traceId);
+  }
+
+  if (decision.reason === "policy_runtime_dependency") {
+    return executeRuntimeDependencyPolicy(apiClient, request, traceId);
   }
 
   return decision;

@@ -366,6 +366,14 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/<PROFILE_ID>/scripts" `
   -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
 ```
 
+11. Проверь policy `mcp_tool_acl`:
+  - создай заявку `type = mcp_tool_acl`, `request_payload.tool_name = browser.navigate`;
+  - запусти governor и проверь, что итог `resolved_by_agent` с `decision_reason = mcp_tool_acl_satisfied_by_server_attach`.
+12. Проверь policy `runtime_dependency`:
+  - создай заявку `type = runtime_dependency`, `request_payload.dependency_type = browser_mcp`;
+  - запусти governor и проверь `resolved_by_agent` с `decision_reason = runtime_dependency_satisfied_by_inferred_server`;
+  - для неподдержанной зависимости ожидаемо `blocked_agent` с `decision_reason = runtime_dependency_policy_unavailable`.
+
 ## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 2 runtime dispatch)
 
 Статус: доступно на API-уровне + runtime-resolve в `POST /api/delegation/dispatch`.

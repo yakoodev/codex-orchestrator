@@ -3526,7 +3526,16 @@ describe("smoke-core API", () => {
     });
     expect(audit.statusCode).toBe(200);
     expect(audit.json().items).toHaveLength(2);
-    expect(audit.json().items[0]).toMatchObject({
+    const blockedEvent = audit.json().items.find(
+      (item: { event_type?: unknown }) => item.event_type === "request_blocked_agent"
+    );
+    const createdEvent = audit.json().items.find(
+      (item: { event_type?: unknown }) => item.event_type === "request_created"
+    );
+
+    expect(blockedEvent).toBeTruthy();
+    expect(createdEvent).toBeTruthy();
+    expect(blockedEvent).toMatchObject({
       request_id: requestId,
       event_type: "request_blocked_agent",
       from_status: "open",
@@ -3535,7 +3544,7 @@ describe("smoke-core API", () => {
       actor_id: "governor-main",
       trace_id: "trace-agent-request-resolve-1"
     });
-    expect(audit.json().items[1]).toMatchObject({
+    expect(createdEvent).toMatchObject({
       request_id: requestId,
       event_type: "request_created",
       from_status: null,
