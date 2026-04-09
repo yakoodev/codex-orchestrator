@@ -228,7 +228,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - при `allowed` обновляется `last_used_at`, по каждому outcome пишется `McpAuthAuditEvent`;
   - добавлены env-конфиги MCP runtime: `MCP_API_KEY`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`;
   - добавлены unit/API тесты на allow/deny-path и sync OpenAPI/route coverage.
-- [~] Стартована реализация `Secrets Plane v1` (Phase 1: encrypted storage backend):
+- [~] Реализован `Secrets Plane v1` (Phase 1+2 backend/runtime):
   - добавлены Prisma-сущности + миграция `0012_secrets_plane_v1`:
     - `ProjectSecret`
     - `ProjectSecretTemplateBinding`
@@ -243,7 +243,9 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
   - добавлено envelope encryption (AES-256-GCM, DEK+master key), masked preview и audit lifecycle (`created/updated/rotated/revoked/binding_*`);
   - API/тесты/OpenAPI/route coverage синхронизированы;
-  - остается runtime env injection + redaction и UI-экран управления секретами.
+  - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/template`, прокидка в `runtime_env` для executor и `secrets_context` в execution metadata;
+  - добавлен redaction секрета в terminal outputs: `result_summary`, `execution_log`, `execution_meta_json` (success/fail paths);
+  - остаётся UI-экран управления секретами в `/ui/console.html`.
 - [x] Стартована кодовая реализация `Agent Profiles + MCP Server Sets` (Phase 1 backend):
   - добавлены Prisma-сущности + миграция `0008_agent_profiles_mcp_servers`:
     - `AgentProfile`
@@ -287,7 +289,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 - [x] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача закрыта в `docs/ops/roadmap.md`).
 - [~] MCP AuthZ ACL v2 (Phase 1+2 backend/runtime закрыты: key-management + authz enforcement + audit + template constraints; остаются UI для управления ключами и операционный rollout по профилям): `docs/ops/mcp-authz-acl-v2.md`.
-- [~] Secrets Plane v1 (Phase 1 backend закрыт: encrypted storage + API + bindings + audit; остаются runtime env injection/redaction и UI): `docs/ops/secrets-plane-v1.md`.
+- [~] Secrets Plane v1 (Phase 1+2 backend/runtime закрыты: encrypted storage + API + bindings + runtime env injection/redaction; остаётся UI): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 - [~] Agent Request Plane v2 (backend + MCP create/list_open/resolve + governor-loop + audit trail + policy-driven resolver'ы `mcp_server_attach/script_set/mcp_tool_acl/runtime_dependency` реализованы; остаются полноценный ACL-plane и topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.

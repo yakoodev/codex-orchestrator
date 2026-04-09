@@ -5358,6 +5358,258 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("injects project secrets into delegation runtime_env for matching role bindings", async () => {
+    await app.close();
+
+    const executionCalls: Array<{ payload: Record<string, unknown> }> = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push({ payload: input.payload });
+        return {
+          execution_mode: "mock",
+          result_summary: "ok",
+          output_text: "ok"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    const template = await persistence.createAgentTemplate({
+      name: "secret-runtime-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const task = await persistence.createTask({
+      title: "Secret runtime env task",
+      description: "Check runtime env injection",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const createSecretResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects/proj-memory/secrets",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "OPENAI_API_KEY",
+        value: "sk-runtime-secret-12345",
+        bind_roles: ["reviewer"]
+      }
+    });
+    expect(createSecretResponse.statusCode).toBe(201);
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-secret-runtime-env-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer", agent_template_id: template.id },
+        payload: { prompt: "Runtime env secret check", execution_mode: "mock" },
+        priority: 80
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(executionCalls).toHaveLength(1);
+    const firstPayload = executionCalls[0]?.payload ?? {};
+    const runtimeEnv = firstPayload["runtime_env"] as Record<string, string>;
+    const secretContext = firstPayload["secrets_context"] as {
+      injected_count?: number;
+      injected_keys?: string[];
+    };
+    expect(runtimeEnv["OPENAI_API_KEY"]).toBe("sk-runtime-secret-12345");
+    expect(secretContext.injected_count).toBe(1);
+    expect(secretContext.injected_keys).toEqual(["OPENAI_API_KEY"]);
+  });
+
+  it("redacts runtime secret values from completed delegation logs and metadata", async () => {
+    await app.close();
+
+    const leakedSecret = "sk-runtime-redact-7777";
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        const runtimeEnv = input.payload["runtime_env"] as Record<string, string> | undefined;
+        const runtimeSecret = runtimeEnv?.["OPENAI_API_KEY"] ?? leakedSecret;
+        return {
+          execution_mode: "codex_exec",
+          result_summary: `summary with ${runtimeSecret}`,
+          output_text: `stdout with ${runtimeSecret}`,
+          metadata: {
+            nested: {
+              note: `metadata with ${runtimeSecret}`
+            }
+          }
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    const template = await persistence.createAgentTemplate({
+      name: "secret-redaction-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const task = await persistence.createTask({
+      title: "Secret redaction task",
+      description: "Check redaction",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const createSecretResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects/proj-memory/secrets",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "OPENAI_API_KEY",
+        value: leakedSecret,
+        bind_roles: ["reviewer"]
+      }
+    });
+    expect(createSecretResponse.statusCode).toBe(201);
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-secret-redaction-completed-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer", agent_template_id: template.id },
+        payload: { prompt: "Check secret redaction", execution_mode: "mock" },
+        priority: 80
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("completed");
+    expect(dispatchResponse.json().result_summary).not.toContain(leakedSecret);
+    expect(dispatchResponse.json().result_summary).toContain("[REDACTED_SECRET]");
+    expect(dispatchResponse.json().execution_log).not.toContain(leakedSecret);
+    expect(dispatchResponse.json().execution_log).toContain("[REDACTED_SECRET]");
+    const metaSerialized = JSON.stringify(dispatchResponse.json().execution_meta_json);
+    expect(metaSerialized).not.toContain(leakedSecret);
+    expect(metaSerialized).toContain("[REDACTED_SECRET]");
+  });
+
+  it("redacts runtime secret values from failed delegation errors", async () => {
+    await app.close();
+
+    const leakedSecret = "sk-runtime-redact-fail-8888";
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        const runtimeEnv = input.payload["runtime_env"] as Record<string, string> | undefined;
+        const runtimeSecret = runtimeEnv?.["OPENAI_API_KEY"] ?? leakedSecret;
+        const error = new Error(`Executor failed with ${runtimeSecret}`) as Error & {
+          code: "EXECUTION_FAILED";
+        };
+        error.code = "EXECUTION_FAILED";
+        throw error;
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    const template = await persistence.createAgentTemplate({
+      name: "secret-redaction-fail-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are helper",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const task = await persistence.createTask({
+      title: "Secret redaction fail task",
+      description: "Check failed redaction",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const createSecretResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects/proj-memory/secrets",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "OPENAI_API_KEY",
+        value: leakedSecret,
+        bind_roles: ["reviewer"]
+      }
+    });
+    expect(createSecretResponse.statusCode).toBe(201);
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-secret-redaction-failed-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer", agent_template_id: template.id },
+        payload: { prompt: "Check failed secret redaction", execution_mode: "mock" },
+        priority: 80
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(dispatchResponse.json().status).toBe("failed");
+    expect(dispatchResponse.json().result_summary).not.toContain(leakedSecret);
+    expect(dispatchResponse.json().result_summary).toContain("[REDACTED_SECRET]");
+    expect(dispatchResponse.json().execution_log).not.toContain(leakedSecret);
+    expect(dispatchResponse.json().execution_log).toContain("[REDACTED_SECRET]");
+  });
+
   it("marks delegation failed for terminal AUTH_PROFILE_REQUIRED executor error", async () => {
     await app.close();
 

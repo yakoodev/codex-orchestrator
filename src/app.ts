@@ -11,6 +11,7 @@ import {
 } from "./lib/auth-profile-json";
 import {
   buildSecretMaskedPreview,
+  decryptProjectSecretValue,
   encryptProjectSecretValue
 } from "./lib/secrets-envelope";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
@@ -491,6 +492,7 @@ const MAX_MCP_KEY_ACL_TOOLS = 200;
 const MAX_MCP_KEY_PROFILE_BINDINGS = 100;
 const MAX_PROJECT_SECRET_VALUE_LENGTH = 32_000;
 const MAX_PROJECT_SECRET_BINDINGS = 128;
+const MAX_RUNTIME_SECRET_ENV_VARS = 64;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PROJECT_SECRET_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
@@ -909,6 +911,111 @@ function buildAgentProfileAwarePrompt(options: {
   }
 
   return trimToLimit(lines.join("\n"), MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
+}
+
+async function resolveRuntimeSecretEnvironment(options: {
+  persistence: Persistence;
+  projectId: string;
+  agentRole: string;
+  agentTemplateId: string;
+  secretsMasterKey: string;
+}): Promise<{
+  env: Record<string, string>;
+  keys: string[];
+}> {
+  const projectSecrets = await options.persistence.listProjectSecrets(options.projectId, {
+    include_inactive: false,
+    limit: 200
+  });
+
+  const runtimeEnv: Record<string, string> = {};
+  const resolvedKeys: string[] = [];
+
+  for (const secret of projectSecrets) {
+    const [templateBindings, roleBindings] = await Promise.all([
+      options.persistence.listProjectSecretTemplateBindings(secret.id),
+      options.persistence.listProjectSecretRoleBindings(secret.id)
+    ]);
+
+    const hasBindings = templateBindings.length > 0 || roleBindings.length > 0;
+    const templateMatched = templateBindings.some(
+      (binding) => binding.template_id === options.agentTemplateId
+    );
+    const roleMatched = roleBindings.some(
+      (binding) => normalizeAgentRole(binding.role) === options.agentRole
+    );
+    if (hasBindings && !templateMatched && !roleMatched) {
+      continue;
+    }
+
+    const decryptedValue = decryptProjectSecretValue(
+      {
+        ciphertext: secret.ciphertext,
+        dek_encrypted: secret.dek_encrypted
+      },
+      options.secretsMasterKey
+    );
+    runtimeEnv[secret.key] = decryptedValue;
+    resolvedKeys.push(secret.key);
+
+    if (resolvedKeys.length >= MAX_RUNTIME_SECRET_ENV_VARS) {
+      break;
+    }
+  }
+
+  resolvedKeys.sort((a, b) => a.localeCompare(b));
+  return { env: runtimeEnv, keys: resolvedKeys };
+}
+
+function buildRuntimeSecretRedactionValues(runtimeEnv: Record<string, string>): string[] {
+  const unique = new Set<string>();
+  for (const value of Object.values(runtimeEnv)) {
+    if (typeof value !== "string" || value.length < 4) {
+      continue;
+    }
+    unique.add(value);
+  }
+
+  return Array.from(unique).sort((left, right) => {
+    if (left.length === right.length) {
+      return left.localeCompare(right);
+    }
+    return right.length - left.length;
+  });
+}
+
+function redactSecretsInText(value: string, redactionValues: string[]): string {
+  if (!value || redactionValues.length === 0) {
+    return value;
+  }
+
+  let redacted = value;
+  for (const secret of redactionValues) {
+    if (!secret || !redacted.includes(secret)) {
+      continue;
+    }
+    redacted = redacted.split(secret).join("[REDACTED_SECRET]");
+  }
+
+  return redacted;
+}
+
+function redactSecretsInUnknown(value: unknown, redactionValues: string[]): unknown {
+  if (typeof value === "string") {
+    return redactSecretsInText(value, redactionValues);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSecretsInUnknown(item, redactionValues));
+  }
+  if (isPlainObject(value)) {
+    const next: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+      next[key] = redactSecretsInUnknown(item, redactionValues);
+    }
+    return next;
+  }
+
+  return value;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -6336,6 +6443,33 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       });
     }
 
+    let runtimeSecretEnv: Record<string, string> = {};
+    let runtimeSecretKeys: string[] = [];
+    if (memoryProjectId) {
+      try {
+        const resolved = await resolveRuntimeSecretEnvironment({
+          persistence,
+          projectId: memoryProjectId,
+          agentRole: memoryAgentRole,
+          agentTemplateId: targetTemplate.id,
+          secretsMasterKey: config.secretsMasterKey
+        });
+        runtimeSecretEnv = resolved.env;
+        runtimeSecretKeys = resolved.keys;
+      } catch (error) {
+        request.log.error(
+          { err: error, project_id: memoryProjectId, template_id: targetTemplate.id },
+          "Failed to resolve runtime project secrets"
+        );
+        return sendError(reply, 500, "Failed to resolve project secrets", "SECRET_RESOLVE_FAILED");
+      }
+    }
+    const secretContext = {
+      project_id: memoryProjectId,
+      injected_keys: runtimeSecretKeys,
+      injected_count: runtimeSecretKeys.length
+    };
+
     const memoryDisabled = payload["memory_disabled"] === true;
     const memoryEntries =
       memoryDisabled || !memoryProjectId
@@ -6399,6 +6533,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         entries_used: memoryEntries.length,
         disabled: memoryDisabled
       },
+      secrets_context: secretContext,
       agent_profile_context: {
         ...agentProfileExecutionContext,
         mcp_servers: selectedAgentProfileMcpServers.map((server) => ({
@@ -6414,6 +6549,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         runtime_script_content: selectedAgentProfileRuntimeScript?.content ?? null
       }
     };
+    if (runtimeSecretKeys.length > 0) {
+      executionPayload["runtime_env"] = runtimeSecretEnv;
+    }
+    const runtimeSecretRedactionValues = buildRuntimeSecretRedactionValues(runtimeSecretEnv);
     if (selectedAgentProfile) {
       executionPayload["agent_profile_id"] = selectedAgentProfile.id;
     }
@@ -6527,15 +6666,19 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           continue;
         }
 
+        const redactedExecutionErrorMessage = redactSecretsInText(
+          executionError.message,
+          runtimeSecretRedactionValues
+        );
         const failedSummary =
           executionError.code === "TIMEOUT"
             ? `Delegation timed out after ${DEFAULT_DELEGATION_TIMEOUT_RETRY_LIMIT} attempts`
-            : executionError.message;
+            : redactedExecutionErrorMessage;
 
         const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
           status: "failed",
           result_summary: failedSummary,
-          execution_log: trimToLimit(executionError.message, MAX_DELEGATION_LOG_LENGTH),
+          execution_log: trimToLimit(redactedExecutionErrorMessage, MAX_DELEGATION_LOG_LENGTH),
           execution_mode: "failed",
           execution_meta_json: {
             code: executionError.code,
@@ -6551,6 +6694,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
               entries_used: memoryEntries.length,
               disabled: memoryDisabled
             },
+            secrets_context: secretContext,
             agent_profile_context: agentProfileExecutionContext
           },
           ended_at: new Date()
@@ -6566,13 +6710,28 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         continue;
       }
 
+      const redactedResultSummary = redactSecretsInText(
+        executionResult.result_summary,
+        runtimeSecretRedactionValues
+      );
+      const redactedOutputText = redactSecretsInText(
+        executionResult.output_text,
+        runtimeSecretRedactionValues
+      );
+      const redactedMetadataCandidate = redactSecretsInUnknown(
+        executionResult.metadata ?? {},
+        runtimeSecretRedactionValues
+      );
+      const redactedMetadata = isPlainObject(redactedMetadataCandidate)
+        ? redactedMetadataCandidate
+        : {};
       const completedDelegation = await persistence.updateDelegationRequest(delegation.id, {
         status: "completed",
-        result_summary: executionResult.result_summary,
+        result_summary: redactedResultSummary,
         execution_mode: executionResult.execution_mode,
-        execution_log: trimToLimit(executionResult.output_text, MAX_DELEGATION_LOG_LENGTH),
+        execution_log: trimToLimit(redactedOutputText, MAX_DELEGATION_LOG_LENGTH),
         execution_meta_json: {
-          ...(executionResult.metadata ?? {}),
+          ...redactedMetadata,
           execution_context: {
             cwd: resolvedExecutionCwd,
             cwd_source: executionCwdSource
@@ -6583,6 +6742,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             entries_used: memoryEntries.length,
             disabled: memoryDisabled
           },
+          secrets_context: secretContext,
           agent_profile_context: agentProfileExecutionContext
         },
         ended_at: new Date()

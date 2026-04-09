@@ -372,9 +372,9 @@ npm run mcp:serve
 - разрешенные tools выполняются;
 - запрещенные tools завершаются ошибкой с `code/status_code` (`401/403`).
 
-## 3.10 Сценарий A10: Project Secrets v1 (Phase 1 backend)
+## 3.10 Сценарий A10: Project Secrets v1 (Phase 1+2 backend/runtime)
 
-Статус: доступно в backend API (`encrypted storage + bindings + audit`). Runtime env injection/redaction — следующий этап.
+Статус: доступно в backend/runtime (`encrypted storage + bindings + runtime env injection + redaction`).
 
 1. Создай секрет:
 
@@ -445,6 +445,53 @@ Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/revoke"
 
 Ожидаемо:
 - `is_active = false`, заполнен `revoked_at`.
+
+7. Проверь runtime-resolve и redaction в делегации:
+
+```powershell
+$templateBody = @{
+  name = "secret-runtime-reviewer"
+  role = "reviewer"
+  model = "gpt-5.4-mini"
+  system_prompt = "Use runtime secrets when needed"
+  sandbox_policy = "workspace-write"
+  approval_policy = "never"
+} | ConvertTo-Json
+
+$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+
+$taskBody = @{
+  title = "secret-runtime-task-$(Get-Date -Format HHmmss)"
+  description = "runtime secret resolve check"
+  project_id = "project"
+  repo_id = "project"
+  priority = 90
+} | ConvertTo-Json
+
+$task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
+
+$dispatchBody = @{
+  requester_task_id = $task.id
+  capability = "reviewer"
+  target_selector = @{
+    role = "reviewer"
+    agent_template_id = $template.id
+  }
+  payload = @{
+    execution_mode = "mock"
+    prompt = "Secret runtime smoke"
+  }
+  priority = 80
+} | ConvertTo-Json -Depth 8
+
+$dispatch = Invoke-RestMethod -Uri "$BASE/api/delegation/dispatch" `
+  -Method POST -Headers $HEADERS -Body $dispatchBody
+$dispatch | ConvertTo-Json -Depth 10
+```
+
+Ожидаемо:
+- в `execution_meta_json.secrets_context` есть `injected_count` и список `injected_keys` (если bindings совпали);
+- `result_summary` и `execution_log` не содержат raw значения секрета.
 
 ## 3.11 Сценарий A11 (planned): Topology + Coordination channel
 

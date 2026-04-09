@@ -15,6 +15,10 @@ import type {
 
 const MAX_RESULT_SUMMARY_LENGTH = 1024;
 const MAX_OUTPUT_LENGTH = 16 * 1024;
+const MAX_RUNTIME_SECRET_ENV_VARS = 64;
+const RUNTIME_ENV_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
+const REDACTION_PLACEHOLDER = "[REDACTED_SECRET]";
+const RESERVED_RUNTIME_ENV_KEYS = new Set(["PATH", "HOME", "CODEX_HOME"]);
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -35,6 +39,66 @@ function trimToLimit(value: string, limit: number): string {
   }
 
   return `${value.slice(0, limit - 3)}...`;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getRuntimeSecretEnv(payload: Record<string, unknown>): Record<string, string> {
+  const candidate = payload["runtime_env"];
+  if (!isPlainObject(candidate)) {
+    return {};
+  }
+
+  const runtimeEnv: Record<string, string> = {};
+  for (const [key, rawValue] of Object.entries(candidate)) {
+    if (!RUNTIME_ENV_KEY_PATTERN.test(key) || RESERVED_RUNTIME_ENV_KEYS.has(key)) {
+      continue;
+    }
+    if (typeof rawValue !== "string" || rawValue.length === 0) {
+      continue;
+    }
+    runtimeEnv[key] = rawValue;
+    if (Object.keys(runtimeEnv).length >= MAX_RUNTIME_SECRET_ENV_VARS) {
+      break;
+    }
+  }
+
+  return runtimeEnv;
+}
+
+function buildSecretRedactionValues(runtimeEnv: Record<string, string>): string[] {
+  const unique = new Set<string>();
+  for (const value of Object.values(runtimeEnv)) {
+    if (value.length < 4) {
+      continue;
+    }
+    unique.add(value);
+  }
+
+  return Array.from(unique).sort((left, right) => {
+    if (left.length === right.length) {
+      return left.localeCompare(right);
+    }
+    return right.length - left.length;
+  });
+}
+
+function redactSecretsInText(value: string, redactionValues: string[]): string {
+  if (!value || redactionValues.length === 0) {
+    return value;
+  }
+
+  let redacted = value;
+  for (const secret of redactionValues) {
+    if (!secret || !redacted.includes(secret)) {
+      continue;
+    }
+    redacted = redacted.split(secret).join(REDACTION_PLACEHOLDER);
+  }
+
+  return redacted;
 }
 
 function formatMockSummary(input: DelegationExecutionInput): string {
@@ -212,6 +276,8 @@ class CodexDelegationExecutor implements DelegationExecutor {
     const payloadCwd = asNonEmptyString(input.payload["cwd"]);
     const executionCwd = payloadCwd ? path.resolve(payloadCwd) : process.cwd();
     await fs.mkdir(executionCwd, { recursive: true });
+    const runtimeSecretEnv = getRuntimeSecretEnv(input.payload);
+    const secretRedactionValues = buildSecretRedactionValues(runtimeSecretEnv);
 
     const prompt = getPayloadPrompt(input.payload);
     const lastMessagePath = path.resolve(runRoot, "last-message.txt");
@@ -241,8 +307,10 @@ class CodexDelegationExecutor implements DelegationExecutor {
       args,
       cwd: executionCwd,
       timeoutMs: this.options.config.delegationExecutionTimeoutMs,
+      redactionValues: secretRedactionValues,
       env: {
         ...process.env,
+        ...runtimeSecretEnv,
         CODEX_HOME: codexHome,
         HOME: runtimeRoot
       }
@@ -252,12 +320,15 @@ class CodexDelegationExecutor implements DelegationExecutor {
       await fs.readFile(lastMessagePath, "utf8").catch(() => "")
     );
     const outputText = trimToLimit(
-      `${commandResult.stdout}\n${commandResult.stderr}`.trim(),
+      redactSecretsInText(`${commandResult.stdout}\n${commandResult.stderr}`.trim(), secretRedactionValues),
       MAX_OUTPUT_LENGTH
     );
 
     const summary = trimToLimit(
-      lastMessage ?? asNonEmptyString(commandResult.stdout) ?? "Delegation completed by codex",
+      redactSecretsInText(
+        lastMessage ?? asNonEmptyString(commandResult.stdout) ?? "Delegation completed by codex",
+        secretRedactionValues
+      ),
       MAX_RESULT_SUMMARY_LENGTH
     );
 
@@ -279,8 +350,9 @@ class CodexDelegationExecutor implements DelegationExecutor {
     cwd: string;
     timeoutMs: number;
     env: NodeJS.ProcessEnv;
+    redactionValues: string[];
   }): Promise<{ stdout: string; stderr: string }> {
-    const { command, args, cwd, timeoutMs, env } = options;
+    const { command, args, cwd, timeoutMs, env, redactionValues } = options;
 
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
@@ -320,7 +392,10 @@ class CodexDelegationExecutor implements DelegationExecutor {
         }
 
         if (code !== 0) {
-          const failureOutput = trimToLimit(`${stdout}\n${stderr}`.trim(), 2000);
+          const failureOutput = trimToLimit(
+            redactSecretsInText(`${stdout}\n${stderr}`.trim(), redactionValues),
+            2000
+          );
           reject(
             new DelegationExecutionFailure(
               "EXECUTION_FAILED",

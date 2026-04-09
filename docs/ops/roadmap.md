@@ -147,7 +147,7 @@
   - `Topology UI` (узлы заявок и их состояния).
 
 ## Planned: Secrets Plane v1
-- Статус: `in_progress` (Phase 1 backend реализован).
+- Статус: `in_progress` (Phase 1+2 backend/runtime реализованы).
 - Цель: безопасно хранить и выдавать секреты агентам без утечек в UI, API-логах и activity-log.
 - Зафиксированные решения:
   - backend хранит секреты в БД в зашифрованном виде (envelope encryption);
@@ -156,7 +156,7 @@
   - runtime выдача секретов делается через env injection только в контекст запуска;
   - после завершения запуска секреты очищаются из runtime-контекста.
 - Документ дизайна: `docs/ops/secrets-plane-v1.md`.
-- Текущий прогресс (Phase 1 backend):
+- Текущий прогресс (Phase 1+2 backend/runtime):
   - добавлены Prisma-сущности + миграция `0012_secrets_plane_v1`:
     - `ProjectSecret`
     - `ProjectSecretTemplateBinding`
@@ -170,11 +170,11 @@
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
   - включено envelope encryption (AES-256-GCM, DEK+master key), masked preview и lifecycle audit (`created/updated/rotated/revoked/binding_*`);
-  - raw value секрета не возвращается в API-ответах после create/rotate.
+  - raw value секрета не возвращается в API-ответах после create/rotate;
+  - runtime-resolve секретов добавлен в `POST /api/delegation/dispatch` по `project + role/template` с передачей в `runtime_env`;
+  - добавлен redaction чувствительных значений в `result_summary`, `execution_log`, `execution_meta_json` на success/fail путях делегации.
 - Зависимости:
   - KMS/master-key стратегия и ротация ключей шифрования;
-  - runtime env injection и очистка секрета после запуска;
-  - redaction middleware для runtime/log traces;
   - UI-экран управления секретами.
 
 ## Planned: Coordination Channel (Planning/Control)

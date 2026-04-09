@@ -1,7 +1,7 @@
 # Secrets Plane v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `in_progress` (Phase 1 backend реализован)
+Статус: `in_progress` (Phase 1+2 backend/runtime реализованы)
 
 ## 1. Цель
 
@@ -104,7 +104,7 @@
 
 ## 10. Текущий прогресс реализации
 
-- Реализовано (Phase 1 backend):
+- Реализовано (Phase 1+2 backend/runtime):
   - Prisma: `ProjectSecret`, `ProjectSecretTemplateBinding`, `ProjectSecretRoleBinding`, `SecretAuditEvent` (+ миграция `0012_secrets_plane_v1`);
   - API:
     - `POST/GET /api/projects/{key}/secrets`
@@ -114,8 +114,8 @@
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
   - включено envelope encryption (AES-256-GCM, DEK+master-key), masked preview и lifecycle audit events;
-  - raw value не возвращается после create/rotate.
+  - raw value не возвращается после create/rotate;
+  - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/template` с передачей в `payload.runtime_env` для executor;
+  - в completion/failure paths делегации добавлен redaction секретов для `result_summary`, `execution_log`, `execution_meta_json`.
 - Остается:
-  - runtime env injection в dispatch/executor path;
-  - runtime/UI/API redaction, чтобы секреты не попадали в логи/activity;
   - UI-экран управления секретами в `/ui/console.html`.
