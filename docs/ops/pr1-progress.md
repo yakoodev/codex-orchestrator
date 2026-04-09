@@ -202,6 +202,20 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - `mcp_tool_acl`: governor пытается удовлетворить заявку через auto-bind MCP server (по `mcp_server_*` или по эвристике `tool_name -> server`), иначе помечает `blocked_agent`;
   - `runtime_dependency`: governor покрывает auto-bind MCP server / auto-upsert script set (по payload и dependency hints) с fallback на legacy `governor_auto_resolve=true`;
   - для валидационных и доменных `4xx` ошибок заявка переводится в `blocked_agent` с reason/metadata, а не падает в terminal error.
+- [x] Стартована кодовая реализация `MCP AuthZ ACL v2` (Phase 1: key management backend):
+  - добавлены Prisma-сущности + миграция `0010_mcp_authz_acl_v2_keys`:
+    - `McpApiKey`
+    - `McpKeyAclRule`
+    - `McpKeyProfileBinding`;
+  - добавлены API endpoints:
+    - `POST/GET /api/mcp/keys`
+    - `PATCH /api/mcp/keys/{id}`
+    - `POST /api/mcp/keys/{id}/rotate`
+    - `POST /api/mcp/keys/{id}/revoke`
+    - `POST/DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`;
+  - реализованы one-time секреты для `create/rotate` (в list/patch/revoke raw secret не возвращается);
+  - list по умолчанию скрывает `revoked` ключи (доступно `include_revoked=true`);
+  - добавлены API-тесты, OpenAPI и route-coverage синхронизированы.
 - [x] Стартована кодовая реализация `Agent Profiles + MCP Server Sets` (Phase 1 backend):
   - добавлены Prisma-сущности + миграция `0008_agent_profiles_mcp_servers`:
     - `AgentProfile`
@@ -244,7 +258,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 - [x] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача закрыта в `docs/ops/roadmap.md`).
-- [~] MCP AuthZ ACL v2 (multi-key, custom-only ACL, agent-profile primary binding, 401/403 модели отказов): `docs/ops/mcp-authz-acl-v2.md`.
+- [~] MCP AuthZ ACL v2 (Phase 1 key-management backend реализован; остаются runtime authz enforcement в MCP bridge, `McpAuthAuditEvent`, 401/403 deny-path): `docs/ops/mcp-authz-acl-v2.md`.
 - [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.

@@ -23,7 +23,7 @@
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: MCP AuthZ ACL v2
-- Статус: `planned` (decision-complete, реализация не начата).
+- Статус: `in_progress` (Phase 1 key-management backend реализован).
 - Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и profile-aware ограничениями.
 - Зафиксированные решения:
   - `custom-only ACL` (без обязательных пресетов ролей);
@@ -34,11 +34,24 @@
   - `401` для отсутствующего/невалидного/отозванного/просроченного ключа;
   - `403` для валидного ключа без прав на запрошенный tool/profile/template.
 - Документ дизайна: `docs/ops/mcp-authz-acl-v2.md`.
+- Текущий прогресс (Phase 1 backend):
+  - добавлены Prisma-сущности и миграция `0010_mcp_authz_acl_v2_keys`:
+    - `McpApiKey`
+    - `McpKeyAclRule`
+    - `McpKeyProfileBinding`;
+  - реализованы API endpoints:
+    - `POST/GET /api/mcp/keys`
+    - `PATCH /api/mcp/keys/{id}`
+    - `POST /api/mcp/keys/{id}/rotate`
+    - `POST /api/mcp/keys/{id}/revoke`
+    - `POST/DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`;
+  - `create/rotate` отдают one-time `secret`, остальные ответы возвращают только metadata (`key_prefix/status/...`) без raw ключа;
+  - list по умолчанию исключает `revoked` ключи (`include_revoked=true` включает их обратно).
 - Зависимости:
-  - API и persistence слой MCP keys;
-  - API и persistence слой `AgentProfile` и MCP server bindings;
-  - аудит и `last_used` обновления;
-  - синхронизация с MCP bridge runtime.
+  - runtime authz enforcement в MCP bridge (`401/403` deny-path на вызов tools);
+  - `McpAuthAuditEvent` + `last_used_at` обновления в authz-потоке;
+  - template constraints (`McpKeyTemplateConstraint`) как follow-up;
+  - синхронизация MCP key state с governor/coordination telemetry.
 
 ## Planned: Agent Profiles + MCP Server Sets
 - Статус: `in_progress` (Phase 1 backend + UI-конфигуратор + runtime-resolve в dispatch реализованы).

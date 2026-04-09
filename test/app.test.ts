@@ -29,6 +29,7 @@ import type {
   CreateAgentRequestAuditEventInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
+  CreateMcpApiKeyInput,
   CreateDelegationRequestInput,
   CreateMcpServerRegistryInput,
   CreateProjectInput,
@@ -41,6 +42,10 @@ import type {
   EventPublishInput,
   EventPublisher,
   ListAuthSwitchEventsOptions,
+  McpApiKeyEntity,
+  McpApiKeyStatus,
+  McpKeyAclRuleEntity,
+  McpKeyProfileBindingEntity,
   McpServerRegistryEntity,
   ModuleExecutionEntity,
   PackRegistryEntity,
@@ -97,6 +102,9 @@ class FakePersistence implements Persistence {
   public readonly mcpServerRegistryEntries: McpServerRegistryEntity[] = [];
   public readonly agentProfileMcpBindings: AgentProfileMcpServerBindingEntity[] = [];
   public readonly agentProfileScriptSets: AgentProfileScriptSetEntity[] = [];
+  public readonly mcpApiKeys: McpApiKeyEntity[] = [];
+  public readonly mcpKeyAclRules: McpKeyAclRuleEntity[] = [];
+  public readonly mcpKeyProfileBindings: McpKeyProfileBindingEntity[] = [];
   public readonly projects: ProjectEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
@@ -119,6 +127,9 @@ class FakePersistence implements Persistence {
   private mcpServerCounter = 1;
   private agentProfileMcpBindingCounter = 1;
   private agentProfileScriptSetCounter = 1;
+  private mcpApiKeyCounter = 1;
+  private mcpKeyAclRuleCounter = 1;
+  private mcpKeyProfileBindingCounter = 1;
   private projectCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
@@ -810,6 +821,228 @@ class FakePersistence implements Persistence {
         }
         return a.priority - b.priority;
       });
+  }
+
+  public async createMcpApiKey(input: CreateMcpApiKeyInput): Promise<McpApiKeyEntity> {
+    const existing = this.mcpApiKeys.find((item) => item.key_hash === input.key_hash);
+    if (existing) {
+      const duplicateError = new Error("MCP key hash already exists") as Error & { code?: string };
+      duplicateError.code = "P2002";
+      throw duplicateError;
+    }
+
+    const now = new Date();
+    const key: McpApiKeyEntity = {
+      id: `mcp-key-${this.mcpApiKeyCounter++}`,
+      name: input.name,
+      key_prefix: input.key_prefix,
+      key_hash: input.key_hash,
+      status: input.status ?? "active",
+      expires_at: input.expires_at ?? null,
+      last_used_at: null,
+      rotated_at: null,
+      revoked_at: null,
+      created_by: input.created_by,
+      updated_by: input.updated_by ?? input.created_by,
+      meta_json: input.meta_json ?? null,
+      created_at: now,
+      updated_at: now
+    };
+    this.mcpApiKeys.push(key);
+    return key;
+  }
+
+  public async listMcpApiKeys(options?: {
+    status?: McpApiKeyStatus;
+    include_revoked?: boolean;
+    limit?: number;
+  }): Promise<McpApiKeyEntity[]> {
+    const includeRevoked = options?.include_revoked ?? false;
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.mcpApiKeys
+      .filter((item) => (options?.status ? item.status === options.status : true))
+      .filter((item) => (options?.status ? true : includeRevoked || item.status !== "revoked"))
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+    return filtered.slice(0, limit);
+  }
+
+  public async getMcpApiKeyById(id: string): Promise<McpApiKeyEntity | null> {
+    return this.mcpApiKeys.find((item) => item.id === id) ?? null;
+  }
+
+  public async patchMcpApiKey(
+    id: string,
+    patch: {
+      name?: string;
+      status?: McpApiKeyStatus;
+      expires_at?: Date | null;
+      meta_json?: Record<string, unknown> | null;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === id);
+    if (!key) {
+      return null;
+    }
+
+    if (patch.name !== undefined) {
+      key.name = patch.name;
+    }
+    if (patch.status !== undefined) {
+      key.status = patch.status;
+    }
+    if (patch.expires_at !== undefined) {
+      key.expires_at = patch.expires_at;
+    }
+    if (patch.meta_json !== undefined) {
+      key.meta_json = patch.meta_json;
+    }
+    if (patch.updated_by !== undefined) {
+      key.updated_by = patch.updated_by;
+    }
+    key.updated_at = new Date();
+    return key;
+  }
+
+  public async rotateMcpApiKey(
+    id: string,
+    input: {
+      key_prefix: string;
+      key_hash: string;
+      updated_by?: string | null;
+      rotated_at?: Date;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const duplicate = this.mcpApiKeys.find((item) => item.key_hash === input.key_hash && item.id !== id);
+    if (duplicate) {
+      const duplicateError = new Error("MCP key hash already exists") as Error & { code?: string };
+      duplicateError.code = "P2002";
+      throw duplicateError;
+    }
+
+    const key = this.mcpApiKeys.find((item) => item.id === id);
+    if (!key) {
+      return null;
+    }
+
+    key.key_prefix = input.key_prefix;
+    key.key_hash = input.key_hash;
+    key.status = "active";
+    key.rotated_at = input.rotated_at ?? new Date();
+    key.revoked_at = null;
+    if (input.updated_by !== undefined) {
+      key.updated_by = input.updated_by;
+    }
+    key.updated_at = new Date();
+    return key;
+  }
+
+  public async revokeMcpApiKey(
+    id: string,
+    input: {
+      revoked_at?: Date;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === id);
+    if (!key) {
+      return null;
+    }
+
+    key.status = "revoked";
+    key.revoked_at = input.revoked_at ?? new Date();
+    if (input.updated_by !== undefined) {
+      key.updated_by = input.updated_by;
+    }
+    key.updated_at = new Date();
+    return key;
+  }
+
+  public async replaceMcpKeyAclRules(
+    keyId: string,
+    input: {
+      tool_names: string[];
+      created_by: string;
+    }
+  ): Promise<McpKeyAclRuleEntity[]> {
+    for (let index = this.mcpKeyAclRules.length - 1; index >= 0; index -= 1) {
+      const item = this.mcpKeyAclRules[index];
+      if (item && item.key_id === keyId) {
+        this.mcpKeyAclRules.splice(index, 1);
+      }
+    }
+
+    const now = new Date();
+    for (const toolName of input.tool_names) {
+      this.mcpKeyAclRules.push({
+        id: `mcp-key-acl-${this.mcpKeyAclRuleCounter++}`,
+        key_id: keyId,
+        tool_name: toolName,
+        effect: "allow",
+        created_by: input.created_by,
+        created_at: now
+      });
+    }
+
+    return this.listMcpKeyAclRules(keyId);
+  }
+
+  public async listMcpKeyAclRules(keyId: string): Promise<McpKeyAclRuleEntity[]> {
+    return this.mcpKeyAclRules
+      .filter((item) => item.key_id === keyId)
+      .sort((a, b) => {
+        if (a.tool_name === b.tool_name) {
+          return b.created_at.getTime() - a.created_at.getTime();
+        }
+        return a.tool_name.localeCompare(b.tool_name);
+      });
+  }
+
+  public async bindMcpKeyToProfile(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileBindingEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === keyId);
+    const profile = this.agentProfiles.find((item) => item.id === profileId);
+    if (!key || !profile) {
+      return null;
+    }
+
+    const existing = this.mcpKeyProfileBindings.find(
+      (item) => item.key_id === keyId && item.agent_profile_id === profileId
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const binding: McpKeyProfileBindingEntity = {
+      id: `mcp-key-profile-binding-${this.mcpKeyProfileBindingCounter++}`,
+      key_id: keyId,
+      agent_profile_id: profileId,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.mcpKeyProfileBindings.push(binding);
+    return binding;
+  }
+
+  public async unbindMcpKeyFromProfile(keyId: string, profileId: string): Promise<boolean> {
+    const index = this.mcpKeyProfileBindings.findIndex(
+      (item) => item.key_id === keyId && item.agent_profile_id === profileId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.mcpKeyProfileBindings.splice(index, 1);
+    return true;
+  }
+
+  public async listMcpKeyProfileBindings(keyId: string): Promise<McpKeyProfileBindingEntity[]> {
+    return this.mcpKeyProfileBindings
+      .filter((item) => item.key_id === keyId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
   }
 
   public async upsertAgentProfileScriptSet(
@@ -3810,6 +4043,148 @@ describe("smoke-core API", () => {
         .json()
         .items.some((item: { id: string }) => item.id === profileId)
     ).toBe(false);
+  });
+
+  it("creates MCP API key with ACL rules and profile bindings", async () => {
+    const createProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "review profile",
+        role: "reviewer"
+      }
+    });
+    expect(createProfileResponse.statusCode).toBe(201);
+    const profileId = createProfileResponse.json().id as string;
+
+    const createKeyResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/keys",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "reviewer-readonly",
+        acl_tools: ["orchestrator.list_tasks", "orchestrator.list_agents"],
+        profile_ids: [profileId],
+        meta_json: { owner: "qa" }
+      }
+    });
+    expect(createKeyResponse.statusCode).toBe(201);
+    expect(createKeyResponse.json()).toMatchObject({
+      name: "reviewer-readonly",
+      status: "active",
+      profile_bindings: [{ agent_profile_id: profileId }]
+    });
+    expect(createKeyResponse.json().secret.startsWith("mcpk_")).toBe(true);
+    expect(createKeyResponse.json().acl_rules).toHaveLength(2);
+    const keyId = createKeyResponse.json().id as string;
+
+    const listKeysResponse = await app.inject({
+      method: "GET",
+      url: "/api/mcp/keys?include_revoked=true",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listKeysResponse.statusCode).toBe(200);
+    const listed = listKeysResponse
+      .json()
+      .items.find((item: { id: string }) => item.id === keyId);
+    expect(listed).toBeDefined();
+    expect(listed.secret).toBeUndefined();
+    expect(listed.acl_rules).toHaveLength(2);
+  });
+
+  it("patches, rotates, revokes and unbinds MCP API key", async () => {
+    const createProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "devops profile",
+        role: "devops"
+      }
+    });
+    expect(createProfileResponse.statusCode).toBe(201);
+    const profileId = createProfileResponse.json().id as string;
+
+    const createKeyResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/keys",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "devops-key"
+      }
+    });
+    expect(createKeyResponse.statusCode).toBe(201);
+    const keyId = createKeyResponse.json().id as string;
+
+    const bindResponse = await app.inject({
+      method: "POST",
+      url: `/api/mcp/keys/${keyId}/bindings/profiles/${profileId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(bindResponse.statusCode).toBe(200);
+    expect(bindResponse.json()).toMatchObject({
+      key_id: keyId,
+      agent_profile_id: profileId
+    });
+
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/mcp/keys/${keyId}`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        status: "disabled",
+        acl_tools: []
+      }
+    });
+    expect(patchResponse.statusCode).toBe(200);
+    expect(patchResponse.json().status).toBe("disabled");
+    expect(patchResponse.json().acl_rules).toHaveLength(0);
+
+    const rotateResponse = await app.inject({
+      method: "POST",
+      url: `/api/mcp/keys/${keyId}/rotate`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(rotateResponse.statusCode).toBe(200);
+    expect(rotateResponse.json().status).toBe("active");
+    expect(rotateResponse.json().secret.startsWith("mcpk_")).toBe(true);
+
+    const revokeResponse = await app.inject({
+      method: "POST",
+      url: `/api/mcp/keys/${keyId}/revoke`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(revokeResponse.statusCode).toBe(200);
+    expect(revokeResponse.json().status).toBe("revoked");
+
+    const hiddenRevokedListResponse = await app.inject({
+      method: "GET",
+      url: "/api/mcp/keys",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(hiddenRevokedListResponse.statusCode).toBe(200);
+    expect(
+      hiddenRevokedListResponse
+        .json()
+        .items.some((item: { id: string }) => item.id === keyId)
+    ).toBe(false);
+
+    const deleteBindingResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/mcp/keys/${keyId}/bindings/profiles/${profileId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteBindingResponse.statusCode).toBe(204);
+
+    const deleteAgainResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/mcp/keys/${keyId}/bindings/profiles/${profileId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteAgainResponse.statusCode).toBe(404);
   });
 
   it("injects project-role memory into delegation execution payload", async () => {

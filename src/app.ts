@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
@@ -38,6 +38,10 @@ import type {
   EventPublishInput,
   EventPublisher,
   McpServerOriginType,
+  McpApiKeyEntity,
+  McpApiKeyStatus,
+  McpKeyAclRuleEntity,
+  McpKeyProfileBindingEntity,
   McpServerRegistryEntity,
   McpServerTransport,
   ModuleExecutionEntity,
@@ -119,6 +123,13 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "PUT /api/agent-profiles/{id}/scripts/{os}",
   "POST /api/mcp/servers",
   "GET /api/mcp/servers",
+  "POST /api/mcp/keys",
+  "GET /api/mcp/keys",
+  "PATCH /api/mcp/keys/{id}",
+  "POST /api/mcp/keys/{id}/rotate",
+  "POST /api/mcp/keys/{id}/revoke",
+  "POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}",
+  "DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}",
   "POST /api/memory/entries",
   "GET /api/memory/entries",
   "PATCH /api/memory/entries/{id}",
@@ -333,6 +344,22 @@ interface McpServerCreateRequest {
   meta_json?: unknown;
 }
 
+interface McpApiKeyCreateRequest {
+  name?: unknown;
+  expires_at?: unknown;
+  meta_json?: unknown;
+  acl_tools?: unknown;
+  profile_ids?: unknown;
+}
+
+interface McpApiKeyPatchRequest {
+  name?: unknown;
+  status?: unknown;
+  expires_at?: unknown;
+  meta_json?: unknown;
+  acl_tools?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
@@ -394,6 +421,8 @@ const AGENT_PROFILE_SOURCE_POLICIES = new Set<AgentProfileSourcePolicy>([
 ]);
 const MCP_SERVER_TRANSPORTS = new Set<McpServerTransport>(["stdio", "http"]);
 const MCP_SERVER_ORIGIN_TYPES = new Set<McpServerOriginType>(["built_in", "catalog", "custom"]);
+const MCP_API_KEY_STATUSES = new Set<McpApiKeyStatus>(["active", "disabled", "revoked"]);
+const MCP_API_KEY_PATCH_STATUSES = new Set<McpApiKeyStatus>(["active", "disabled"]);
 const AGENT_PROFILE_SCRIPT_OSES = new Set<AgentProfileScriptOs>(["windows", "linux", "macos"]);
 const AGENT_PROFILE_SCRIPT_TYPES = new Set<AgentProfileScriptType>(["instruction", "shell"]);
 const ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator-core";
@@ -412,6 +441,8 @@ const MAX_MEMORY_CONTEXT_ENTRIES = 6;
 const MAX_AGENT_PROFILE_PROMPT_SCRIPT_LENGTH = 4_000;
 const MAX_AGENT_PROFILE_PROMPT_MCP_SERVERS = 12;
 const MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH = 20_000;
+const MAX_MCP_KEY_ACL_TOOLS = 200;
+const MAX_MCP_KEY_PROFILE_BINDINGS = 100;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
@@ -530,6 +561,71 @@ function parseBooleanLike(value: unknown): boolean | null {
   }
 
   return null;
+}
+
+function parseOptionalIsoDate(value: unknown, fieldName: string): Date | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+
+  const candidate = asNonEmptyString(value);
+  if (!candidate) {
+    throw new Error(`${fieldName} must be a non-empty ISO datetime string or null`);
+  }
+
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`${fieldName} must be a valid ISO datetime string`);
+  }
+
+  return parsed;
+}
+
+function parseOptionalStringArray(
+  value: unknown,
+  fieldName: string,
+  options?: { maxItems?: number }
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${fieldName} must be an array of non-empty strings`);
+  }
+  if (options?.maxItems !== undefined && value.length > options.maxItems) {
+    throw new Error(`${fieldName} must contain at most ${options.maxItems} items`);
+  }
+
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const parsed = asNonEmptyString(item);
+    if (!parsed) {
+      throw new Error(`${fieldName} must contain only non-empty strings`);
+    }
+    if (!seen.has(parsed)) {
+      seen.add(parsed);
+      normalized.push(parsed);
+    }
+  }
+
+  return normalized;
+}
+
+function generateMcpApiKeySecret(): {
+  secret: string;
+  key_prefix: string;
+  key_hash: string;
+} {
+  const secret = `mcpk_${randomBytes(24).toString("hex")}`;
+  return {
+    secret,
+    key_prefix: secret.slice(0, 16),
+    key_hash: createHash("sha256").update(secret).digest("hex")
+  };
 }
 
 function getTraceId(request: FastifyRequest): string {
@@ -728,6 +824,10 @@ function isMcpServerTransport(value: string): value is McpServerTransport {
 
 function isMcpServerOriginType(value: string): value is McpServerOriginType {
   return MCP_SERVER_ORIGIN_TYPES.has(value as McpServerOriginType);
+}
+
+function isMcpApiKeyStatus(value: string): value is McpApiKeyStatus {
+  return MCP_API_KEY_STATUSES.has(value as McpApiKeyStatus);
 }
 
 function isAgentProfileScriptOs(value: string): value is AgentProfileScriptOs {
@@ -1699,6 +1799,61 @@ function agentProfileScriptSetToResponse(scriptSet: AgentProfileScriptSetEntity)
     version: scriptSet.version,
     created_at: scriptSet.created_at,
     updated_at: scriptSet.updated_at
+  };
+}
+
+function mcpApiKeyToResponse(key: McpApiKeyEntity): Record<string, unknown> {
+  return {
+    id: key.id,
+    name: key.name,
+    key_prefix: key.key_prefix,
+    status: key.status,
+    expires_at: key.expires_at,
+    last_used_at: key.last_used_at,
+    rotated_at: key.rotated_at,
+    revoked_at: key.revoked_at,
+    created_by: key.created_by,
+    updated_by: key.updated_by,
+    meta_json: key.meta_json,
+    created_at: key.created_at,
+    updated_at: key.updated_at
+  };
+}
+
+function mcpKeyAclRuleToResponse(rule: McpKeyAclRuleEntity): Record<string, unknown> {
+  return {
+    id: rule.id,
+    key_id: rule.key_id,
+    tool_name: rule.tool_name,
+    effect: rule.effect,
+    created_by: rule.created_by,
+    created_at: rule.created_at
+  };
+}
+
+function mcpKeyProfileBindingToResponse(binding: McpKeyProfileBindingEntity): Record<string, unknown> {
+  return {
+    id: binding.id,
+    key_id: binding.key_id,
+    agent_profile_id: binding.agent_profile_id,
+    created_by: binding.created_by,
+    created_at: binding.created_at
+  };
+}
+
+async function buildMcpApiKeyResponse(
+  persistence: Persistence,
+  key: McpApiKeyEntity
+): Promise<Record<string, unknown>> {
+  const [aclRules, profileBindings] = await Promise.all([
+    persistence.listMcpKeyAclRules(key.id),
+    persistence.listMcpKeyProfileBindings(key.id)
+  ]);
+
+  return {
+    ...mcpApiKeyToResponse(key),
+    acl_rules: aclRules.map((item) => mcpKeyAclRuleToResponse(item)),
+    profile_bindings: profileBindings.map((item) => mcpKeyProfileBindingToResponse(item))
   };
 }
 
@@ -4688,6 +4843,363 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send({
       items: items.map((item) => mcpServerRegistryToResponse(item))
     });
+  });
+
+  app.post("/api/mcp/keys", async (request, reply) => {
+    const body = request.body as McpApiKeyCreateRequest;
+    const name = asNonEmptyString(body.name);
+    if (!name) {
+      return sendError(reply, 400, "name is required", "REQUEST_VALIDATION_FAILED");
+    }
+
+    let expiresAt: Date | null | undefined;
+    try {
+      expiresAt = parseOptionalIsoDate(body.expires_at, "expires_at");
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+    }
+
+    let metaJson: Record<string, unknown> | null | undefined;
+    if (body.meta_json !== undefined) {
+      if (body.meta_json === null) {
+        metaJson = null;
+      } else if (!isPlainObject(body.meta_json)) {
+        return sendError(
+          reply,
+          400,
+          "meta_json must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        metaJson = body.meta_json;
+      }
+    }
+
+    let aclTools: string[] | undefined;
+    let profileIds: string[] | undefined;
+    try {
+      aclTools = parseOptionalStringArray(body.acl_tools, "acl_tools", {
+        maxItems: MAX_MCP_KEY_ACL_TOOLS
+      });
+      profileIds = parseOptionalStringArray(body.profile_ids, "profile_ids", {
+        maxItems: MAX_MCP_KEY_PROFILE_BINDINGS
+      });
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+    }
+
+    if (profileIds?.length) {
+      const profileChecks = await Promise.all(
+        profileIds.map(async (profileId) => ({
+          profileId,
+          profile: await persistence.getAgentProfileById(profileId)
+        }))
+      );
+      const missingProfile = profileChecks.find((item) => !item.profile);
+      if (missingProfile) {
+        return sendError(
+          reply,
+          404,
+          `Agent profile not found: ${missingProfile.profileId}`,
+          "AGENT_PROFILE_NOT_FOUND"
+        );
+      }
+    }
+
+    let created: McpApiKeyEntity | null = null;
+    let issuedSecret: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const generated = generateMcpApiKeySecret();
+      try {
+        created = await persistence.createMcpApiKey({
+          name,
+          key_prefix: generated.key_prefix,
+          key_hash: generated.key_hash,
+          status: "active",
+          expires_at: expiresAt,
+          created_by: "admin",
+          updated_by: "admin",
+          meta_json: metaJson
+        });
+        issuedSecret = generated.secret;
+        break;
+      } catch (error) {
+        if (isPrismaUniqueConstraintError(error) && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!created || !issuedSecret) {
+      return sendError(reply, 500, "Failed to generate MCP API key", "INTERNAL_ERROR");
+    }
+
+    if (aclTools !== undefined) {
+      await persistence.replaceMcpKeyAclRules(created.id, {
+        tool_names: aclTools,
+        created_by: "admin"
+      });
+    }
+    if (profileIds?.length) {
+      for (const profileId of profileIds) {
+        await persistence.bindMcpKeyToProfile(created.id, profileId, "admin");
+      }
+    }
+
+    const responseBody = await buildMcpApiKeyResponse(persistence, created);
+    return reply.code(201).send({
+      ...responseBody,
+      secret: issuedSecret
+    });
+  });
+
+  app.get("/api/mcp/keys", async (request, reply) => {
+    const query = request.query as {
+      status?: unknown;
+      include_revoked?: unknown;
+      limit?: unknown;
+    };
+
+    let status: McpApiKeyStatus | undefined;
+    if (query.status !== undefined) {
+      const parsedStatus = asNonEmptyString(query.status);
+      if (!parsedStatus || !isMcpApiKeyStatus(parsedStatus)) {
+        return sendError(reply, 400, "Invalid status filter", "REQUEST_VALIDATION_FAILED");
+      }
+      status = parsedStatus;
+    }
+
+    let includeRevoked = false;
+    if (query.include_revoked !== undefined) {
+      const parsed = parseBooleanLike(query.include_revoked);
+      if (parsed === null) {
+        return sendError(
+          reply,
+          400,
+          "include_revoked must be boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      includeRevoked = parsed;
+    }
+
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    if (query.limit !== undefined && (!parsedLimit || parsedLimit < 1)) {
+      return sendError(reply, 400, "limit must be a positive integer", "REQUEST_VALIDATION_FAILED");
+    }
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+
+    const keys = await persistence.listMcpApiKeys({
+      status,
+      include_revoked: includeRevoked,
+      limit
+    });
+
+    const items = await Promise.all(keys.map((item) => buildMcpApiKeyResponse(persistence, item)));
+    return reply.send({ items });
+  });
+
+  app.patch("/api/mcp/keys/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as McpApiKeyPatchRequest;
+    const existing = await persistence.getMcpApiKeyById(id);
+    if (!existing) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    const patch: Parameters<Persistence["patchMcpApiKey"]>[1] = {};
+
+    if (body.name !== undefined) {
+      const name = asNonEmptyString(body.name);
+      if (!name) {
+        return sendError(reply, 400, "name must be a non-empty string", "REQUEST_VALIDATION_FAILED");
+      }
+      patch.name = name;
+    }
+
+    if (body.status !== undefined) {
+      const statusValue = asNonEmptyString(body.status);
+      if (!statusValue || !isMcpApiKeyStatus(statusValue)) {
+        return sendError(reply, 400, "Invalid status", "REQUEST_VALIDATION_FAILED");
+      }
+      if (!MCP_API_KEY_PATCH_STATUSES.has(statusValue)) {
+        return sendError(
+          reply,
+          400,
+          "Use revoke endpoint for revoked status",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      patch.status = statusValue;
+    }
+
+    if (body.expires_at !== undefined) {
+      try {
+        patch.expires_at = parseOptionalIsoDate(body.expires_at, "expires_at");
+      } catch (error) {
+        return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+      }
+    }
+
+    if (body.meta_json !== undefined) {
+      if (body.meta_json === null) {
+        patch.meta_json = null;
+      } else if (!isPlainObject(body.meta_json)) {
+        return sendError(
+          reply,
+          400,
+          "meta_json must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        patch.meta_json = body.meta_json;
+      }
+    }
+
+    let aclTools: string[] | undefined;
+    try {
+      aclTools = parseOptionalStringArray(body.acl_tools, "acl_tools", {
+        maxItems: MAX_MCP_KEY_ACL_TOOLS
+      });
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+    }
+
+    if (
+      patch.name === undefined &&
+      patch.status === undefined &&
+      patch.expires_at === undefined &&
+      patch.meta_json === undefined &&
+      aclTools === undefined
+    ) {
+      return sendError(reply, 400, "No fields to update", "REQUEST_VALIDATION_FAILED");
+    }
+
+    let updated = existing;
+    if (
+      patch.name !== undefined ||
+      patch.status !== undefined ||
+      patch.expires_at !== undefined ||
+      patch.meta_json !== undefined
+    ) {
+      const patched = await persistence.patchMcpApiKey(id, {
+        ...patch,
+        updated_by: "admin"
+      });
+      if (!patched) {
+        return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+      }
+      updated = patched;
+    }
+
+    if (aclTools !== undefined) {
+      await persistence.replaceMcpKeyAclRules(id, {
+        tool_names: aclTools,
+        created_by: "admin"
+      });
+    }
+
+    return reply.send(await buildMcpApiKeyResponse(persistence, updated));
+  });
+
+  app.post("/api/mcp/keys/:id/rotate", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await persistence.getMcpApiKeyById(id);
+    if (!existing) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    let updated: McpApiKeyEntity | null = null;
+    let issuedSecret: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const generated = generateMcpApiKeySecret();
+      try {
+        updated = await persistence.rotateMcpApiKey(id, {
+          key_prefix: generated.key_prefix,
+          key_hash: generated.key_hash,
+          rotated_at: new Date(),
+          updated_by: "admin"
+        });
+        issuedSecret = generated.secret;
+        break;
+      } catch (error) {
+        if (isPrismaUniqueConstraintError(error) && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!updated || !issuedSecret) {
+      return sendError(reply, 500, "Failed to rotate MCP API key", "INTERNAL_ERROR");
+    }
+
+    const responseBody = await buildMcpApiKeyResponse(persistence, updated);
+    return reply.send({
+      ...responseBody,
+      secret: issuedSecret
+    });
+  });
+
+  app.post("/api/mcp/keys/:id/revoke", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const revoked = await persistence.revokeMcpApiKey(id, {
+      revoked_at: new Date(),
+      updated_by: "admin"
+    });
+    if (!revoked) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    return reply.send(await buildMcpApiKeyResponse(persistence, revoked));
+  });
+
+  app.post("/api/mcp/keys/:id/bindings/profiles/:profileId", async (request, reply) => {
+    const { id, profileId } = request.params as { id: string; profileId: string };
+
+    const key = await persistence.getMcpApiKeyById(id);
+    if (!key) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    const profile = await persistence.getAgentProfileById(profileId);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const binding = await persistence.bindMcpKeyToProfile(id, profileId, "admin");
+    if (!binding) {
+      return sendError(
+        reply,
+        404,
+        "MCP key or agent profile not found",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    return reply.send(mcpKeyProfileBindingToResponse(binding));
+  });
+
+  app.delete("/api/mcp/keys/:id/bindings/profiles/:profileId", async (request, reply) => {
+    const { id, profileId } = request.params as { id: string; profileId: string };
+
+    const key = await persistence.getMcpApiKeyById(id);
+    if (!key) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    const profile = await persistence.getAgentProfileById(profileId);
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+
+    const deleted = await persistence.unbindMcpKeyFromProfile(id, profileId);
+    if (!deleted) {
+      return sendError(reply, 404, "MCP key binding not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
   });
 
   app.get("/api/delegation/capabilities", async (_request, reply) => {

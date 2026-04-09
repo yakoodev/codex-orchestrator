@@ -8,6 +8,8 @@ import {
   ArtifactType as PrismaArtifactType,
   DelegationStatus as PrismaDelegationStatus,
   InterventionType as PrismaInterventionType,
+  McpApiKeyStatus as PrismaMcpApiKeyStatus,
+  McpKeyAclEffect as PrismaMcpKeyAclEffect,
   ModuleExecutionStatus as PrismaModuleExecutionStatus,
   McpServerOriginType as PrismaMcpServerOriginType,
   McpServerTransport as PrismaMcpServerTransport,
@@ -52,6 +54,7 @@ import type {
   CreateAuthContextInput,
   CreateDelegationRequestInput,
   CreateInterventionInput,
+  CreateMcpApiKeyInput,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
@@ -62,6 +65,10 @@ import type {
   DelegationRequestEntity,
   ListAuthSwitchEventsOptions,
   ModuleExecutionEntity,
+  McpApiKeyEntity,
+  McpApiKeyStatus,
+  McpKeyAclRuleEntity,
+  McpKeyProfileBindingEntity,
   McpServerOriginType,
   McpServerRegistryEntity,
   McpServerTransport,
@@ -481,6 +488,74 @@ function toAgentProfileScriptSetEntity(entity: {
     version: entity.version,
     created_at: entity.created_at,
     updated_at: entity.updated_at
+  };
+}
+
+function toMcpApiKeyEntity(entity: {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  status: PrismaMcpApiKeyStatus;
+  expires_at: Date | null;
+  last_used_at: Date | null;
+  rotated_at: Date | null;
+  revoked_at: Date | null;
+  created_by: string;
+  updated_by: string | null;
+  meta_json: Prisma.JsonValue | null;
+  created_at: Date;
+  updated_at: Date;
+}): McpApiKeyEntity {
+  return {
+    id: entity.id,
+    name: entity.name,
+    key_prefix: entity.key_prefix,
+    key_hash: entity.key_hash,
+    status: entity.status as McpApiKeyStatus,
+    expires_at: entity.expires_at,
+    last_used_at: entity.last_used_at,
+    rotated_at: entity.rotated_at,
+    revoked_at: entity.revoked_at,
+    created_by: entity.created_by,
+    updated_by: entity.updated_by,
+    meta_json: entity.meta_json as Record<string, unknown> | null,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toMcpKeyAclRuleEntity(entity: {
+  id: string;
+  key_id: string;
+  tool_name: string;
+  effect: PrismaMcpKeyAclEffect;
+  created_by: string;
+  created_at: Date;
+}): McpKeyAclRuleEntity {
+  return {
+    id: entity.id,
+    key_id: entity.key_id,
+    tool_name: entity.tool_name,
+    effect: entity.effect,
+    created_by: entity.created_by,
+    created_at: entity.created_at
+  };
+}
+
+function toMcpKeyProfileBindingEntity(entity: {
+  id: string;
+  key_id: string;
+  agent_profile_id: string;
+  created_by: string;
+  created_at: Date;
+}): McpKeyProfileBindingEntity {
+  return {
+    id: entity.id,
+    key_id: entity.key_id,
+    agent_profile_id: entity.agent_profile_id,
+    created_by: entity.created_by,
+    created_at: entity.created_at
   };
 }
 
@@ -1313,6 +1388,252 @@ export class PrismaPersistence implements Persistence {
     });
 
     return items.map((item) => toAgentProfileMcpServerBindingEntity(item));
+  }
+
+  public async createMcpApiKey(input: CreateMcpApiKeyInput): Promise<McpApiKeyEntity> {
+    const created = await this.prisma.mcpApiKey.create({
+      data: {
+        name: input.name,
+        key_prefix: input.key_prefix,
+        key_hash: input.key_hash,
+        status: (input.status ?? "active") as PrismaMcpApiKeyStatus,
+        expires_at: input.expires_at ?? null,
+        created_by: input.created_by,
+        updated_by: input.updated_by ?? input.created_by,
+        meta_json:
+          input.meta_json === undefined
+            ? undefined
+            : ((input.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toMcpApiKeyEntity(created);
+  }
+
+  public async listMcpApiKeys(options?: {
+    status?: McpApiKeyStatus;
+    include_revoked?: boolean;
+    limit?: number;
+  }): Promise<McpApiKeyEntity[]> {
+    const includeRevoked = options?.include_revoked ?? false;
+    const where: Prisma.McpApiKeyWhereInput = {};
+    if (options?.status) {
+      where.status = options.status as PrismaMcpApiKeyStatus;
+    } else if (!includeRevoked) {
+      where.status = {
+        not: "revoked"
+      };
+    }
+
+    const items = await this.prisma.mcpApiKey.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { updated_at: "desc" }],
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toMcpApiKeyEntity(item));
+  }
+
+  public async getMcpApiKeyById(id: string): Promise<McpApiKeyEntity | null> {
+    const key = await this.prisma.mcpApiKey.findUnique({
+      where: { id }
+    });
+    if (!key) {
+      return null;
+    }
+
+    return toMcpApiKeyEntity(key);
+  }
+
+  public async patchMcpApiKey(
+    id: string,
+    patch: {
+      name?: string;
+      status?: McpApiKeyStatus;
+      expires_at?: Date | null;
+      meta_json?: Record<string, unknown> | null;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const existing = await this.prisma.mcpApiKey.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.mcpApiKey.update({
+      where: { id },
+      data: {
+        name: patch.name,
+        status: patch.status as PrismaMcpApiKeyStatus | undefined,
+        expires_at: patch.expires_at,
+        updated_by: patch.updated_by,
+        meta_json:
+          patch.meta_json === undefined
+            ? undefined
+            : ((patch.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toMcpApiKeyEntity(updated);
+  }
+
+  public async rotateMcpApiKey(
+    id: string,
+    input: {
+      key_prefix: string;
+      key_hash: string;
+      updated_by?: string | null;
+      rotated_at?: Date;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const existing = await this.prisma.mcpApiKey.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.mcpApiKey.update({
+      where: { id },
+      data: {
+        key_prefix: input.key_prefix,
+        key_hash: input.key_hash,
+        status: "active",
+        rotated_at: input.rotated_at ?? new Date(),
+        revoked_at: null,
+        updated_by: input.updated_by
+      }
+    });
+
+    return toMcpApiKeyEntity(updated);
+  }
+
+  public async revokeMcpApiKey(
+    id: string,
+    input: {
+      revoked_at?: Date;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null> {
+    const existing = await this.prisma.mcpApiKey.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.mcpApiKey.update({
+      where: { id },
+      data: {
+        status: "revoked",
+        revoked_at: input.revoked_at ?? new Date(),
+        updated_by: input.updated_by
+      }
+    });
+
+    return toMcpApiKeyEntity(updated);
+  }
+
+  public async replaceMcpKeyAclRules(
+    keyId: string,
+    input: {
+      tool_names: string[];
+      created_by: string;
+    }
+  ): Promise<McpKeyAclRuleEntity[]> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.mcpKeyAclRule.deleteMany({
+        where: { key_id: keyId }
+      });
+
+      if (!input.tool_names.length) {
+        return;
+      }
+
+      await tx.mcpKeyAclRule.createMany({
+        data: input.tool_names.map((toolName) => ({
+          key_id: keyId,
+          tool_name: toolName,
+          effect: "allow",
+          created_by: input.created_by
+        })),
+        skipDuplicates: true
+      });
+    });
+
+    const items = await this.prisma.mcpKeyAclRule.findMany({
+      where: { key_id: keyId },
+      orderBy: [{ tool_name: "asc" }, { created_at: "desc" }]
+    });
+
+    return items.map((item) => toMcpKeyAclRuleEntity(item));
+  }
+
+  public async listMcpKeyAclRules(keyId: string): Promise<McpKeyAclRuleEntity[]> {
+    const items = await this.prisma.mcpKeyAclRule.findMany({
+      where: { key_id: keyId },
+      orderBy: [{ tool_name: "asc" }, { created_at: "desc" }]
+    });
+
+    return items.map((item) => toMcpKeyAclRuleEntity(item));
+  }
+
+  public async bindMcpKeyToProfile(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileBindingEntity | null> {
+    const [key, profile] = await Promise.all([
+      this.prisma.mcpApiKey.findUnique({ where: { id: keyId }, select: { id: true } }),
+      this.prisma.agentProfile.findUnique({ where: { id: profileId }, select: { id: true } })
+    ]);
+    if (!key || !profile) {
+      return null;
+    }
+
+    const existing = await this.prisma.mcpKeyProfileBinding.findUnique({
+      where: {
+        key_id_agent_profile_id: {
+          key_id: keyId,
+          agent_profile_id: profileId
+        }
+      }
+    });
+    if (existing) {
+      return toMcpKeyProfileBindingEntity(existing);
+    }
+
+    const created = await this.prisma.mcpKeyProfileBinding.create({
+      data: {
+        key_id: keyId,
+        agent_profile_id: profileId,
+        created_by: createdBy
+      }
+    });
+
+    return toMcpKeyProfileBindingEntity(created);
+  }
+
+  public async unbindMcpKeyFromProfile(keyId: string, profileId: string): Promise<boolean> {
+    const deleted = await this.prisma.mcpKeyProfileBinding.deleteMany({
+      where: {
+        key_id: keyId,
+        agent_profile_id: profileId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listMcpKeyProfileBindings(keyId: string): Promise<McpKeyProfileBindingEntity[]> {
+    const items = await this.prisma.mcpKeyProfileBinding.findMany({
+      where: { key_id: keyId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => toMcpKeyProfileBindingEntity(item));
   }
 
   public async upsertAgentProfileScriptSet(

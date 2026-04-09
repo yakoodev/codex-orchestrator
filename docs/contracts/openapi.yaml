@@ -21,6 +21,7 @@ tags:
   - name: Memory
   - name: Agent Profiles
   - name: MCP Servers
+  - name: MCP Keys
   - name: Agent Requests
   - name: Delegation
   - name: Schedules
@@ -1340,6 +1341,171 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/mcp/keys:
+    post:
+      tags: [MCP Keys]
+      summary: Create MCP API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpApiKeyCreateRequest"
+      responses:
+        "201":
+          description: Created key with one-time secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpApiKeyWithSecret"
+    get:
+      tags: [MCP Keys]
+      summary: List MCP API keys
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/McpApiKeyStatus"
+        - in: query
+          name: include_revoked
+          schema:
+            type: boolean
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: MCP API key list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/McpApiKey"
+                required: [items]
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/keys/{id}:
+    patch:
+      tags: [MCP Keys]
+      summary: Patch MCP API key
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpApiKeyPatchRequest"
+      responses:
+        "200":
+          description: Updated key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpApiKey"
+        "404":
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/keys/{id}/rotate:
+    post:
+      tags: [MCP Keys]
+      summary: Rotate MCP API key and issue new secret
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Rotated key with one-time secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpApiKeyWithSecret"
+        "404":
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/keys/{id}/revoke:
+    post:
+      tags: [MCP Keys]
+      summary: Revoke MCP API key
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Revoked key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpApiKey"
+        "404":
+          description: Key not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/keys/{id}/bindings/profiles/{profile_id}:
+    post:
+      tags: [MCP Keys]
+      summary: Bind MCP key to agent profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: profile_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpKeyProfileBinding"
+        "404":
+          description: Key or profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [MCP Keys]
+      summary: Remove MCP key binding from agent profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: profile_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          description: Key/profile/binding not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/agent-requests:
     post:
       tags: [Agent Requests]
@@ -2595,6 +2761,156 @@ components:
           type: [object, "null"]
           additionalProperties: true
       required: [name, transport, endpoint_or_command, origin_type]
+      additionalProperties: false
+
+    McpApiKeyStatus:
+      type: string
+      enum: [active, disabled, revoked]
+
+    McpKeyAclEffect:
+      type: string
+      enum: [allow]
+
+    McpKeyAclRule:
+      type: object
+      properties:
+        id:
+          type: string
+        key_id:
+          type: string
+        tool_name:
+          type: string
+        effect:
+          $ref: "#/components/schemas/McpKeyAclEffect"
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, key_id, tool_name, effect, created_by, created_at]
+
+    McpKeyProfileBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        key_id:
+          type: string
+        agent_profile_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, key_id, agent_profile_id, created_by, created_at]
+
+    McpApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        key_prefix:
+          type: string
+        status:
+          $ref: "#/components/schemas/McpApiKeyStatus"
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+        rotated_at:
+          type: [string, "null"]
+          format: date-time
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        created_by:
+          type: string
+        updated_by:
+          type: [string, "null"]
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        acl_rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpKeyAclRule"
+        profile_bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpKeyProfileBinding"
+      required:
+        - id
+        - name
+        - key_prefix
+        - status
+        - created_by
+        - created_at
+        - updated_at
+        - acl_rules
+        - profile_bindings
+
+    McpApiKeyWithSecret:
+      allOf:
+        - $ref: "#/components/schemas/McpApiKey"
+        - type: object
+          properties:
+            secret:
+              type: string
+          required: [secret]
+
+    McpApiKeyCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        acl_tools:
+          type: array
+          items:
+            type: string
+          maxItems: 200
+        profile_ids:
+          type: array
+          items:
+            type: string
+          maxItems: 100
+      required: [name]
+      additionalProperties: false
+
+    McpApiKeyPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/McpApiKeyStatus"
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        meta_json:
+          type: [object, "null"]
+          additionalProperties: true
+        acl_tools:
+          type: array
+          items:
+            type: string
+          maxItems: 200
       additionalProperties: false
 
     AgentProfileMcpServerBindingRequest:

@@ -305,6 +305,8 @@ export type McpServerTransport = "stdio" | "http";
 export type McpServerOriginType = "built_in" | "catalog" | "custom";
 export type AgentProfileScriptOs = "windows" | "linux" | "macos";
 export type AgentProfileScriptType = "instruction" | "shell";
+export type McpApiKeyStatus = "active" | "disabled" | "revoked";
+export type McpKeyAclEffect = "allow";
 
 export interface AgentProfileEntity {
   id: string;
@@ -350,6 +352,40 @@ export interface AgentProfileScriptSetEntity {
   version: number;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface McpApiKeyEntity {
+  id: string;
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  status: McpApiKeyStatus;
+  expires_at: Date | null;
+  last_used_at: Date | null;
+  rotated_at: Date | null;
+  revoked_at: Date | null;
+  created_by: string;
+  updated_by: string | null;
+  meta_json: Record<string, unknown> | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface McpKeyAclRuleEntity {
+  id: string;
+  key_id: string;
+  tool_name: string;
+  effect: McpKeyAclEffect;
+  created_by: string;
+  created_at: Date;
+}
+
+export interface McpKeyProfileBindingEntity {
+  id: string;
+  key_id: string;
+  agent_profile_id: string;
+  created_by: string;
+  created_at: Date;
 }
 
 export type ScheduleScope = "global" | "project";
@@ -548,6 +584,17 @@ export interface CreateMcpServerRegistryInput {
   meta_json?: Record<string, unknown> | null;
 }
 
+export interface CreateMcpApiKeyInput {
+  name: string;
+  key_prefix: string;
+  key_hash: string;
+  status?: McpApiKeyStatus;
+  expires_at?: Date | null;
+  created_by: string;
+  updated_by?: string | null;
+  meta_json?: Record<string, unknown> | null;
+}
+
 export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
@@ -698,6 +745,54 @@ export interface Persistence {
   ): Promise<AgentProfileMcpServerBindingEntity | null>;
   unbindMcpServerFromAgentProfile(profileId: string, serverId: string): Promise<boolean>;
   listAgentProfileMcpBindings(profileId: string): Promise<AgentProfileMcpServerBindingEntity[]>;
+  createMcpApiKey(input: CreateMcpApiKeyInput): Promise<McpApiKeyEntity>;
+  listMcpApiKeys(options?: {
+    status?: McpApiKeyStatus;
+    include_revoked?: boolean;
+    limit?: number;
+  }): Promise<McpApiKeyEntity[]>;
+  getMcpApiKeyById(id: string): Promise<McpApiKeyEntity | null>;
+  patchMcpApiKey(
+    id: string,
+    patch: {
+      name?: string;
+      status?: McpApiKeyStatus;
+      expires_at?: Date | null;
+      meta_json?: Record<string, unknown> | null;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null>;
+  rotateMcpApiKey(
+    id: string,
+    input: {
+      key_prefix: string;
+      key_hash: string;
+      updated_by?: string | null;
+      rotated_at?: Date;
+    }
+  ): Promise<McpApiKeyEntity | null>;
+  revokeMcpApiKey(
+    id: string,
+    input: {
+      revoked_at?: Date;
+      updated_by?: string | null;
+    }
+  ): Promise<McpApiKeyEntity | null>;
+  replaceMcpKeyAclRules(
+    keyId: string,
+    input: {
+      tool_names: string[];
+      created_by: string;
+    }
+  ): Promise<McpKeyAclRuleEntity[]>;
+  listMcpKeyAclRules(keyId: string): Promise<McpKeyAclRuleEntity[]>;
+  bindMcpKeyToProfile(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileBindingEntity | null>;
+  unbindMcpKeyFromProfile(keyId: string, profileId: string): Promise<boolean>;
+  listMcpKeyProfileBindings(keyId: string): Promise<McpKeyProfileBindingEntity[]>;
   upsertAgentProfileScriptSet(
     profileId: string,
     input: {

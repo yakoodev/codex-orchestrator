@@ -226,6 +226,20 @@ enum AgentProfileScriptType {
   @@map("agent_profile_script_type")
 }
 
+enum McpApiKeyStatus {
+  active
+  disabled
+  revoked
+
+  @@map("mcp_api_key_status")
+}
+
+enum McpKeyAclEffect {
+  allow
+
+  @@map("mcp_key_acl_effect")
+}
+
 model AgentTemplate {
   id                     String   @id @default(cuid())
   name                   String
@@ -701,6 +715,7 @@ model AgentProfile {
 
   mcp_bindings AgentProfileMcpServerBinding[]
   script_sets  AgentProfileScriptSet[]
+  mcp_key_bindings McpKeyProfileBinding[]
 
   @@index([project_id, is_enabled, updated_at])
   @@index([project_id, role, updated_at])
@@ -757,4 +772,58 @@ model AgentProfileScriptSet {
   @@unique([agent_profile_id, os])
   @@index([agent_profile_id, updated_at])
   @@map("agent_profile_script_sets")
+}
+
+model McpApiKey {
+  id           String          @id @default(cuid())
+  name         String
+  key_prefix   String
+  key_hash     String          @unique
+  status       McpApiKeyStatus @default(active)
+  expires_at   DateTime?
+  last_used_at DateTime?
+  rotated_at   DateTime?
+  revoked_at   DateTime?
+  created_by   String
+  updated_by   String?
+  meta_json    Json?
+  created_at   DateTime        @default(now())
+  updated_at   DateTime        @updatedAt
+
+  acl_rules         McpKeyAclRule[]
+  profile_bindings  McpKeyProfileBinding[]
+
+  @@index([status, updated_at])
+  @@index([expires_at])
+  @@map("mcp_api_keys")
+}
+
+model McpKeyAclRule {
+  id         String         @id @default(cuid())
+  key_id     String
+  tool_name  String
+  effect     McpKeyAclEffect @default(allow)
+  created_by String
+  created_at DateTime       @default(now())
+
+  mcp_key McpApiKey @relation(fields: [key_id], references: [id], onDelete: Cascade)
+
+  @@unique([key_id, tool_name])
+  @@index([key_id, created_at])
+  @@map("mcp_key_acl_rules")
+}
+
+model McpKeyProfileBinding {
+  id               String   @id @default(cuid())
+  key_id           String
+  agent_profile_id String
+  created_by       String
+  created_at       DateTime @default(now())
+
+  mcp_key      McpApiKey    @relation(fields: [key_id], references: [id], onDelete: Cascade)
+  agent_profile AgentProfile @relation(fields: [agent_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([key_id, agent_profile_id])
+  @@index([agent_profile_id, created_at])
+  @@map("mcp_key_profile_bindings")
 }

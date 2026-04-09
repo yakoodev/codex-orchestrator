@@ -1,7 +1,7 @@
 # MCP AuthZ ACL v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `planned` (decision-complete)
+Статус: `in_progress` (Phase 1 key-management backend реализован)
 
 ## 1. Цель
 
@@ -104,3 +104,19 @@
 - role presets (`viewer/editor/admin`).
 - wildcard ACL (`orchestrator.*`) и deny-rules.
 - tenant federation ключей.
+
+## 10. Текущий прогресс реализации
+
+- Реализовано (Phase 1 backend):
+  - Prisma: `McpApiKey`, `McpKeyAclRule`, `McpKeyProfileBinding` (+ миграция `0010_mcp_authz_acl_v2_keys`);
+  - API:
+    - `POST/GET /api/mcp/keys`
+    - `PATCH /api/mcp/keys/{id}`
+    - `POST /api/mcp/keys/{id}/rotate`
+    - `POST /api/mcp/keys/{id}/revoke`
+    - `POST/DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`;
+  - one-time выдача raw секрета только для `create/rotate`.
+- Остается:
+  - runtime authz enforcement в MCP bridge (`401/403` deny-path);
+  - `McpAuthAuditEvent` и обновление `last_used_at` в authz flow;
+  - template constraints (`McpKeyTemplateConstraint`) как follow-up.

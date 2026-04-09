@@ -253,19 +253,79 @@ npm run mcp:serve
 - в fleet-режиме есть `requested_profiles/successful_profiles/failed_profiles`;
 - при частичных ошибках есть массив `errors` с `error/code/status_code`.
 
-## 3.9 Сценарий A9 (planned): MCP key ACL v2
+## 3.9 Сценарий A9: MCP key management v2 (Phase 1)
 
-Статус: выполняется после реализации `docs/ops/mcp-authz-acl-v2.md`.
+Статус: доступно в backend API (управление ключами/ACL/bindings). Runtime enforcement `401/403` в MCP bridge остается следующим этапом.
 
-1. Создай MCP-ключ `reviewer-readonly` через `POST /api/mcp/keys`.
-2. Настрой ACL только на `orchestrator.list_agents`, `orchestrator.list_tasks`.
-3. Вызови `orchestrator.dispatch_agent` этим ключом.
-4. Ожидаемо: `403` с кодом `MCP_TOOL_FORBIDDEN`.
-5. Привяжи ключ к конкретному профилю через `POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}`.
-6. Выполни вызов этим ключом из другого профиля.
-7. Ожидаемо: `403` с кодом `MCP_PROFILE_FORBIDDEN`.
-8. Отзови ключ (`POST /api/mcp/keys/{id}/revoke`) и повтори любой MCP вызов.
-9. Ожидаемо: `401` с кодом `MCP_KEY_REVOKED`.
+1. Создай ключ:
+
+```powershell
+$body = @{
+  name       = "reviewer-readonly"
+  acl_tools  = @("orchestrator.list_agents", "orchestrator.list_tasks")
+} | ConvertTo-Json
+
+$created = Invoke-RestMethod -Uri "$BASE/api/mcp/keys" -Method POST -Headers $HEADERS -Body $body
+$created | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- есть `secret` (one-time);
+- есть `key_prefix`, `status=active`, `acl_rules`.
+
+2. Проверь list:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys" -Method GET -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- ключ присутствует в `items`;
+- поля `secret` в list-ответе нет.
+
+3. Создай/выбери `AgentProfile` и привяжи ключ:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/bindings/profiles/<PROFILE_ID>" `
+  -Method POST -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- возвращается binding с `key_id` и `agent_profile_id`.
+
+4. Выполни patch ключа:
+
+```powershell
+$patch = @{ status = "disabled"; acl_tools = @() } | ConvertTo-Json
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)" -Method PATCH -Headers $HEADERS -Body $patch | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- `status=disabled`;
+- `acl_rules` пустой.
+
+5. Выполни rotate:
+
+```powershell
+$rotated = Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/rotate" -Method POST -Headers $HEADERS
+$rotated | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- новый `secret` возвращается только в rotate-ответе;
+- `status=active`, заполнен `rotated_at`.
+
+6. Выполни revoke и проверь скрытие в default list:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/revoke" -Method POST -Headers $HEADERS | Out-Null
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys" -Method GET -Headers $HEADERS | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys?include_revoked=true" -Method GET -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- после revoke ключ отсутствует в default list;
+- с `include_revoked=true` ключ снова виден.
 
 ## 3.10 Сценарий A10 (planned): Secrets redaction и runtime injection
 
