@@ -1,6 +1,6 @@
 # Manual Test Scenarios (UI + API)
 
-Обновлено: 2026-04-08
+Обновлено: 2026-04-09
 
 Этот документ даёт точные ручные сценарии, которые можно прогонять после каждого `git pull`.
 
@@ -251,6 +251,47 @@ npm run mcp:serve
 Ожидаемо:
 - в fleet-режиме есть `requested_profiles/successful_profiles/failed_profiles`;
 - при частичных ошибках есть массив `errors` с `error/code/status_code`.
+
+## 3.9 Сценарий A9 (planned): MCP key ACL v2
+
+Статус: выполняется после реализации `docs/ops/mcp-authz-acl-v2.md`.
+
+1. Создай MCP-ключ `reviewer-readonly` через `POST /api/mcp/keys`.
+2. Настрой ACL только на `orchestrator.list_agents`, `orchestrator.list_tasks`.
+3. Вызови `orchestrator.dispatch_agent` этим ключом.
+4. Ожидаемо: `403` с кодом `MCP_TOOL_FORBIDDEN`.
+5. Привяжи ключ к конкретному шаблону через `POST /api/mcp/keys/{id}/bindings/templates/{template_id}`.
+6. Выполни dispatch с другим `template_id`.
+7. Ожидаемо: `403` с кодом `MCP_TEMPLATE_FORBIDDEN`.
+8. Отзови ключ (`POST /api/mcp/keys/{id}/revoke`) и повтори любой MCP вызов.
+9. Ожидаемо: `401` с кодом `MCP_KEY_REVOKED`.
+
+## 3.10 Сценарий A10 (planned): Secrets redaction и runtime injection
+
+Статус: выполняется после реализации `docs/ops/secrets-plane-v1.md`.
+
+1. Создай проектный секрет через `POST /api/projects/{key}/secrets`.
+2. Убедись, что raw value в ответе отсутствует (только metadata + masked preview).
+3. Привяжи секрет к `template` и/или `role`.
+4. Запусти делегацию, которая использует секрет из env.
+5. Проверь UI (`#/logs`, `#/system`) и server logs:
+  - raw значение секрета нигде не отображается;
+  - есть только redacted/masked представление.
+6. Выполни rotate (`POST .../rotate`) и revoke (`POST .../revoke`), проверь audit trail.
+
+## 3.11 Сценарий A11 (planned): Topology + Coordination channel
+
+Статус: выполняется после реализации `docs/ops/topology-ui.md` и `docs/ops/agent-coordination-channel.md`.
+
+1. Открой `#/topology` и выбери проект.
+2. Убедись, что видны узлы `project`, `channels`, `agents`, `tasks`.
+3. Через `POST /api/coordination/channels/{id}/messages` отправь сообщения:
+  - `plan_created`
+  - `step_assigned`
+  - `blocker_reported`
+  - `step_closed`
+4. Проверь, что события появились в topology inspector и в `GET /api/coordination/channels/{id}/messages`.
+5. Убедись, что runtime stdout/stderr и чувствительные payload не дублируются в coordination channel.
 
 ## 4. Сценарий B: Security boundary
 

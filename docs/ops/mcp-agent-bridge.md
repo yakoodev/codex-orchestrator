@@ -1,13 +1,15 @@
-# MCP Agent Bridge (MVP Implemented)
+# MCP Agent Bridge (MVP + v2 AuthZ Design)
 
-Обновлено: 2026-04-08  
-Статус: `completed` (MVP)
+Обновлено: 2026-04-09  
+Статус: `completed` (MVP), `planned` (AuthZ ACL v2)
 
-## Цель
+## 1. Цель
 
-Добавлен MCP-слой для работы агентов и внешних ассистентов с `codex-orchestrator` через стандартизированный интерфейс, без изменения существующих REST контрактов.
+Дать агентам и внешним ассистентам стандартизированный MCP-интерфейс для работы с `codex-orchestrator`, сохраняя совместимость с текущим REST API и security boundary.
 
-## Реализованные MCP возможности (MVP)
+## 2. Что уже реализовано (MVP)
+
+### 2.1 MCP tools
 
 1. Получение доступных агентов:
 - MCP tool: `orchestrator.list_agents`
@@ -32,13 +34,53 @@
   - по конкретному профилю (`profile_id`)
   - по набору профилей (`include_inactive`, `limit_profiles`)
 
-## Security & Ops
+### 2.2 Security и error mapping
 
-- MCP bridge использует тот же security boundary через `X-Admin-Token` (передаётся в upstream API из `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN`).
-- Реализация выполнена как proxy-adapter поверх существующего API (без изменения backend контрактов).
-- Ошибки upstream API маппятся в единый формат с полями `error`, `code` (+ `status_code`).
+- В MVP bridge использует единый `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN`, который проксируется как `X-Admin-Token` в upstream API.
+- Реализация выполнена как proxy-adapter поверх текущего API (без изменения backend контрактов).
+- Ошибки upstream API маппятся в единый формат с полями `error`, `code`, `status_code`.
 
-## Запуск
+## 3. MCP AuthZ ACL v2 (decision-complete)
+
+### 3.1 Ключевые решения
+
+- Модель доступа переходит на `multi-key` (несколько MCP-ключей, управляемых в БД).
+- ACL-модель: `custom-only` allow-list по exact match имен tools (без фиксированных пресетов).
+- Привязка ключей к агентам: `template-only` (через binding на `agent_template_id`).
+- Каждый ключ поддерживает lifecycle: create, rotate, revoke, expire, `last_used`, audit trail.
+
+### 3.2 Семантика отказов
+
+- `401 Unauthorized`:
+  - ключ отсутствует;
+  - ключ невалиден;
+  - ключ отозван;
+  - ключ истек.
+- `403 Forbidden`:
+  - ключ валиден, но tool не разрешен ACL;
+  - ключ валиден, но вызов ограничен template-binding и текущий template не разрешен.
+
+### 3.3 Сущности v2
+
+Планируемые сущности вынесены в отдельный дизайн-док:
+- `McpApiKey`
+- `McpKeyAclRule`
+- `McpKeyTemplateBinding`
+- `McpAuthAuditEvent`
+
+См. `docs/ops/mcp-authz-acl-v2.md`.
+
+### 3.4 Планируемые API (v2)
+
+- `POST /api/mcp/keys`
+- `GET /api/mcp/keys`
+- `PATCH /api/mcp/keys/{id}`
+- `POST /api/mcp/keys/{id}/rotate`
+- `POST /api/mcp/keys/{id}/revoke`
+- `POST /api/mcp/keys/{id}/bindings/templates/{template_id}`
+- `DELETE /api/mcp/keys/{id}/bindings/templates/{template_id}`
+
+## 4. Запуск текущего MVP bridge
 
 ```powershell
 $env:MCP_API_BASE_URL = "http://localhost:8080"
@@ -54,7 +96,7 @@ npm run mcp:serve
 - `MCP_REQUEST_TIMEOUT_MS` (default: `15000`)
 - `MCP_API_MAX_RETRIES` (default: `1`)
 
-## Минимальный ручной smoke
+## 5. Минимальный ручной smoke (MVP)
 
 1. Поднять сервис (`docker compose up -d`).
 2. Запустить MCP bridge (`npm run mcp:serve`).
@@ -65,7 +107,8 @@ npm run mcp:serve
    - `orchestrator.get_limits`
 4. Проверить, что ответы возвращают данные и/или единый error payload при upstream ошибках.
 
-## Следующие шаги (out of MVP)
+## 6. Следующие шаги
 
-- Streamable HTTP transport для удаленного подключения (отдельный scope).
-- Расширение MCP toolset (projects/memory/schedules/workers) после утверждения product-scope.
+- Реализовать MCP AuthZ ACL v2 поверх существующего bridge runtime (без breaking изменений для tools).
+- Добавить streamable HTTP transport для удаленного подключения (отдельный scope).
+- Расширить MCP toolset (`projects`, `memory`, `coordination`, `topology`) после фиксации API-контрактов.

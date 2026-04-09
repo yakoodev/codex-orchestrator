@@ -1,6 +1,6 @@
 # PR1 Progress Tracker (API-only Bootstrap)
 
-Обновлено: 2026-04-08  
+Обновлено: 2026-04-09  
 Ветка: `codex/pr1-bootstrap-api-only`
 
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
@@ -170,6 +170,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `Switch History` переведен на server-side drill-down: `GET /api/auth-profiles/chatgpt/switch-events` поддерживает фильтры `profile_id/status/reason/limit`, UI применяет их при смене фильтров и дает быстрый profile drill-down прямо из карточек history.
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
 - [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
+- [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -183,6 +184,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 - [x] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача закрыта в `docs/ops/roadmap.md`).
+- [~] MCP AuthZ ACL v2 (multi-key, custom-only ACL, template-only binding, 401/403 модели отказов): `docs/ops/mcp-authz-acl-v2.md`.
+- [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
+- [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
+- [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

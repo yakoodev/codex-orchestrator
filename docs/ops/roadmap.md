@@ -1,6 +1,6 @@
 # Product Roadmap (Post-PR1)
 
-Обновлено: 2026-04-08  
+Обновлено: 2026-04-09  
 Статус PR1: в активной реализации (API-first).
 
 Этот roadmap фиксирует ближайшие продуктовые улучшения после закрытия PR1.
@@ -21,6 +21,63 @@
 - Что дальше:
   - streamable HTTP transport и расширение набора MCP tools вынесены в follow-up scope.
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
+
+## Planned: MCP AuthZ ACL v2
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и template-bound ограничениями.
+- Зафиксированные решения:
+  - `custom-only ACL` (без обязательных пресетов ролей);
+  - ключи хранятся и управляются в БД (`DB managed`);
+  - доступ к MCP для агента привязывается только через `agent template` (`template-only binding`);
+  - ACL-проверка по точным именам методов/tools (exact match);
+  - `401` для отсутствующего/невалидного/отозванного/просроченного ключа;
+  - `403` для валидного ключа без прав на запрошенный tool/template.
+- Документ дизайна: `docs/ops/mcp-authz-acl-v2.md`.
+- Зависимости:
+  - API и persistence слой MCP keys;
+  - аудит и `last_used` обновления;
+  - синхронизация с MCP bridge runtime.
+
+## Planned: Secrets Plane v1
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: безопасно хранить и выдавать секреты агентам без утечек в UI, API-логах и activity-log.
+- Зафиксированные решения:
+  - backend хранит секреты в БД в зашифрованном виде (envelope encryption);
+  - scope доступа строится на `project + role/template binding`;
+  - после сохранения UI не читает raw value обратно (только rotate/replace/revoke);
+  - runtime выдача секретов делается через env injection только в контекст запуска;
+  - после завершения запуска секреты очищаются из runtime-контекста.
+- Документ дизайна: `docs/ops/secrets-plane-v1.md`.
+- Зависимости:
+  - KMS/master-key стратегия и ротация ключей шифрования;
+  - redaction middleware для логов/трасс;
+  - привязка к Project Registry и template-role модели.
+
+## Planned: Coordination Channel (Planning/Control)
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: выделить отдельный централизованный канал координации агентов для planning/control событий.
+- Зафиксированные решения:
+  - канал идентифицируется связкой `project_id + agent_bundle_id`;
+  - хранит только planning/control сообщения (`plan_created`, `step_assigned`, `handoff_*`, `blocker_reported`, `step_closed`);
+  - runtime execution logs и сырой контент выполнения в канал не дублируются (остаются в памяти/заметках/операционных логах).
+- Документ дизайна: `docs/ops/agent-coordination-channel.md`.
+- Зависимости:
+  - модель agent bundle;
+  - API чтения/публикации сообщений;
+  - связь с топологическим UI-инспектором.
+
+## Planned: Topology UI
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: добавить наглядную интерактивную схему взаимодействия `project/channels/tasks/agents`.
+- Зафиксированные решения:
+  - новый маршрут UI `#/topology`;
+  - граф узлов `agents/tasks/channels/project`;
+  - фильтры, live-state, click-inspector, визуализация текущих назначений и связей.
+- Документ дизайна: `docs/ops/topology-ui.md`.
+- Зависимости:
+  - Topology API (`/api/topology/graph`);
+  - Coordination API (`/api/coordination/channels*`);
+  - UI рендерер интерактивного графа и drill-down инспектор.
 
 ## Planned: Project Registry (доменный объект Project)
 - Статус: `completed` (Phase A/B/C закрыты).
@@ -74,7 +131,7 @@
 - Новые задачи по операторскому фидбеку (2026-04-08):
   - [x] сделать задачи в формате task-tracker доски с 3 колонками (`ожидает запуска / запущена / выполнена`);
   - [x] вынести память агентов в отдельный экран `Memory` (а не hidden fallback);
-  - [x] доработать визуальную и навигационную логику админки до уровня production polish.
+  - [x] доработать визуальную и навигационную логику админки до уровня production polish;
   - [x] повысить надежность автозагрузки данных UI без ручного `Обновить`: route-enter hydration + unified retry/backoff для частичных панелей.
 
 ## Planned: Operator visibility for agents
