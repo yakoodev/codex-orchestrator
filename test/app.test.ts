@@ -3779,6 +3779,198 @@ describe("smoke-core API", () => {
     });
   });
 
+  it("auto-resolves agent profile by project+role and injects MCP/scripts into execution context", async () => {
+    await app.close();
+
+    const executionCalls: Array<{
+      payload: Record<string, unknown>;
+    }> = [];
+    const injectedExecutor: DelegationExecutor = {
+      async execute(input) {
+        executionCalls.push({
+          payload: input.payload
+        });
+        return {
+          execution_mode: "mock",
+          result_summary: "ok",
+          output_text: "ok"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      publisher,
+      storage,
+      delegationExecutor: injectedExecutor,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    const task = await persistence.createTask({
+      title: "Agent profile runtime task",
+      description: "Needs profile runtime context",
+      project_id: "proj-memory",
+      repo_id: "repo-memory",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    await persistence.createAgentTemplate({
+      name: "reviewer-template-profile",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are reviewer",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const profile = await persistence.createAgentProfile({
+      project_id: "proj-memory",
+      name: "ui-reviewer-profile",
+      role: "reviewer",
+      source_policy: "catalog_plus_custom",
+      is_enabled: true
+    });
+    const customServer = await persistence.createMcpServerRegistryEntry({
+      name: "browser-mcp-auto-resolve",
+      transport: "stdio",
+      endpoint_or_command: "npx @playwright/mcp",
+      origin_type: "catalog",
+      is_approved: true
+    });
+    await persistence.bindMcpServerToAgentProfile(profile.id, customServer.id, {
+      is_required: false,
+      priority: 20,
+      config_json: { channel: "stable" }
+    });
+    const runtimeScriptOs: AgentProfileScriptOs =
+      process.platform === "win32"
+        ? "windows"
+        : process.platform === "darwin"
+          ? "macos"
+          : "linux";
+    await persistence.upsertAgentProfileScriptSet(profile.id, {
+      os: runtimeScriptOs,
+      script_type: "instruction",
+      content: "Используй browser MCP для smoke UI проверок."
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-profile-context-1" },
+      payload: {
+        requester_task_id: task.id,
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: { prompt: "Собери runtime контекст профиля" },
+        priority: 70
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(executionCalls).toHaveLength(1);
+    const executionPayload = executionCalls[0]?.payload;
+    if (!executionPayload) {
+      throw new Error("Expected delegation execution payload to be captured");
+    }
+
+    expect(executionPayload["agent_profile_id"]).toBe(profile.id);
+    expect(executionPayload["prompt"]).toContain("Используй browser MCP");
+    expect(executionPayload["agent_profile_context"]).toMatchObject({
+      profile_id: profile.id,
+      profile_role: "reviewer",
+      source_policy: "catalog_plus_custom"
+    });
+    const payloadContext = executionPayload["agent_profile_context"] as {
+      mcp_servers?: Array<{ name?: string }>;
+    };
+    expect(
+      payloadContext.mcp_servers?.some((item) => item.name === "browser-mcp-auto-resolve")
+    ).toBe(true);
+
+    expect(dispatchResponse.json().execution_meta_json.agent_profile_context).toMatchObject({
+      profile_id: profile.id,
+      profile_role: "reviewer",
+      source_policy: "catalog_plus_custom"
+    });
+  });
+
+  it("returns AGENT_PROFILE_* conflicts for selector profile mismatches", async () => {
+    await persistence.createAgentTemplate({
+      name: "selector-validation-template",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "You are reviewer",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+    const requesterTask = await persistence.createTask({
+      title: "selector profile mismatch",
+      description: "validate profile selector mismatches",
+      project_id: "project",
+      repo_id: "project",
+      branch: null,
+      status: "QUEUED",
+      priority: 60,
+      source: "smoke-script",
+      created_by: "smoke-script"
+    });
+
+    const wrongProjectProfile = await persistence.createAgentProfile({
+      project_id: "proj-memory",
+      name: "wrong-project-profile",
+      role: "reviewer",
+      is_enabled: true
+    });
+    const wrongProjectResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-profile-project-mismatch-1" },
+      payload: {
+        requester_task_id: requesterTask.id,
+        capability: "reviewer",
+        target_selector: {
+          role: "reviewer",
+          agent_profile_id: wrongProjectProfile.id
+        },
+        payload: { prompt: "check mismatch" },
+        priority: 60
+      }
+    });
+    expect(wrongProjectResponse.statusCode).toBe(409);
+    expect(wrongProjectResponse.json().code).toBe("AGENT_PROFILE_PROJECT_MISMATCH");
+
+    const wrongRoleProfile = await persistence.createAgentProfile({
+      project_id: "project",
+      name: "wrong-role-profile",
+      role: "devops",
+      is_enabled: true
+    });
+    const wrongRoleResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-profile-role-mismatch-1" },
+      payload: {
+        requester_task_id: requesterTask.id,
+        capability: "reviewer",
+        target_selector: {
+          role: "reviewer",
+          agent_profile_id: wrongRoleProfile.id
+        },
+        payload: { prompt: "check mismatch role" },
+        priority: 60
+      }
+    });
+    expect(wrongRoleResponse.statusCode).toBe(409);
+    expect(wrongRoleResponse.json().code).toBe("AGENT_PROFILE_ROLE_MISMATCH");
+  });
+
   it("uses project workspace_path as default cwd for delegation when payload cwd is absent", async () => {
     await app.close();
 

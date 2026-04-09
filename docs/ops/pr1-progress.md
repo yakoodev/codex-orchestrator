@@ -209,6 +209,12 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - добавлено управление `OS script sets` (`windows/linux/macos`) с сохранением `script_type/content`;
   - добавлен отдельный panel-state и route-level refresh для `agent-profiles`;
   - состояние фильтров страницы сохраняется в `localStorage`.
+- [x] Реализован runtime-resolve `AgentProfile` в `POST /api/delegation/dispatch`:
+  - поддержан selector `target_selector.agent_profile_id` с валидациями `AGENT_PROFILE_NOT_FOUND|DISABLED|PROJECT_MISMATCH|ROLE_MISMATCH`;
+  - добавлен auto-resolve профиля по `requester_task.project_id + capability(role)`, если selector не задан;
+  - в execution payload добавлены `agent_profile_id` и `agent_profile_context` (MCP servers + runtime script `windows/linux/macos`);
+  - prompt обогащается profile-aware контекстом (source policy, доступные MCP, runtime script инструкции);
+  - `agent_profile_id` и `agent_profile_context` пишутся в `execution_meta_json` и lifecycle events делегации.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -227,7 +233,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 - [~] Agent Request Plane v2 (Phase 1 backend + MCP create/list_open/resolve реализованы; остаются governor automation, audit trail, topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
-- [~] Agent Profiles + MCP Server Sets (Phase 1 backend + UI-конфигуратор реализованы; остаются runtime-resolve по profile и интеграция с ACL/governor): `docs/ops/agent-profiles-mcp-servers.md`.
+- [~] Agent Profiles + MCP Server Sets (Phase 1 backend + UI-конфигуратор + runtime-resolve в dispatch реализованы; остаются ACL/governor и authz-ограничения MCP): `docs/ops/agent-profiles-mcp-servers.md`.
 - [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 
 ## Текущее состояние проверок (ветка PR1)
@@ -235,4 +241,4 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `npm run typecheck`
 - [x] `npm run test`
 - [x] `npm run contracts:check`
-- [~] `npm run smoke:local` (последний прогон в этой итерации: `ECONNREFUSED 127.0.0.1:8080`, сервис не был запущен локально)
+- [x] `npm run smoke:local`

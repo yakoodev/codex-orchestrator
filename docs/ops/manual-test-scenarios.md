@@ -333,9 +333,9 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests?open_pool=true&project_id=<PROJ
   - `request_resolved_by_agent`
   - `request_blocked_agent`
 
-## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 1 backend)
+## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 2 runtime dispatch)
 
-Статус: доступно на API-уровне (UI-редактор профилей и runtime-резолв остаются следующим этапом).
+Статус: доступно на API-уровне + runtime-resolve в `POST /api/delegation/dispatch`.
 
 1. Создай профиль:
 
@@ -438,6 +438,55 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
 10. Проверь, что после сохранения у каждого OS-блока обновляется metadata (`version`, timestamp).
 11. Примени фильтры `search/project/role/include disabled` и убедись, что список профилей фильтруется без полного reload.
 12. Обнови страницу браузера и проверь восстановление фильтров (`localStorage`).
+
+13. Проверь runtime-resolve профиля в dispatch:
+
+```powershell
+$templateBody = @{
+  name = "profile-runtime-reviewer"
+  role = "reviewer"
+  model = "gpt-5.4-mini"
+  system_prompt = "Use profile runtime context"
+  sandbox_policy = "workspace-write"
+  approval_policy = "never"
+} | ConvertTo-Json
+
+$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+
+$taskBody = @{
+  title = "profile-runtime-task-$(Get-Date -Format HHmmss)"
+  description = "runtime profile resolve check"
+  project_id = "project"
+  repo_id = "project"
+  priority = 90
+} | ConvertTo-Json
+
+$task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
+
+$dispatchBody = @{
+  requester_task_id = $task.id
+  capability = "reviewer"
+  target_selector = @{
+    role = "reviewer"
+    agent_profile_id = $profile.id
+  }
+  payload = @{
+    execution_mode = "mock"
+    prompt = "Проверь profile context"
+  }
+  priority = 80
+} | ConvertTo-Json -Depth 8
+
+$dispatch = Invoke-RestMethod -Uri "$BASE/api/delegation/dispatch" `
+  -Method POST -Headers $HEADERS -Body $dispatchBody
+
+$dispatch | ConvertTo-Json -Depth 10
+```
+
+14. Ожидаемо в ответе dispatch:
+   - присутствует `execution_meta_json.agent_profile_context`;
+   - `execution_meta_json.agent_profile_context.profile_id` совпадает с `$profile.id`;
+   - в payload выполнения используется `agent_profile_id` и profile-aware prompt (MCP + runtime script).
 
 ## 4. Сценарий B: Security boundary
 

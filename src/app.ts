@@ -407,6 +407,8 @@ const MAX_DELEGATION_EXECUTION_PROMPT_LENGTH = 12_000;
 const MAX_DELEGATION_LOG_LENGTH = 12_000;
 const MAX_MEMORY_CONTENT_LENGTH = 8_000;
 const MAX_MEMORY_CONTEXT_ENTRIES = 6;
+const MAX_AGENT_PROFILE_PROMPT_SCRIPT_LENGTH = 4_000;
+const MAX_AGENT_PROFILE_PROMPT_MCP_SERVERS = 12;
 const MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH = 20_000;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
@@ -612,6 +614,90 @@ function buildMemoryAwarePrompt(options: {
   ].join("\n");
 
   return trimToLimit(enriched, MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
+}
+
+function runtimeScriptOsFromPlatform(
+  platform: NodeJS.Platform = process.platform
+): AgentProfileScriptOs {
+  if (platform === "win32") {
+    return "windows";
+  }
+  if (platform === "darwin") {
+    return "macos";
+  }
+  return "linux";
+}
+
+function isMcpServerAllowedForAgentProfile(
+  profile: AgentProfileEntity,
+  server: McpServerRegistryEntity
+): boolean {
+  if (server.name === ORCHESTRATOR_MCP_SERVER_NAME) {
+    return true;
+  }
+
+  if (profile.source_policy === "catalog_only") {
+    return server.origin_type === "built_in" || server.origin_type === "catalog";
+  }
+
+  if (profile.source_policy === "custom_only") {
+    return server.origin_type === "custom";
+  }
+
+  return true;
+}
+
+function buildAgentProfileAwarePrompt(options: {
+  basePrompt: string;
+  profile: AgentProfileEntity | null;
+  runtimeScript: AgentProfileScriptSetEntity | null;
+  mcpServers: Array<{
+    id: string;
+    name: string;
+    transport: McpServerTransport;
+    origin_type: McpServerOriginType;
+    is_required: boolean;
+    priority: number;
+  }>;
+}): string {
+  const basePrompt = options.basePrompt;
+  if (!options.profile) {
+    return trimToLimit(basePrompt, MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
+  }
+
+  const lines: string[] = [
+    basePrompt,
+    "",
+    `Профиль агента: ${options.profile.name} (${options.profile.id})`,
+    `Роль профиля: ${options.profile.role}`,
+    `Source policy: ${options.profile.source_policy}`
+  ];
+
+  if (options.mcpServers.length > 0) {
+    const serverLines = options.mcpServers
+      .slice(0, MAX_AGENT_PROFILE_PROMPT_MCP_SERVERS)
+      .map((server, index) => {
+        const requiredTag = server.is_required ? "required" : "optional";
+        return `${index + 1}. ${server.name} [${server.transport}/${server.origin_type}] p=${server.priority} ${requiredTag}`;
+      });
+    lines.push("", "Доступные MCP серверы профиля:", ...serverLines);
+  }
+
+  if (options.runtimeScript) {
+    const compactContent = trimToLimit(
+      options.runtimeScript.content.replace(/\s+/g, " ").trim(),
+      MAX_AGENT_PROFILE_PROMPT_SCRIPT_LENGTH
+    );
+    lines.push(
+      "",
+      `Runtime script (${options.runtimeScript.os}, ${options.runtimeScript.script_type}, v${options.runtimeScript.version}):`,
+      compactContent,
+      "",
+      "Следуй runtime script инструкциям, если они релевантны задаче."
+    );
+  }
+
+  return trimToLimit(lines.join("\n"), MAX_DELEGATION_EXECUTION_PROMPT_LENGTH);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -4657,6 +4743,96 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         ? "project_workspace_path"
         : "process_cwd";
     const memoryAgentRole = normalizeAgentRole(targetTemplate.role);
+    const selectorAgentProfileId = asNonEmptyString(targetSelector["agent_profile_id"]);
+
+    let selectedAgentProfile: AgentProfileEntity | null = null;
+    if (selectorAgentProfileId) {
+      const selectedBySelector = await persistence.getAgentProfileById(selectorAgentProfileId);
+      if (!selectedBySelector) {
+        return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+      }
+      if (!selectedBySelector.is_enabled) {
+        return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
+      }
+      if (memoryProjectId && selectedBySelector.project_id !== memoryProjectId) {
+        return sendError(
+          reply,
+          409,
+          "Agent profile belongs to another project",
+          "AGENT_PROFILE_PROJECT_MISMATCH"
+        );
+      }
+      if (normalizeAgentRole(selectedBySelector.role) !== memoryAgentRole) {
+        return sendError(
+          reply,
+          409,
+          "Agent profile role does not match capability",
+          "AGENT_PROFILE_ROLE_MISMATCH"
+        );
+      }
+      selectedAgentProfile = selectedBySelector;
+    } else if (memoryProjectId) {
+      const candidates = await persistence.listAgentProfiles({
+        project_id: memoryProjectId,
+        include_disabled: false,
+        role: memoryAgentRole,
+        limit: 50
+      });
+      selectedAgentProfile = candidates[0] ?? null;
+    }
+
+    const runtimeScriptOs = runtimeScriptOsFromPlatform();
+    let selectedAgentProfileRuntimeScript: AgentProfileScriptSetEntity | null = null;
+    const selectedAgentProfileMcpServers: Array<{
+      id: string;
+      name: string;
+      transport: McpServerTransport;
+      origin_type: McpServerOriginType;
+      endpoint_or_command: string;
+      is_required: boolean;
+      priority: number;
+      config_json: Record<string, unknown> | null;
+    }> = [];
+    if (selectedAgentProfile) {
+      const [bindings, servers, scriptSets] = await Promise.all([
+        persistence.listAgentProfileMcpBindings(selectedAgentProfile.id),
+        persistence.listMcpServerRegistry({ include_unapproved: true }),
+        persistence.listAgentProfileScriptSets(selectedAgentProfile.id)
+      ]);
+      const serverById = new Map(servers.map((item) => [item.id, item]));
+      const runtimeScript =
+        scriptSets.find((item) => item.os === runtimeScriptOs) ??
+        null;
+      selectedAgentProfileRuntimeScript = runtimeScript;
+
+      for (const binding of bindings) {
+        const server = serverById.get(binding.mcp_server_id);
+        if (!server) {
+          continue;
+        }
+        if (!isMcpServerAllowedForAgentProfile(selectedAgentProfile, server)) {
+          continue;
+        }
+        selectedAgentProfileMcpServers.push({
+          id: server.id,
+          name: server.name,
+          transport: server.transport,
+          origin_type: server.origin_type,
+          endpoint_or_command: server.endpoint_or_command,
+          is_required: binding.is_required,
+          priority: binding.priority,
+          config_json: binding.config_json
+        });
+      }
+
+      selectedAgentProfileMcpServers.sort((a, b) => {
+        if (a.priority === b.priority) {
+          return a.name.localeCompare(b.name);
+        }
+        return a.priority - b.priority;
+      });
+    }
+
     const memoryDisabled = payload["memory_disabled"] === true;
     const memoryEntries =
       memoryDisabled || !memoryProjectId
@@ -4667,12 +4843,50 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             is_active: true,
             limit: MAX_MEMORY_CONTEXT_ENTRIES
           });
-    const executionPrompt = buildMemoryAwarePrompt({
+    const memoryAwarePrompt = buildMemoryAwarePrompt({
       basePrompt: inputPrompt,
       projectId: memoryProjectId ?? "unknown_project",
       agentRole: memoryAgentRole,
       memoryEntries
     });
+    const executionPrompt = buildAgentProfileAwarePrompt({
+      basePrompt: memoryAwarePrompt,
+      profile: selectedAgentProfile,
+      runtimeScript: selectedAgentProfileRuntimeScript,
+      mcpServers: selectedAgentProfileMcpServers
+    });
+    const agentProfileExecutionContext = selectedAgentProfile
+      ? {
+          profile_id: selectedAgentProfile.id,
+          profile_name: selectedAgentProfile.name,
+          profile_role: selectedAgentProfile.role,
+          source_policy: selectedAgentProfile.source_policy,
+          runtime_os: runtimeScriptOs,
+          runtime_script: selectedAgentProfileRuntimeScript
+            ? {
+                os: selectedAgentProfileRuntimeScript.os,
+                script_type: selectedAgentProfileRuntimeScript.script_type,
+                version: selectedAgentProfileRuntimeScript.version
+              }
+            : null,
+          mcp_servers: selectedAgentProfileMcpServers.map((server) => ({
+            id: server.id,
+            name: server.name,
+            transport: server.transport,
+            origin_type: server.origin_type,
+            is_required: server.is_required,
+            priority: server.priority
+          }))
+        }
+      : {
+          profile_id: null,
+          profile_name: null,
+          profile_role: null,
+          source_policy: null,
+          runtime_os: runtimeScriptOs,
+          runtime_script: null,
+          mcp_servers: []
+        };
     const executionPayload: Record<string, unknown> = {
       ...payload,
       prompt: executionPrompt,
@@ -4681,8 +4895,25 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         agent_role: memoryAgentRole,
         entries_used: memoryEntries.length,
         disabled: memoryDisabled
+      },
+      agent_profile_context: {
+        ...agentProfileExecutionContext,
+        mcp_servers: selectedAgentProfileMcpServers.map((server) => ({
+          id: server.id,
+          name: server.name,
+          transport: server.transport,
+          origin_type: server.origin_type,
+          endpoint_or_command: server.endpoint_or_command,
+          is_required: server.is_required,
+          priority: server.priority,
+          config_json: server.config_json
+        })),
+        runtime_script_content: selectedAgentProfileRuntimeScript?.content ?? null
       }
     };
+    if (selectedAgentProfile) {
+      executionPayload["agent_profile_id"] = selectedAgentProfile.id;
+    }
     if (!payloadCwd && resolvedExecutionCwd) {
       executionPayload["cwd"] = resolvedExecutionCwd;
     }
@@ -4711,6 +4942,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         status: acceptedDelegation.status,
         target_agent_template_id: acceptedDelegation.target_agent_template_id,
         target_worker_instance_id: acceptedDelegation.target_worker_instance_id,
+        agent_profile_id: selectedAgentProfile?.id ?? null,
         reason: null
       }
     });
@@ -4782,6 +5014,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             status: isTerminalAttempt ? "failed" : "running",
             target_agent_template_id: runningDelegation.target_agent_template_id,
             target_worker_instance_id: runningDelegation.target_worker_instance_id,
+            agent_profile_id: selectedAgentProfile?.id ?? null,
             reason: failureReason,
             retry_attempt: attempt
           }
@@ -4814,7 +5047,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
               agent_role: memoryAgentRole,
               entries_used: memoryEntries.length,
               disabled: memoryDisabled
-            }
+            },
+            agent_profile_context: agentProfileExecutionContext
           },
           ended_at: new Date()
         });
@@ -4845,7 +5079,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             agent_role: memoryAgentRole,
             entries_used: memoryEntries.length,
             disabled: memoryDisabled
-          }
+          },
+          agent_profile_context: agentProfileExecutionContext
         },
         ended_at: new Date()
       });
@@ -4864,6 +5099,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           status: completedDelegation.status,
           target_agent_template_id: completedDelegation.target_agent_template_id,
           target_worker_instance_id: completedDelegation.target_worker_instance_id,
+          agent_profile_id: selectedAgentProfile?.id ?? null,
           reason: null,
           execution_mode: executionResult.execution_mode
         }
