@@ -1,7 +1,7 @@
 # MCP Agent Bridge (MVP + Request Plane + AuthZ v2)
 
 Обновлено: 2026-04-09  
-Статус: `completed` (MVP), `in_progress` (Request Plane v2 backend + governor baseline + audit trail), `planned` (AuthZ ACL v2)
+Статус: `completed` (MVP), `in_progress` (Request Plane v2 backend + governor baseline + audit trail + AuthZ ACL v2 runtime)
 
 ## 1. Цель
 
@@ -79,7 +79,7 @@ Backend API, используемый bridge:
 - `REQUEST_NOT_FOUND`
 - `REQUEST_STATE_CONFLICT`
 
-## 4. MCP AuthZ ACL v2 (planned)
+## 4. MCP AuthZ ACL v2 (in_progress)
 
 ### 4.1 Ключевые решения
 
@@ -88,7 +88,7 @@ Backend API, используемый bridge:
 - primary owner для MCP server set: `AgentProfile`.
 - template binding может использоваться как execution-constraint, но не как primary owner конфигурации MCP-серверов.
 
-### 4.2 Планируемые API
+### 4.2 Реализованный API слой
 
 - `POST /api/mcp/keys`
 - `GET /api/mcp/keys`
@@ -97,6 +97,16 @@ Backend API, используемый bridge:
 - `POST /api/mcp/keys/{id}/revoke`
 - `POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}`
 - `DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`
+- `POST /api/mcp/keys/{id}/constraints/templates/{template_id}`
+- `DELETE /api/mcp/keys/{id}/constraints/templates/{template_id}`
+- `POST /api/mcp/authz/evaluate`
+
+### 4.3 Runtime поведение в bridge
+
+- если задан `MCP_API_KEY`, bridge перед каждым вызовом MCP tool делает `POST /api/mcp/authz/evaluate`;
+- при `401/403` вызов tool блокируется и возвращается единый `error/code/status_code`;
+- в evaluate передаются `agent_profile_id` и `agent_template_id` (если заданы);
+- на backend пишется `McpAuthAuditEvent`, при allow обновляется `last_used_at`.
 
 ## 5. Запуск текущего MVP bridge
 
@@ -109,6 +119,9 @@ npm run mcp:serve
 Поддерживаемые env:
 - `MCP_API_BASE_URL`
 - `MCP_ADMIN_TOKEN`
+- `MCP_API_KEY` (включает runtime authz pre-check)
+- `MCP_AGENT_PROFILE_ID` (context для profile-binding check)
+- `MCP_AGENT_TEMPLATE_ID` (context для template-constraint check)
 - `MCP_SERVER_NAME`
 - `MCP_SERVER_VERSION`
 - `MCP_REQUEST_TIMEOUT_MS`
@@ -128,5 +141,5 @@ npm run mcp:serve
 
 - Довести `Agent Request Plane v2`: связать policy-driven governor automation с полноценным ACL-plane + UI fallback поток.
 - Расширить governor automation: добавить policy-driven резолверы (MCP attach/ACL/script/runtime) вместо флага `governor_auto_resolve`.
-- Реализовать `MCP AuthZ ACL v2` с привязкой к `AgentProfile`.
+- Добавить UI/operator flow для lifecycle MCP key management и bindings/constraints.
 - Добавить streamable HTTP transport.

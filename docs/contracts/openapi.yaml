@@ -174,6 +174,279 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/projects/{key}/secrets:
+    post:
+      tags: [Project Secrets]
+      summary: Create project secret (raw value is never returned)
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectSecretCreateRequest"
+      responses:
+        "201":
+          description: Created project secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecret"
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Secret key already exists in project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [Project Secrets]
+      summary: List project secrets
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - in: query
+          name: include_inactive
+          schema:
+            type: boolean
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Project secret list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ProjectSecret"
+                required: [items]
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/secrets/{id}:
+    patch:
+      tags: [Project Secrets]
+      summary: Patch project secret metadata
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectSecretPatchRequest"
+      responses:
+        "200":
+          description: Updated project secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecret"
+        "404":
+          description: Secret not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/secrets/{id}/rotate:
+    post:
+      tags: [Project Secrets]
+      summary: Rotate project secret value
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectSecretRotateRequest"
+      responses:
+        "200":
+          description: Rotated project secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecret"
+        "404":
+          description: Secret not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/secrets/{id}/revoke:
+    post:
+      tags: [Project Secrets]
+      summary: Revoke project secret
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Revoked project secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecret"
+        "404":
+          description: Secret not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}:
+    post:
+      tags: [Project Secrets]
+      summary: Bind project secret to agent template
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecretTemplateBinding"
+        "404":
+          description: Secret or template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Project Secrets]
+      summary: Remove project secret template binding
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+        "404":
+          description: Secret/template/binding not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/projects/{key}/secrets/{id}/bindings/roles/{role}:
+    post:
+      tags: [Project Secrets]
+      summary: Bind project secret to agent role
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Role binding
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSecretRoleBinding"
+        "404":
+          description: Secret not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Project Secrets]
+      summary: Remove project secret role binding
+      parameters:
+        - $ref: "#/components/parameters/ProjectKey"
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: role
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required: [ok]
+        "404":
+          description: Secret/role/binding not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/tasks:
     post:
       tags: [Tasks]
@@ -1506,6 +1779,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/mcp/keys/{id}/constraints/templates/{template_id}:
+    post:
+      tags: [MCP Keys]
+      summary: Bind MCP key to agent template constraint
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Constraint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpKeyTemplateConstraint"
+        "404":
+          description: Key or template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [MCP Keys]
+      summary: Remove MCP key template constraint
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+        - in: path
+          name: template_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+        "404":
+          description: Key/template/constraint not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/mcp/authz/evaluate:
+    post:
+      tags: [MCP Keys]
+      summary: Evaluate MCP key authorization for tool invocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/McpAuthzEvaluateRequest"
+      responses:
+        "200":
+          description: Allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/McpAuthzEvaluateResponse"
+        "401":
+          description: Invalid/revoked/expired key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tool/profile/template forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/agent-requests:
     post:
       tags: [Agent Requests]
@@ -2091,6 +2444,152 @@ components:
         - switch_events_recent
         - switch_events_window_hours
         - last_switch_event_at
+
+    ProjectSecretTemplateBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        secret_id:
+          type: string
+        template_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - secret_id
+        - template_id
+        - created_by
+        - created_at
+
+    ProjectSecretRoleBinding:
+      type: object
+      properties:
+        id:
+          type: string
+        secret_id:
+          type: string
+        role:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - secret_id
+        - role
+        - created_by
+        - created_at
+
+    ProjectSecret:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        key:
+          type: string
+          pattern: "^[A-Z][A-Z0-9_]{1,127}$"
+        description:
+          type: [string, "null"]
+        masked_preview:
+          type: [string, "null"]
+        is_active:
+          type: boolean
+        algo:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        created_by:
+          type: string
+        updated_by:
+          type: [string, "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        rotated_at:
+          type: [string, "null"]
+          format: date-time
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        template_bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectSecretTemplateBinding"
+        role_bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectSecretRoleBinding"
+      required:
+        - id
+        - project_id
+        - key
+        - is_active
+        - algo
+        - version
+        - created_by
+        - created_at
+        - updated_at
+        - template_bindings
+        - role_bindings
+
+    ProjectSecretCreateRequest:
+      type: object
+      properties:
+        key:
+          type: string
+          pattern: "^[A-Z][A-Z0-9_]{1,127}$"
+        value:
+          type: string
+        description:
+          type: [string, "null"]
+        is_active:
+          type: boolean
+        bind_template_ids:
+          type: array
+          maxItems: 128
+          items:
+            type: string
+        bind_roles:
+          type: array
+          maxItems: 128
+          items:
+            type: string
+      required:
+        - key
+        - value
+      additionalProperties: false
+
+    ProjectSecretPatchRequest:
+      type: object
+      properties:
+        description:
+          type: [string, "null"]
+        is_active:
+          type: boolean
+      additionalProperties: false
+
+    ProjectSecretRotateRequest:
+      type: object
+      properties:
+        value:
+          type: string
+      required:
+        - value
+      additionalProperties: false
 
     TaskStatus:
       type: string
@@ -2805,6 +3304,22 @@ components:
           format: date-time
       required: [id, key_id, agent_profile_id, created_by, created_at]
 
+    McpKeyTemplateConstraint:
+      type: object
+      properties:
+        id:
+          type: string
+        key_id:
+          type: string
+        agent_template_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required: [id, key_id, agent_template_id, created_by, created_at]
+
     McpApiKey:
       type: object
       properties:
@@ -2849,6 +3364,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpKeyProfileBinding"
+        template_constraints:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpKeyTemplateConstraint"
       required:
         - id
         - name
@@ -2859,6 +3378,7 @@ components:
         - updated_at
         - acl_rules
         - profile_bindings
+        - template_constraints
 
     McpApiKeyWithSecret:
       allOf:
@@ -2912,6 +3432,37 @@ components:
             type: string
           maxItems: 200
       additionalProperties: false
+
+    McpAuthzEvaluateRequest:
+      type: object
+      properties:
+        api_key:
+          type: string
+        tool_name:
+          type: string
+        agent_profile_id:
+          type: [string, "null"]
+        agent_template_id:
+          type: [string, "null"]
+        actor:
+          type: [string, "null"]
+      required: [api_key, tool_name]
+      additionalProperties: false
+
+    McpAuthzEvaluateResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+        key_id:
+          type: string
+        tool_name:
+          type: string
+        agent_profile_id:
+          type: [string, "null"]
+        agent_template_id:
+          type: [string, "null"]
+      required: [allowed, key_id, tool_name]
 
     AgentProfileMcpServerBindingRequest:
       type: object

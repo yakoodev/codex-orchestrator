@@ -29,10 +29,13 @@ import type {
   CreateAgentRequestAuditEventInput,
   CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
+  CreateMcpAuthAuditEventInput,
   CreateMcpApiKeyInput,
   CreateDelegationRequestInput,
   CreateMcpServerRegistryInput,
   CreateProjectInput,
+  CreateProjectSecretInput,
+  CreateSecretAuditEventInput,
   DelegationExecutor,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
@@ -43,19 +46,25 @@ import type {
   EventPublisher,
   ListAuthSwitchEventsOptions,
   McpApiKeyEntity,
+  McpAuthAuditEventEntity,
   McpApiKeyStatus,
   McpKeyAclRuleEntity,
   McpKeyProfileBindingEntity,
+  McpKeyTemplateConstraintEntity,
   McpServerRegistryEntity,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
   ProjectEntity,
+  ProjectSecretEntity,
+  ProjectSecretRoleBindingEntity,
+  ProjectSecretTemplateBindingEntity,
   ProjectSummaryEntity,
   ScheduledRuleEntity,
   ScheduledRunEntity,
   ScheduleMisfirePolicy,
   ScheduleOverlapPolicy,
+  SecretAuditEventEntity,
   StorageService,
   TaskEntity,
   WorkerEntity
@@ -105,6 +114,12 @@ class FakePersistence implements Persistence {
   public readonly mcpApiKeys: McpApiKeyEntity[] = [];
   public readonly mcpKeyAclRules: McpKeyAclRuleEntity[] = [];
   public readonly mcpKeyProfileBindings: McpKeyProfileBindingEntity[] = [];
+  public readonly mcpKeyTemplateConstraints: McpKeyTemplateConstraintEntity[] = [];
+  public readonly mcpAuthAuditEvents: McpAuthAuditEventEntity[] = [];
+  public readonly projectSecrets: ProjectSecretEntity[] = [];
+  public readonly projectSecretTemplateBindings: ProjectSecretTemplateBindingEntity[] = [];
+  public readonly projectSecretRoleBindings: ProjectSecretRoleBindingEntity[] = [];
+  public readonly secretAuditEvents: SecretAuditEventEntity[] = [];
   public readonly projects: ProjectEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
@@ -130,6 +145,12 @@ class FakePersistence implements Persistence {
   private mcpApiKeyCounter = 1;
   private mcpKeyAclRuleCounter = 1;
   private mcpKeyProfileBindingCounter = 1;
+  private mcpKeyTemplateConstraintCounter = 1;
+  private mcpAuthAuditEventCounter = 1;
+  private projectSecretCounter = 1;
+  private projectSecretTemplateBindingCounter = 1;
+  private projectSecretRoleBindingCounter = 1;
+  private secretAuditEventCounter = 1;
   private projectCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
@@ -272,6 +293,277 @@ class FakePersistence implements Persistence {
       switch_events_window_hours: windowHours,
       last_switch_event_at: recentSwitchEvents[0]?.started_at ?? null
     };
+  }
+
+  public async createProjectSecret(input: CreateProjectSecretInput): Promise<ProjectSecretEntity> {
+    const duplicate = this.projectSecrets.find(
+      (item) => item.project_id === input.project_id && item.key === input.key
+    );
+    if (duplicate) {
+      const duplicateError = new Error("Project secret key already exists") as Error & { code?: string };
+      duplicateError.code = "P2002";
+      throw duplicateError;
+    }
+
+    const now = new Date();
+    const item: ProjectSecretEntity = {
+      id: `project-secret-${this.projectSecretCounter++}`,
+      project_id: input.project_id,
+      key: input.key,
+      description: input.description ?? null,
+      masked_preview: input.masked_preview ?? null,
+      is_active: input.is_active ?? true,
+      ciphertext: input.ciphertext,
+      dek_encrypted: input.dek_encrypted,
+      dek_kms_key_id: input.dek_kms_key_id,
+      algo: input.algo,
+      version: 1,
+      created_by: input.created_by,
+      updated_by: input.updated_by ?? input.created_by,
+      created_at: now,
+      updated_at: now,
+      rotated_at: null,
+      revoked_at: null
+    };
+    this.projectSecrets.push(item);
+    return item;
+  }
+
+  public async listProjectSecrets(
+    projectId: string,
+    options?: { include_inactive?: boolean; limit?: number }
+  ): Promise<ProjectSecretEntity[]> {
+    const includeInactive = options?.include_inactive ?? true;
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.projectSecrets
+      .filter((item) => item.project_id === projectId)
+      .filter((item) => (includeInactive ? true : item.is_active))
+      .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+
+    return filtered.slice(0, limit);
+  }
+
+  public async getProjectSecretById(
+    projectId: string,
+    secretId: string
+  ): Promise<ProjectSecretEntity | null> {
+    return (
+      this.projectSecrets.find((item) => item.project_id === projectId && item.id === secretId) ??
+      null
+    );
+  }
+
+  public async patchProjectSecret(
+    projectId: string,
+    secretId: string,
+    patch: {
+      description?: string | null;
+      is_active?: boolean;
+      updated_by?: string | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const secret = this.projectSecrets.find(
+      (item) => item.project_id === projectId && item.id === secretId
+    );
+    if (!secret) {
+      return null;
+    }
+
+    if (patch.description !== undefined) {
+      secret.description = patch.description;
+    }
+    if (patch.is_active !== undefined) {
+      secret.is_active = patch.is_active;
+    }
+    if (patch.updated_by !== undefined) {
+      secret.updated_by = patch.updated_by;
+    }
+    secret.updated_at = new Date();
+    return secret;
+  }
+
+  public async rotateProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      ciphertext: string;
+      dek_encrypted: string;
+      dek_kms_key_id: string;
+      algo: string;
+      masked_preview?: string | null;
+      updated_by?: string | null;
+      rotated_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const secret = this.projectSecrets.find(
+      (item) => item.project_id === projectId && item.id === secretId
+    );
+    if (!secret) {
+      return null;
+    }
+
+    secret.ciphertext = input.ciphertext;
+    secret.dek_encrypted = input.dek_encrypted;
+    secret.dek_kms_key_id = input.dek_kms_key_id;
+    secret.algo = input.algo;
+    if (input.masked_preview !== undefined) {
+      secret.masked_preview = input.masked_preview;
+    }
+    secret.version += 1;
+    secret.is_active = true;
+    secret.revoked_at = null;
+    secret.rotated_at = input.rotated_at ?? new Date();
+    if (input.updated_by !== undefined) {
+      secret.updated_by = input.updated_by;
+    }
+    secret.updated_at = new Date();
+    return secret;
+  }
+
+  public async revokeProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      updated_by?: string | null;
+      revoked_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const secret = this.projectSecrets.find(
+      (item) => item.project_id === projectId && item.id === secretId
+    );
+    if (!secret) {
+      return null;
+    }
+
+    secret.is_active = false;
+    secret.revoked_at = input.revoked_at ?? new Date();
+    if (input.updated_by !== undefined) {
+      secret.updated_by = input.updated_by;
+    }
+    secret.updated_at = new Date();
+    return secret;
+  }
+
+  public async bindProjectSecretToTemplate(
+    secretId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<ProjectSecretTemplateBindingEntity | null> {
+    const secret = this.projectSecrets.find((item) => item.id === secretId);
+    const template = this.agentTemplates.find((item) => item.id === templateId);
+    if (!secret || !template) {
+      return null;
+    }
+
+    const existing = this.projectSecretTemplateBindings.find(
+      (item) => item.secret_id === secretId && item.template_id === templateId
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const binding: ProjectSecretTemplateBindingEntity = {
+      id: `project-secret-template-binding-${this.projectSecretTemplateBindingCounter++}`,
+      secret_id: secretId,
+      template_id: templateId,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.projectSecretTemplateBindings.push(binding);
+    return binding;
+  }
+
+  public async unbindProjectSecretFromTemplate(secretId: string, templateId: string): Promise<boolean> {
+    const index = this.projectSecretTemplateBindings.findIndex(
+      (item) => item.secret_id === secretId && item.template_id === templateId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.projectSecretTemplateBindings.splice(index, 1);
+    return true;
+  }
+
+  public async listProjectSecretTemplateBindings(
+    secretId: string
+  ): Promise<ProjectSecretTemplateBindingEntity[]> {
+    return this.projectSecretTemplateBindings
+      .filter((item) => item.secret_id === secretId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
+  public async bindProjectSecretToRole(
+    secretId: string,
+    role: string,
+    createdBy: string
+  ): Promise<ProjectSecretRoleBindingEntity | null> {
+    const secret = this.projectSecrets.find((item) => item.id === secretId);
+    if (!secret) {
+      return null;
+    }
+
+    const existing = this.projectSecretRoleBindings.find(
+      (item) => item.secret_id === secretId && item.role === role
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const binding: ProjectSecretRoleBindingEntity = {
+      id: `project-secret-role-binding-${this.projectSecretRoleBindingCounter++}`,
+      secret_id: secretId,
+      role,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.projectSecretRoleBindings.push(binding);
+    return binding;
+  }
+
+  public async unbindProjectSecretFromRole(secretId: string, role: string): Promise<boolean> {
+    const index = this.projectSecretRoleBindings.findIndex(
+      (item) => item.secret_id === secretId && item.role === role
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.projectSecretRoleBindings.splice(index, 1);
+    return true;
+  }
+
+  public async listProjectSecretRoleBindings(secretId: string): Promise<ProjectSecretRoleBindingEntity[]> {
+    return this.projectSecretRoleBindings
+      .filter((item) => item.secret_id === secretId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
+  public async createSecretAuditEvent(input: CreateSecretAuditEventInput): Promise<SecretAuditEventEntity> {
+    const event: SecretAuditEventEntity = {
+      id: `secret-audit-${this.secretAuditEventCounter++}`,
+      secret_id: input.secret_id ?? null,
+      project_id: input.project_id,
+      event_type: input.event_type,
+      actor: input.actor,
+      trace_id: input.trace_id ?? null,
+      metadata_json: input.metadata_json ?? null,
+      created_at: new Date()
+    };
+    this.secretAuditEvents.push(event);
+    return event;
+  }
+
+  public async listSecretAuditEvents(
+    projectId: string,
+    options?: { secret_id?: string; limit?: number }
+  ): Promise<SecretAuditEventEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.secretAuditEvents
+      .filter((item) => item.project_id === projectId)
+      .filter((item) => (options?.secret_id ? item.secret_id === options.secret_id : true))
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+    return filtered.slice(0, limit);
   }
 
   public async createTask(input: {
@@ -870,6 +1162,10 @@ class FakePersistence implements Persistence {
     return this.mcpApiKeys.find((item) => item.id === id) ?? null;
   }
 
+  public async getMcpApiKeyByHash(keyHash: string): Promise<McpApiKeyEntity | null> {
+    return this.mcpApiKeys.find((item) => item.key_hash === keyHash) ?? null;
+  }
+
   public async patchMcpApiKey(
     id: string,
     patch: {
@@ -900,6 +1196,20 @@ class FakePersistence implements Persistence {
     if (patch.updated_by !== undefined) {
       key.updated_by = patch.updated_by;
     }
+    key.updated_at = new Date();
+    return key;
+  }
+
+  public async markMcpApiKeyLastUsed(
+    id: string,
+    lastUsedAt?: Date
+  ): Promise<McpApiKeyEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === id);
+    if (!key) {
+      return null;
+    }
+
+    key.last_used_at = lastUsedAt ?? new Date();
     key.updated_at = new Date();
     return key;
   }
@@ -1043,6 +1353,71 @@ class FakePersistence implements Persistence {
     return this.mcpKeyProfileBindings
       .filter((item) => item.key_id === keyId)
       .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
+  public async bindMcpKeyTemplateConstraint(
+    keyId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<McpKeyTemplateConstraintEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === keyId);
+    const template = this.agentTemplates.find((item) => item.id === templateId);
+    if (!key || !template) {
+      return null;
+    }
+
+    const existing = this.mcpKeyTemplateConstraints.find(
+      (item) => item.key_id === keyId && item.agent_template_id === templateId
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const constraint: McpKeyTemplateConstraintEntity = {
+      id: `mcp-key-template-constraint-${this.mcpKeyTemplateConstraintCounter++}`,
+      key_id: keyId,
+      agent_template_id: templateId,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.mcpKeyTemplateConstraints.push(constraint);
+    return constraint;
+  }
+
+  public async unbindMcpKeyTemplateConstraint(keyId: string, templateId: string): Promise<boolean> {
+    const index = this.mcpKeyTemplateConstraints.findIndex(
+      (item) => item.key_id === keyId && item.agent_template_id === templateId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.mcpKeyTemplateConstraints.splice(index, 1);
+    return true;
+  }
+
+  public async listMcpKeyTemplateConstraints(
+    keyId: string
+  ): Promise<McpKeyTemplateConstraintEntity[]> {
+    return this.mcpKeyTemplateConstraints
+      .filter((item) => item.key_id === keyId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
+  public async createMcpAuthAuditEvent(
+    input: CreateMcpAuthAuditEventInput
+  ): Promise<McpAuthAuditEventEntity> {
+    const event: McpAuthAuditEventEntity = {
+      id: `mcp-auth-audit-${this.mcpAuthAuditEventCounter++}`,
+      key_id: input.key_id ?? null,
+      event_type: input.event_type,
+      actor: input.actor,
+      trace_id: input.trace_id ?? null,
+      request_meta_json: input.request_meta_json ?? null,
+      created_at: new Date()
+    };
+    this.mcpAuthAuditEvents.push(event);
+    return event;
   }
 
   public async upsertAgentProfileScriptSet(
@@ -1914,6 +2289,7 @@ describe("smoke-core API", () => {
     s3Bucket: "orchestrator-artifacts",
     s3AccessKey: "test",
     s3SecretKey: "test",
+    secretsMasterKey: "unit-test-secrets-key",
     maxAuthJsonBytes: 2 * 1024 * 1024,
     switchModuleDefaultEnabled: true,
     switchWeeklyRemainingPercentLt: 5,
@@ -2172,6 +2548,119 @@ describe("smoke-core API", () => {
     expect(response.json().tasks_by_status.DONE).toBe(1);
     expect(response.json().active_memory_entries).toBe(1);
     expect(response.json().switch_events_recent).toBe(1);
+  });
+
+  it("creates, rotates and revokes project secrets without returning raw value", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects/project/secrets",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "OPENAI_API_KEY",
+        value: "sk-test-1234567890",
+        description: "Primary key"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json().key).toBe("OPENAI_API_KEY");
+    expect(createResponse.json().description).toBe("Primary key");
+    expect(createResponse.json().masked_preview).toContain("*");
+    expect(createResponse.json().value).toBeUndefined();
+    expect(persistence.projectSecrets).toHaveLength(1);
+    expect(persistence.projectSecrets[0]?.ciphertext).not.toContain("sk-test-1234567890");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/projects/project/secrets",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+    expect(listResponse.json().items[0].value).toBeUndefined();
+    expect(listResponse.json().items[0].template_bindings).toEqual([]);
+    expect(listResponse.json().items[0].role_bindings).toEqual([]);
+
+    const secretId = createResponse.json().id as string;
+    const rotateResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/project/secrets/${secretId}/rotate`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        value: "sk-rotated-2222"
+      }
+    });
+    expect(rotateResponse.statusCode).toBe(200);
+    expect(rotateResponse.json().version).toBe(2);
+    expect(rotateResponse.json().masked_preview).toContain("*");
+    expect(rotateResponse.json().value).toBeUndefined();
+
+    const revokeResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/project/secrets/${secretId}/revoke`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(revokeResponse.statusCode).toBe(200);
+    expect(revokeResponse.json().is_active).toBe(false);
+    expect(revokeResponse.json().revoked_at).not.toBeNull();
+
+    expect(persistence.secretAuditEvents.map((event) => event.event_type)).toEqual([
+      "created",
+      "rotated",
+      "revoked"
+    ]);
+  });
+
+  it("manages project secret role/template bindings", async () => {
+    const template = await persistence.createAgentTemplate({
+      name: "secret-template",
+      role: "reviewer",
+      model: "gpt-5.4-mini",
+      system_prompt: "test",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects/project/secrets",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "BROWSER_TOKEN",
+        value: "browser-secret-1",
+        bind_template_ids: [template.id],
+        bind_roles: ["Reviewer"]
+      }
+    });
+    expect(createResponse.statusCode).toBe(201);
+    const secretId = createResponse.json().id as string;
+    expect(createResponse.json().template_bindings).toHaveLength(1);
+    expect(createResponse.json().role_bindings).toHaveLength(1);
+    expect(createResponse.json().role_bindings[0].role).toBe("reviewer");
+
+    const addRoleResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/project/secrets/${secretId}/bindings/roles/tester`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(addRoleResponse.statusCode).toBe(200);
+    expect(addRoleResponse.json().role).toBe("tester");
+
+    const removeRoleResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/project/secrets/${secretId}/bindings/roles/tester`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(removeRoleResponse.statusCode).toBe(200);
+    expect(removeRoleResponse.json().ok).toBe(true);
+
+    const removeTemplateResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/project/secrets/${secretId}/bindings/templates/${template.id}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(removeTemplateResponse.statusCode).toBe(200);
+    expect(removeTemplateResponse.json().ok).toBe(true);
   });
 
   it("validates project_id for task and memory create", async () => {
@@ -4185,6 +4674,195 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken }
     });
     expect(deleteAgainResponse.statusCode).toBe(404);
+  });
+
+  it("evaluates MCP authz by key status, ACL and profile binding", async () => {
+    const createProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-profiles",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        project_id: "project",
+        name: "qa profile",
+        role: "tester"
+      }
+    });
+    expect(createProfileResponse.statusCode).toBe(201);
+    const profileId = createProfileResponse.json().id as string;
+
+    const createKeyResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/keys",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "qa-key",
+        acl_tools: ["orchestrator.list_tasks"],
+        profile_ids: [profileId]
+      }
+    });
+    expect(createKeyResponse.statusCode).toBe(201);
+    const keyId = createKeyResponse.json().id as string;
+    const secret = createKeyResponse.json().secret as string;
+
+    const allowedResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-authz-allow-1" },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.list_tasks",
+        agent_profile_id: profileId
+      }
+    });
+    expect(allowedResponse.statusCode).toBe(200);
+    expect(allowedResponse.json()).toMatchObject({
+      allowed: true,
+      key_id: keyId
+    });
+
+    const wrongToolResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.dispatch_agent",
+        agent_profile_id: profileId
+      }
+    });
+    expect(wrongToolResponse.statusCode).toBe(403);
+    expect(wrongToolResponse.json().code).toBe("MCP_TOOL_FORBIDDEN");
+
+    const wrongProfileResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.list_tasks",
+        agent_profile_id: "unknown-profile"
+      }
+    });
+    expect(wrongProfileResponse.statusCode).toBe(403);
+    expect(wrongProfileResponse.json().code).toBe("MCP_PROFILE_FORBIDDEN");
+
+    const missingKeyResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        tool_name: "orchestrator.list_tasks"
+      }
+    });
+    expect(missingKeyResponse.statusCode).toBe(401);
+    expect(missingKeyResponse.json().code).toBe("MCP_KEY_REQUIRED");
+
+    await app.inject({
+      method: "POST",
+      url: `/api/mcp/keys/${keyId}/revoke`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    const revokedResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.list_tasks",
+        agent_profile_id: profileId
+      }
+    });
+    expect(revokedResponse.statusCode).toBe(401);
+    expect(revokedResponse.json().code).toBe("MCP_KEY_REVOKED");
+
+    expect(
+      persistence.mcpAuthAuditEvents.some(
+        (event) => event.event_type === "allowed" && event.key_id === keyId
+      )
+    ).toBe(true);
+    expect(
+      persistence.mcpAuthAuditEvents.some(
+        (event) =>
+          event.event_type === "denied" &&
+          (event.request_meta_json?.["code"] as string | undefined) === "MCP_TOOL_FORBIDDEN"
+      )
+    ).toBe(true);
+  });
+
+  it("applies MCP template constraints in authz evaluate", async () => {
+    const createTemplateResponse = await app.inject({
+      method: "POST",
+      url: "/api/agents/templates",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "tpl-authz",
+        role: "reviewer",
+        model: "gpt-5.4-mini",
+        system_prompt: "review",
+        sandbox_policy: "workspace-write",
+        approval_policy: "never"
+      }
+    });
+    expect(createTemplateResponse.statusCode).toBe(201);
+    const templateId = createTemplateResponse.json().id as string;
+
+    const createKeyResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/keys",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        name: "template-key",
+        acl_tools: ["orchestrator.list_tasks"]
+      }
+    });
+    expect(createKeyResponse.statusCode).toBe(201);
+    const keyId = createKeyResponse.json().id as string;
+    const secret = createKeyResponse.json().secret as string;
+
+    const bindConstraintResponse = await app.inject({
+      method: "POST",
+      url: `/api/mcp/keys/${keyId}/constraints/templates/${templateId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(bindConstraintResponse.statusCode).toBe(200);
+    expect(bindConstraintResponse.json()).toMatchObject({
+      key_id: keyId,
+      agent_template_id: templateId
+    });
+
+    const forbiddenTemplateResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.list_tasks",
+        agent_template_id: "another-template"
+      }
+    });
+    expect(forbiddenTemplateResponse.statusCode).toBe(403);
+    expect(forbiddenTemplateResponse.json().code).toBe("MCP_TEMPLATE_FORBIDDEN");
+
+    const allowedTemplateResponse = await app.inject({
+      method: "POST",
+      url: "/api/mcp/authz/evaluate",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        api_key: secret,
+        tool_name: "orchestrator.list_tasks",
+        agent_template_id: templateId
+      }
+    });
+    expect(allowedTemplateResponse.statusCode).toBe(200);
+    expect(allowedTemplateResponse.json().allowed).toBe(true);
+
+    const removeConstraintResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/mcp/keys/${keyId}/constraints/templates/${templateId}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(removeConstraintResponse.statusCode).toBe(204);
   });
 
   it("injects project-role memory into delegation execution payload", async () => {

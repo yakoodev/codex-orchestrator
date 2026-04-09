@@ -1,7 +1,7 @@
 # MCP AuthZ ACL v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `in_progress` (Phase 1 key-management backend реализован)
+Статус: `in_progress` (Phase 1+2 backend/runtime реализованы)
 
 ## 1. Цель
 
@@ -48,7 +48,7 @@
 5. При наличии template constraint — проверить template.
 6. Пропустить вызов только при прохождении всех applicable проверок.
 
-## 5. API-контракт (planned)
+## 5. API-контракт
 
 - `POST /api/mcp/keys`
 - `GET /api/mcp/keys`
@@ -57,10 +57,9 @@
 - `POST /api/mcp/keys/{id}/revoke`
 - `POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}`
 - `DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`
-
-Опционально (execution constraints):
 - `POST /api/mcp/keys/{id}/constraints/templates/{template_id}`
 - `DELETE /api/mcp/keys/{id}/constraints/templates/{template_id}`
+- `POST /api/mcp/authz/evaluate`
 
 Дополнительно в `PATCH`:
 - управление ACL (`tool_name` allow-rules);
@@ -107,7 +106,8 @@
 
 ## 10. Текущий прогресс реализации
 
-- Реализовано (Phase 1 backend):
+- Реализовано:
+  - Phase 1 (key-management backend):
   - Prisma: `McpApiKey`, `McpKeyAclRule`, `McpKeyProfileBinding` (+ миграция `0010_mcp_authz_acl_v2_keys`);
   - API:
     - `POST/GET /api/mcp/keys`
@@ -116,7 +116,15 @@
     - `POST /api/mcp/keys/{id}/revoke`
     - `POST/DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`;
   - one-time выдача raw секрета только для `create/rotate`.
+  - Phase 2 (runtime authz enforcement + audit):
+    - Prisma: `McpKeyTemplateConstraint`, `McpAuthAuditEvent` (+ миграция `0011_mcp_authz_audit_and_template_constraints`);
+    - API:
+      - `POST /api/mcp/keys/{id}/constraints/templates/{template_id}`
+      - `DELETE /api/mcp/keys/{id}/constraints/templates/{template_id}`
+      - `POST /api/mcp/authz/evaluate`;
+    - MCP bridge делает pre-tool authz evaluate (`401/403`) с проверкой key status, ACL, profile binding, template constraints;
+    - при `allowed` обновляется `last_used_at`, по каждому outcome создается `McpAuthAuditEvent`;
+    - добавлены runtime env-параметры: `MCP_API_KEY`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`.
 - Остается:
-  - runtime authz enforcement в MCP bridge (`401/403` deny-path);
-  - `McpAuthAuditEvent` и обновление `last_used_at` в authz flow;
-  - template constraints (`McpKeyTemplateConstraint`) как follow-up.
+  - UI/операторский контур для lifecycle MCP ключей и binding-потоков;
+  - rollout по агентным профилям и интеграция с coordination/governor telemetry.

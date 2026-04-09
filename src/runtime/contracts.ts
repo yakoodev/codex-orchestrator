@@ -388,6 +388,71 @@ export interface McpKeyProfileBindingEntity {
   created_at: Date;
 }
 
+export interface McpKeyTemplateConstraintEntity {
+  id: string;
+  key_id: string;
+  agent_template_id: string;
+  created_by: string;
+  created_at: Date;
+}
+
+export interface McpAuthAuditEventEntity {
+  id: string;
+  key_id: string | null;
+  event_type: string;
+  actor: string;
+  trace_id: string | null;
+  request_meta_json: Record<string, unknown> | null;
+  created_at: Date;
+}
+
+export interface ProjectSecretEntity {
+  id: string;
+  project_id: string;
+  key: string;
+  description: string | null;
+  masked_preview: string | null;
+  is_active: boolean;
+  ciphertext: string;
+  dek_encrypted: string;
+  dek_kms_key_id: string;
+  algo: string;
+  version: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+  rotated_at: Date | null;
+  revoked_at: Date | null;
+}
+
+export interface ProjectSecretTemplateBindingEntity {
+  id: string;
+  secret_id: string;
+  template_id: string;
+  created_by: string;
+  created_at: Date;
+}
+
+export interface ProjectSecretRoleBindingEntity {
+  id: string;
+  secret_id: string;
+  role: string;
+  created_by: string;
+  created_at: Date;
+}
+
+export interface SecretAuditEventEntity {
+  id: string;
+  secret_id: string | null;
+  project_id: string;
+  event_type: string;
+  actor: string;
+  trace_id: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: Date;
+}
+
 export type ScheduleScope = "global" | "project";
 export type ScheduleOverlapPolicy = "one_active_skip";
 export type ScheduleMisfirePolicy = "recompute_due_on_restart";
@@ -595,6 +660,37 @@ export interface CreateMcpApiKeyInput {
   meta_json?: Record<string, unknown> | null;
 }
 
+export interface CreateMcpAuthAuditEventInput {
+  key_id?: string | null;
+  event_type: string;
+  actor: string;
+  trace_id?: string | null;
+  request_meta_json?: Record<string, unknown> | null;
+}
+
+export interface CreateProjectSecretInput {
+  project_id: string;
+  key: string;
+  description?: string | null;
+  masked_preview?: string | null;
+  is_active?: boolean;
+  ciphertext: string;
+  dek_encrypted: string;
+  dek_kms_key_id: string;
+  algo: string;
+  created_by: string;
+  updated_by?: string | null;
+}
+
+export interface CreateSecretAuditEventInput {
+  secret_id?: string | null;
+  project_id: string;
+  event_type: string;
+  actor: string;
+  trace_id?: string | null;
+  metadata_json?: Record<string, unknown> | null;
+}
+
 export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
@@ -661,6 +757,61 @@ export interface Persistence {
     key: string,
     options?: { switch_events_window_hours?: number }
   ): Promise<ProjectSummaryEntity | null>;
+  createProjectSecret(input: CreateProjectSecretInput): Promise<ProjectSecretEntity>;
+  listProjectSecrets(
+    projectId: string,
+    options?: { include_inactive?: boolean; limit?: number }
+  ): Promise<ProjectSecretEntity[]>;
+  getProjectSecretById(projectId: string, secretId: string): Promise<ProjectSecretEntity | null>;
+  patchProjectSecret(
+    projectId: string,
+    secretId: string,
+    patch: {
+      description?: string | null;
+      is_active?: boolean;
+      updated_by?: string | null;
+    }
+  ): Promise<ProjectSecretEntity | null>;
+  rotateProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      ciphertext: string;
+      dek_encrypted: string;
+      dek_kms_key_id: string;
+      algo: string;
+      masked_preview?: string | null;
+      updated_by?: string | null;
+      rotated_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null>;
+  revokeProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      updated_by?: string | null;
+      revoked_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null>;
+  bindProjectSecretToTemplate(
+    secretId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<ProjectSecretTemplateBindingEntity | null>;
+  unbindProjectSecretFromTemplate(secretId: string, templateId: string): Promise<boolean>;
+  listProjectSecretTemplateBindings(secretId: string): Promise<ProjectSecretTemplateBindingEntity[]>;
+  bindProjectSecretToRole(
+    secretId: string,
+    role: string,
+    createdBy: string
+  ): Promise<ProjectSecretRoleBindingEntity | null>;
+  unbindProjectSecretFromRole(secretId: string, role: string): Promise<boolean>;
+  listProjectSecretRoleBindings(secretId: string): Promise<ProjectSecretRoleBindingEntity[]>;
+  createSecretAuditEvent(input: CreateSecretAuditEventInput): Promise<SecretAuditEventEntity>;
+  listSecretAuditEvents(
+    projectId: string,
+    options?: { secret_id?: string; limit?: number }
+  ): Promise<SecretAuditEventEntity[]>;
   createTask(input: CreateTaskInput): Promise<TaskEntity>;
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
   getTaskById(id: string): Promise<TaskEntity | null>;
@@ -752,6 +903,7 @@ export interface Persistence {
     limit?: number;
   }): Promise<McpApiKeyEntity[]>;
   getMcpApiKeyById(id: string): Promise<McpApiKeyEntity | null>;
+  getMcpApiKeyByHash(keyHash: string): Promise<McpApiKeyEntity | null>;
   patchMcpApiKey(
     id: string,
     patch: {
@@ -762,6 +914,7 @@ export interface Persistence {
       updated_by?: string | null;
     }
   ): Promise<McpApiKeyEntity | null>;
+  markMcpApiKeyLastUsed(id: string, lastUsedAt?: Date): Promise<McpApiKeyEntity | null>;
   rotateMcpApiKey(
     id: string,
     input: {
@@ -793,6 +946,14 @@ export interface Persistence {
   ): Promise<McpKeyProfileBindingEntity | null>;
   unbindMcpKeyFromProfile(keyId: string, profileId: string): Promise<boolean>;
   listMcpKeyProfileBindings(keyId: string): Promise<McpKeyProfileBindingEntity[]>;
+  bindMcpKeyTemplateConstraint(
+    keyId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<McpKeyTemplateConstraintEntity | null>;
+  unbindMcpKeyTemplateConstraint(keyId: string, templateId: string): Promise<boolean>;
+  listMcpKeyTemplateConstraints(keyId: string): Promise<McpKeyTemplateConstraintEntity[]>;
+  createMcpAuthAuditEvent(input: CreateMcpAuthAuditEventInput): Promise<McpAuthAuditEventEntity>;
   upsertAgentProfileScriptSet(
     profileId: string,
     input: {

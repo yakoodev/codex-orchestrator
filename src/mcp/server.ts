@@ -17,6 +17,12 @@ export interface CreateOrchestratorMcpServerOptions {
   apiClient: OrchestratorApiClient;
   serverName?: string;
   serverVersion?: string;
+  authz?: {
+    mcp_api_key?: string;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    actor?: string;
+  };
 }
 
 const DEFAULT_SERVER_NAME = "codex-orchestrator-mcp";
@@ -862,6 +868,38 @@ export function createOrchestratorMcpServer(
     name: options.serverName ?? DEFAULT_SERVER_NAME,
     version: options.serverVersion ?? DEFAULT_SERVER_VERSION
   });
+  const authzApiKey = asStringValue(options.authz?.mcp_api_key);
+  const authzAgentProfileId = asStringValue(options.authz?.agent_profile_id);
+  const authzAgentTemplateId = asStringValue(options.authz?.agent_template_id);
+  const authzActor = asStringValue(options.authz?.actor) ?? "mcp_bridge";
+
+  const authorizeToolCall = async (
+    toolName: string,
+    toolInput?: unknown
+  ): Promise<CallToolResult | null> => {
+    if (!authzApiKey) {
+      return null;
+    }
+
+    const inputRecord = asRecord(toolInput);
+    const traceId = asStringValue(inputRecord["trace_id"]) ?? randomUUID();
+
+    try {
+      await options.apiClient.evaluateMcpToolAccess(
+        {
+          api_key: authzApiKey,
+          tool_name: toolName,
+          agent_profile_id: authzAgentProfileId ?? undefined,
+          agent_template_id: authzAgentTemplateId ?? undefined,
+          actor: authzActor
+        },
+        traceId
+      );
+      return null;
+    } catch (error) {
+      return toToolError(error);
+    }
+  };
 
   server.registerTool(
     "orchestrator.list_agents",
@@ -871,6 +909,10 @@ export function createOrchestratorMcpServer(
     },
     async (): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.list_agents");
+        if (authError) {
+          return authError;
+        }
         const [templatesResponse, capabilitiesResponse] = await Promise.all([
           options.apiClient.listAgentTemplates(),
           options.apiClient.listDelegationCapabilities()
@@ -905,8 +947,13 @@ export function createOrchestratorMcpServer(
         limit: z.number().int().min(1).max(500).optional()
       }
     },
-    async ({ status, limit }): Promise<CallToolResult> => {
+    async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.list_tasks", input);
+        if (authError) {
+          return authError;
+        }
+        const { status, limit } = input;
         const tasksResponse = await options.apiClient.listTasks({ status });
         const limitedItems =
           typeof limit === "number" ? tasksResponse.items.slice(0, limit) : tasksResponse.items;
@@ -947,6 +994,10 @@ export function createOrchestratorMcpServer(
     },
     async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.dispatch_agent", input);
+        if (authError) {
+          return authError;
+        }
         const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
         const dispatchInput = normalizeDispatchInput(input);
         const response = await options.apiClient.dispatchAgent(dispatchInput, traceId);
@@ -986,6 +1037,10 @@ export function createOrchestratorMcpServer(
     },
     async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.create_agent_request", input);
+        if (authError) {
+          return authError;
+        }
         const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
         const payload = normalizeAgentRequestCreateInput(input);
         const result = await options.apiClient.createAgentRequest(payload, traceId);
@@ -1016,16 +1071,21 @@ export function createOrchestratorMcpServer(
         limit: z.number().int().min(1).max(500).optional()
       }
     },
-    async ({
-      project_id: projectId,
-      task_id: taskId,
-      agent_profile_id: agentProfileId,
-      agent_template_id: agentTemplateId,
-      type,
-      include_in_progress: includeInProgress,
-      limit
-    }): Promise<CallToolResult> => {
+    async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.list_open_agent_requests", input);
+        if (authError) {
+          return authError;
+        }
+        const {
+          project_id: projectId,
+          task_id: taskId,
+          agent_profile_id: agentProfileId,
+          agent_template_id: agentTemplateId,
+          type,
+          include_in_progress: includeInProgress,
+          limit
+        } = input;
         const response = await options.apiClient.listOpenAgentRequests({
           project_id: projectId?.trim().toLowerCase(),
           task_id: taskId?.trim(),
@@ -1064,6 +1124,10 @@ export function createOrchestratorMcpServer(
     },
     async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.resolve_agent_request", input);
+        if (authError) {
+          return authError;
+        }
         const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
         const resolveInput: AgentRequestResolveInput = {
           status: input.status,
@@ -1110,6 +1174,13 @@ export function createOrchestratorMcpServer(
     },
     async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall(
+          "orchestrator.governor_process_open_agent_requests",
+          input
+        );
+        if (authError) {
+          return authError;
+        }
         const baseTraceId = resolveTraceId(input.trace_id, input.idempotency_key);
         const governorId = input.governor_id?.trim() || GOVERNOR_DEFAULT_ID;
         const includeInProgress = input.include_in_progress ?? false;
@@ -1299,12 +1370,17 @@ export function createOrchestratorMcpServer(
         limit_profiles: z.number().int().min(1).max(100).optional()
       }
     },
-    async ({
-      profile_id: profileIdInput,
-      include_inactive: includeInactiveInput,
-      limit_profiles: limitProfiles
-    }): Promise<CallToolResult> => {
+    async (input): Promise<CallToolResult> => {
       try {
+        const authError = await authorizeToolCall("orchestrator.get_limits", input);
+        if (authError) {
+          return authError;
+        }
+        const {
+          profile_id: profileIdInput,
+          include_inactive: includeInactiveInput,
+          limit_profiles: limitProfiles
+        } = input;
         const profileId = asStringValue(profileIdInput);
 
         if (profileId) {

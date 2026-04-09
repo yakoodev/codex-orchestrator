@@ -44,6 +44,7 @@ import type {
   AuthProfileEntity,
   AuthSwitchEventEntity,
   CreateProjectInput,
+  CreateProjectSecretInput,
   CreateAgentProfileInput,
   CreateAgentRequestAuditEventInput,
   CreateAgentRequestInput,
@@ -54,7 +55,9 @@ import type {
   CreateAuthContextInput,
   CreateDelegationRequestInput,
   CreateInterventionInput,
+  CreateMcpAuthAuditEventInput,
   CreateMcpApiKeyInput,
+  CreateSecretAuditEventInput,
   CreateModuleExecutionInput,
   CreateScheduledRuleInput,
   CreateScheduledRunInput,
@@ -67,20 +70,26 @@ import type {
   ModuleExecutionEntity,
   McpApiKeyEntity,
   McpApiKeyStatus,
+  McpAuthAuditEventEntity,
   McpKeyAclRuleEntity,
   McpKeyProfileBindingEntity,
+  McpKeyTemplateConstraintEntity,
   McpServerOriginType,
   McpServerRegistryEntity,
   McpServerTransport,
   PackRegistryEntity,
   Persistence,
   ProjectEntity,
+  ProjectSecretEntity,
+  ProjectSecretRoleBindingEntity,
+  ProjectSecretTemplateBindingEntity,
   ProjectSummaryEntity,
   ScheduledRuleEntity,
   ScheduledRunEntity,
   ScheduleMisfirePolicy,
   ScheduleOverlapPolicy,
   ScheduleScope,
+  SecretAuditEventEntity,
   ScheduledRunStatus,
   TaskEntity,
   WorkerEntity
@@ -136,6 +145,100 @@ function toProjectEntity(entity: {
     is_active: entity.is_active,
     created_at: entity.created_at,
     updated_at: entity.updated_at
+  };
+}
+
+function toProjectSecretEntity(entity: {
+  id: string;
+  project_id: string;
+  key: string;
+  description: string | null;
+  masked_preview: string | null;
+  is_active: boolean;
+  ciphertext: string;
+  dek_encrypted: string;
+  dek_kms_key_id: string;
+  algo: string;
+  version: number;
+  created_by: string;
+  updated_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+  rotated_at: Date | null;
+  revoked_at: Date | null;
+}): ProjectSecretEntity {
+  return {
+    id: entity.id,
+    project_id: entity.project_id,
+    key: entity.key,
+    description: entity.description,
+    masked_preview: entity.masked_preview,
+    is_active: entity.is_active,
+    ciphertext: entity.ciphertext,
+    dek_encrypted: entity.dek_encrypted,
+    dek_kms_key_id: entity.dek_kms_key_id,
+    algo: entity.algo,
+    version: entity.version,
+    created_by: entity.created_by,
+    updated_by: entity.updated_by,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at,
+    rotated_at: entity.rotated_at,
+    revoked_at: entity.revoked_at
+  };
+}
+
+function toProjectSecretTemplateBindingEntity(entity: {
+  id: string;
+  secret_id: string;
+  template_id: string;
+  created_by: string;
+  created_at: Date;
+}): ProjectSecretTemplateBindingEntity {
+  return {
+    id: entity.id,
+    secret_id: entity.secret_id,
+    template_id: entity.template_id,
+    created_by: entity.created_by,
+    created_at: entity.created_at
+  };
+}
+
+function toProjectSecretRoleBindingEntity(entity: {
+  id: string;
+  secret_id: string;
+  role: string;
+  created_by: string;
+  created_at: Date;
+}): ProjectSecretRoleBindingEntity {
+  return {
+    id: entity.id,
+    secret_id: entity.secret_id,
+    role: entity.role,
+    created_by: entity.created_by,
+    created_at: entity.created_at
+  };
+}
+
+function toSecretAuditEventEntity(entity: {
+  id: string;
+  secret_id: string | null;
+  project_id: string;
+  event_type: string;
+  actor: string;
+  trace_id: string | null;
+  metadata_json: Prisma.JsonValue | null;
+  created_at: Date;
+}): SecretAuditEventEntity {
+  return {
+    id: entity.id,
+    secret_id: entity.secret_id,
+    project_id: entity.project_id,
+    event_type: entity.event_type,
+    actor: entity.actor,
+    trace_id: entity.trace_id,
+    metadata_json: entity.metadata_json as Record<string, unknown> | null,
+    created_at: entity.created_at
   };
 }
 
@@ -559,6 +662,42 @@ function toMcpKeyProfileBindingEntity(entity: {
   };
 }
 
+function toMcpKeyTemplateConstraintEntity(entity: {
+  id: string;
+  key_id: string;
+  agent_template_id: string;
+  created_by: string;
+  created_at: Date;
+}): McpKeyTemplateConstraintEntity {
+  return {
+    id: entity.id,
+    key_id: entity.key_id,
+    agent_template_id: entity.agent_template_id,
+    created_by: entity.created_by,
+    created_at: entity.created_at
+  };
+}
+
+function toMcpAuthAuditEventEntity(entity: {
+  id: string;
+  key_id: string | null;
+  event_type: string;
+  actor: string;
+  trace_id: string | null;
+  request_meta_json: Prisma.JsonValue | null;
+  created_at: Date;
+}): McpAuthAuditEventEntity {
+  return {
+    id: entity.id,
+    key_id: entity.key_id,
+    event_type: entity.event_type,
+    actor: entity.actor,
+    trace_id: entity.trace_id,
+    request_meta_json: entity.request_meta_json as Record<string, unknown> | null,
+    created_at: entity.created_at
+  };
+}
+
 function toScheduledRuleEntity(entity: {
   id: string;
   name: string;
@@ -829,6 +968,317 @@ export class PrismaPersistence implements Persistence {
       switch_events_window_hours: windowHours,
       last_switch_event_at: switchEvents[0]?.started_at ?? null
     };
+  }
+
+  public async createProjectSecret(input: CreateProjectSecretInput): Promise<ProjectSecretEntity> {
+    const created = await this.prisma.projectSecret.create({
+      data: {
+        project_id: input.project_id,
+        key: input.key,
+        description: input.description ?? null,
+        masked_preview: input.masked_preview ?? null,
+        is_active: input.is_active ?? true,
+        ciphertext: input.ciphertext,
+        dek_encrypted: input.dek_encrypted,
+        dek_kms_key_id: input.dek_kms_key_id,
+        algo: input.algo,
+        version: 1,
+        created_by: input.created_by,
+        updated_by: input.updated_by ?? input.created_by
+      }
+    });
+
+    return toProjectSecretEntity(created);
+  }
+
+  public async listProjectSecrets(
+    projectId: string,
+    options?: { include_inactive?: boolean; limit?: number }
+  ): Promise<ProjectSecretEntity[]> {
+    const includeInactive = options?.include_inactive ?? true;
+    const items = await this.prisma.projectSecret.findMany({
+      where: {
+        project_id: projectId,
+        ...(includeInactive ? {} : { is_active: true })
+      },
+      orderBy: [{ is_active: "desc" }, { updated_at: "desc" }],
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toProjectSecretEntity(item));
+  }
+
+  public async getProjectSecretById(
+    projectId: string,
+    secretId: string
+  ): Promise<ProjectSecretEntity | null> {
+    const secret = await this.prisma.projectSecret.findFirst({
+      where: {
+        id: secretId,
+        project_id: projectId
+      }
+    });
+    if (!secret) {
+      return null;
+    }
+
+    return toProjectSecretEntity(secret);
+  }
+
+  public async patchProjectSecret(
+    projectId: string,
+    secretId: string,
+    patch: {
+      description?: string | null;
+      is_active?: boolean;
+      updated_by?: string | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const existing = await this.prisma.projectSecret.findFirst({
+      where: {
+        id: secretId,
+        project_id: projectId
+      },
+      select: { id: true }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.projectSecret.update({
+      where: { id: secretId },
+      data: {
+        description: patch.description,
+        is_active: patch.is_active,
+        updated_by: patch.updated_by
+      }
+    });
+
+    return toProjectSecretEntity(updated);
+  }
+
+  public async rotateProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      ciphertext: string;
+      dek_encrypted: string;
+      dek_kms_key_id: string;
+      algo: string;
+      masked_preview?: string | null;
+      updated_by?: string | null;
+      rotated_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const existing = await this.prisma.projectSecret.findFirst({
+      where: {
+        id: secretId,
+        project_id: projectId
+      },
+      select: { id: true }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.projectSecret.update({
+      where: { id: secretId },
+      data: {
+        ciphertext: input.ciphertext,
+        dek_encrypted: input.dek_encrypted,
+        dek_kms_key_id: input.dek_kms_key_id,
+        algo: input.algo,
+        masked_preview: input.masked_preview,
+        version: {
+          increment: 1
+        },
+        is_active: true,
+        revoked_at: null,
+        rotated_at: input.rotated_at ?? new Date(),
+        updated_by: input.updated_by
+      }
+    });
+
+    return toProjectSecretEntity(updated);
+  }
+
+  public async revokeProjectSecret(
+    projectId: string,
+    secretId: string,
+    input: {
+      updated_by?: string | null;
+      revoked_at?: Date | null;
+    }
+  ): Promise<ProjectSecretEntity | null> {
+    const existing = await this.prisma.projectSecret.findFirst({
+      where: {
+        id: secretId,
+        project_id: projectId
+      },
+      select: { id: true }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.projectSecret.update({
+      where: { id: secretId },
+      data: {
+        is_active: false,
+        revoked_at: input.revoked_at ?? new Date(),
+        updated_by: input.updated_by
+      }
+    });
+
+    return toProjectSecretEntity(updated);
+  }
+
+  public async bindProjectSecretToTemplate(
+    secretId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<ProjectSecretTemplateBindingEntity | null> {
+    const [secret, template] = await Promise.all([
+      this.prisma.projectSecret.findUnique({ where: { id: secretId }, select: { id: true } }),
+      this.prisma.agentTemplate.findUnique({ where: { id: templateId }, select: { id: true } })
+    ]);
+    if (!secret || !template) {
+      return null;
+    }
+
+    const existing = await this.prisma.projectSecretTemplateBinding.findUnique({
+      where: {
+        secret_id_template_id: {
+          secret_id: secretId,
+          template_id: templateId
+        }
+      }
+    });
+    if (existing) {
+      return toProjectSecretTemplateBindingEntity(existing);
+    }
+
+    const created = await this.prisma.projectSecretTemplateBinding.create({
+      data: {
+        secret_id: secretId,
+        template_id: templateId,
+        created_by: createdBy
+      }
+    });
+
+    return toProjectSecretTemplateBindingEntity(created);
+  }
+
+  public async unbindProjectSecretFromTemplate(secretId: string, templateId: string): Promise<boolean> {
+    const deleted = await this.prisma.projectSecretTemplateBinding.deleteMany({
+      where: {
+        secret_id: secretId,
+        template_id: templateId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listProjectSecretTemplateBindings(
+    secretId: string
+  ): Promise<ProjectSecretTemplateBindingEntity[]> {
+    const items = await this.prisma.projectSecretTemplateBinding.findMany({
+      where: { secret_id: secretId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => toProjectSecretTemplateBindingEntity(item));
+  }
+
+  public async bindProjectSecretToRole(
+    secretId: string,
+    role: string,
+    createdBy: string
+  ): Promise<ProjectSecretRoleBindingEntity | null> {
+    const secret = await this.prisma.projectSecret.findUnique({
+      where: { id: secretId },
+      select: { id: true }
+    });
+    if (!secret) {
+      return null;
+    }
+
+    const existing = await this.prisma.projectSecretRoleBinding.findUnique({
+      where: {
+        secret_id_role: {
+          secret_id: secretId,
+          role
+        }
+      }
+    });
+    if (existing) {
+      return toProjectSecretRoleBindingEntity(existing);
+    }
+
+    const created = await this.prisma.projectSecretRoleBinding.create({
+      data: {
+        secret_id: secretId,
+        role,
+        created_by: createdBy
+      }
+    });
+
+    return toProjectSecretRoleBindingEntity(created);
+  }
+
+  public async unbindProjectSecretFromRole(secretId: string, role: string): Promise<boolean> {
+    const deleted = await this.prisma.projectSecretRoleBinding.deleteMany({
+      where: {
+        secret_id: secretId,
+        role
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listProjectSecretRoleBindings(secretId: string): Promise<ProjectSecretRoleBindingEntity[]> {
+    const items = await this.prisma.projectSecretRoleBinding.findMany({
+      where: { secret_id: secretId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => toProjectSecretRoleBindingEntity(item));
+  }
+
+  public async createSecretAuditEvent(input: CreateSecretAuditEventInput): Promise<SecretAuditEventEntity> {
+    const created = await this.prisma.secretAuditEvent.create({
+      data: {
+        secret_id: input.secret_id ?? null,
+        project_id: input.project_id,
+        event_type: input.event_type,
+        actor: input.actor,
+        trace_id: input.trace_id ?? null,
+        metadata_json:
+          input.metadata_json === undefined
+            ? undefined
+            : ((input.metadata_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toSecretAuditEventEntity(created);
+  }
+
+  public async listSecretAuditEvents(
+    projectId: string,
+    options?: { secret_id?: string; limit?: number }
+  ): Promise<SecretAuditEventEntity[]> {
+    const items = await this.prisma.secretAuditEvent.findMany({
+      where: {
+        project_id: projectId,
+        ...(options?.secret_id ? { secret_id: options.secret_id } : {})
+      },
+      orderBy: { created_at: "desc" },
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toSecretAuditEventEntity(item));
   }
 
   public async createTask(input: CreateTaskInput): Promise<TaskEntity> {
@@ -1445,6 +1895,17 @@ export class PrismaPersistence implements Persistence {
     return toMcpApiKeyEntity(key);
   }
 
+  public async getMcpApiKeyByHash(keyHash: string): Promise<McpApiKeyEntity | null> {
+    const key = await this.prisma.mcpApiKey.findUnique({
+      where: { key_hash: keyHash }
+    });
+    if (!key) {
+      return null;
+    }
+
+    return toMcpApiKeyEntity(key);
+  }
+
   public async patchMcpApiKey(
     id: string,
     patch: {
@@ -1473,6 +1934,27 @@ export class PrismaPersistence implements Persistence {
           patch.meta_json === undefined
             ? undefined
             : ((patch.meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toMcpApiKeyEntity(updated);
+  }
+
+  public async markMcpApiKeyLastUsed(
+    id: string,
+    lastUsedAt?: Date
+  ): Promise<McpApiKeyEntity | null> {
+    const existing = await this.prisma.mcpApiKey.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.mcpApiKey.update({
+      where: { id },
+      data: {
+        last_used_at: lastUsedAt ?? new Date()
       }
     });
 
@@ -1634,6 +2116,83 @@ export class PrismaPersistence implements Persistence {
     });
 
     return items.map((item) => toMcpKeyProfileBindingEntity(item));
+  }
+
+  public async bindMcpKeyTemplateConstraint(
+    keyId: string,
+    templateId: string,
+    createdBy: string
+  ): Promise<McpKeyTemplateConstraintEntity | null> {
+    const [key, template] = await Promise.all([
+      this.prisma.mcpApiKey.findUnique({ where: { id: keyId }, select: { id: true } }),
+      this.prisma.agentTemplate.findUnique({ where: { id: templateId }, select: { id: true } })
+    ]);
+    if (!key || !template) {
+      return null;
+    }
+
+    const existing = await this.prisma.mcpKeyTemplateConstraint.findUnique({
+      where: {
+        key_id_agent_template_id: {
+          key_id: keyId,
+          agent_template_id: templateId
+        }
+      }
+    });
+    if (existing) {
+      return toMcpKeyTemplateConstraintEntity(existing);
+    }
+
+    const created = await this.prisma.mcpKeyTemplateConstraint.create({
+      data: {
+        key_id: keyId,
+        agent_template_id: templateId,
+        created_by: createdBy
+      }
+    });
+
+    return toMcpKeyTemplateConstraintEntity(created);
+  }
+
+  public async unbindMcpKeyTemplateConstraint(keyId: string, templateId: string): Promise<boolean> {
+    const deleted = await this.prisma.mcpKeyTemplateConstraint.deleteMany({
+      where: {
+        key_id: keyId,
+        agent_template_id: templateId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listMcpKeyTemplateConstraints(
+    keyId: string
+  ): Promise<McpKeyTemplateConstraintEntity[]> {
+    const items = await this.prisma.mcpKeyTemplateConstraint.findMany({
+      where: { key_id: keyId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => toMcpKeyTemplateConstraintEntity(item));
+  }
+
+  public async createMcpAuthAuditEvent(
+    input: CreateMcpAuthAuditEventInput
+  ): Promise<McpAuthAuditEventEntity> {
+    const created = await this.prisma.mcpAuthAuditEvent.create({
+      data: {
+        key_id: input.key_id ?? null,
+        event_type: input.event_type,
+        actor: input.actor,
+        trace_id: input.trace_id ?? null,
+        request_meta_json:
+          input.request_meta_json === undefined
+            ? undefined
+            : ((input.request_meta_json ?? null) as Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toMcpAuthAuditEventEntity(created);
   }
 
   public async upsertAgentProfileScriptSet(

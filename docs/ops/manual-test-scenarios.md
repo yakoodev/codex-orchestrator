@@ -253,9 +253,9 @@ npm run mcp:serve
 - в fleet-режиме есть `requested_profiles/successful_profiles/failed_profiles`;
 - при частичных ошибках есть массив `errors` с `error/code/status_code`.
 
-## 3.9 Сценарий A9: MCP key management v2 (Phase 1)
+## 3.9 Сценарий A9: MCP key management + runtime authz (Phase 1+2)
 
-Статус: доступно в backend API (управление ключами/ACL/bindings). Runtime enforcement `401/403` в MCP bridge остается следующим этапом.
+Статус: доступно в backend API и MCP bridge (`401/403` enforcement включается через `MCP_API_KEY`).
 
 1. Создай ключ:
 
@@ -327,18 +327,124 @@ Invoke-RestMethod -Uri "$BASE/api/mcp/keys?include_revoked=true" -Method GET -He
 - после revoke ключ отсутствует в default list;
 - с `include_revoked=true` ключ снова виден.
 
-## 3.10 Сценарий A10 (planned): Secrets redaction и runtime injection
+7. Проверь template constraint:
 
-Статус: выполняется после реализации `docs/ops/secrets-plane-v1.md`.
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/constraints/templates/<TEMPLATE_ID>" `
+  -Method POST -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
 
-1. Создай проектный секрет через `POST /api/projects/{key}/secrets`.
-2. Убедись, что raw value в ответе отсутствует (только metadata + masked preview).
-3. Привяжи секрет к `template` и/или `role`.
-4. Запусти делегацию, которая использует секрет из env.
-5. Проверь UI (`#/logs`, `#/system`) и server logs:
-  - raw значение секрета нигде не отображается;
-  - есть только redacted/masked представление.
-6. Выполни rotate (`POST .../rotate`) и revoke (`POST .../revoke`), проверь audit trail.
+Ожидаемо:
+- возвращается constraint с `key_id` и `agent_template_id`.
+
+8. Проверь authz evaluate endpoint:
+
+```powershell
+$eval = @{
+  api_key = $created.secret
+  tool_name = "orchestrator.list_tasks"
+  agent_profile_id = "<PROFILE_ID>"
+  agent_template_id = "<TEMPLATE_ID>"
+  actor = "manual-test"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "$BASE/api/mcp/authz/evaluate" `
+  -Method POST -Headers $HEADERS -Body $eval | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- `allowed = true` для разрешенных комбинаций;
+- `401` для `invalid/revoked/expired` ключа;
+- `403` для запрета по tool/profile/template.
+
+9. Проверь runtime authz в MCP bridge:
+
+```powershell
+$env:MCP_API_BASE_URL = $BASE
+$env:MCP_ADMIN_TOKEN = $ADMIN_TOKEN
+$env:MCP_API_KEY = $created.secret
+$env:MCP_AGENT_PROFILE_ID = "<PROFILE_ID>"
+$env:MCP_AGENT_TEMPLATE_ID = "<TEMPLATE_ID>"
+npm run mcp:serve
+```
+
+Ожидаемо:
+- разрешенные tools выполняются;
+- запрещенные tools завершаются ошибкой с `code/status_code` (`401/403`).
+
+## 3.10 Сценарий A10: Project Secrets v1 (Phase 1 backend)
+
+Статус: доступно в backend API (`encrypted storage + bindings + audit`). Runtime env injection/redaction — следующий этап.
+
+1. Создай секрет:
+
+```powershell
+$secretBody = @{
+  key = "OPENAI_API_KEY"
+  value = "sk-manual-test-12345"
+  description = "Manual test key"
+  bind_roles = @("reviewer")
+} | ConvertTo-Json
+
+$secret = Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets" `
+  -Method POST -Headers $HEADERS -Body $secretBody
+$secret | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- есть `id/key/masked_preview/template_bindings/role_bindings`;
+- raw `value` в ответе отсутствует.
+
+2. Проверь list:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets" `
+  -Method GET -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- секрет присутствует в `items`;
+- в ответе нет полей `ciphertext/dek_encrypted`.
+
+3. Обнови метаданные:
+
+```powershell
+$patchBody = @{ description = "Updated secret desc"; is_active = $true } | ConvertTo-Json
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)" `
+  -Method PATCH -Headers $HEADERS -Body $patchBody | ConvertTo-Json -Depth 8
+```
+
+4. Сделай rotate:
+
+```powershell
+$rotateBody = @{ value = "sk-rotated-manual-67890" } | ConvertTo-Json
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/rotate" `
+  -Method POST -Headers $HEADERS -Body $rotateBody | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- `version` увеличивается;
+- raw `value` отсутствует.
+
+5. Добавь и удали bindings:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/bindings/roles/tester" `
+  -Method POST -Headers $HEADERS | ConvertTo-Json -Depth 8
+
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/bindings/roles/tester" `
+  -Method DELETE -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+6. Выполни revoke:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/revoke" `
+  -Method POST -Headers $HEADERS | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- `is_active = false`, заполнен `revoked_at`.
 
 ## 3.11 Сценарий A11 (planned): Topology + Coordination channel
 

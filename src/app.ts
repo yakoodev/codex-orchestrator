@@ -9,6 +9,10 @@ import {
   isAuthJsonFilename,
   parseAuthJsonBuffer
 } from "./lib/auth-profile-json";
+import {
+  buildSecretMaskedPreview,
+  encryptProjectSecretValue
+} from "./lib/secrets-envelope";
 import { registerOpenApiStubs } from "./lib/openapi-stubs";
 import {
   AuthProfileRateLimitsError,
@@ -42,12 +46,16 @@ import type {
   McpApiKeyStatus,
   McpKeyAclRuleEntity,
   McpKeyProfileBindingEntity,
+  McpKeyTemplateConstraintEntity,
   McpServerRegistryEntity,
   McpServerTransport,
   ModuleExecutionEntity,
   PackRegistryEntity,
   Persistence,
   ProjectEntity,
+  ProjectSecretEntity,
+  ProjectSecretRoleBindingEntity,
+  ProjectSecretTemplateBindingEntity,
   ProjectSummaryEntity,
   ScheduleMisfirePolicy,
   ScheduledRuleEntity,
@@ -68,6 +76,15 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/projects/{key}",
   "PATCH /api/projects/{key}",
   "GET /api/projects/{key}/summary",
+  "POST /api/projects/{key}/secrets",
+  "GET /api/projects/{key}/secrets",
+  "PATCH /api/projects/{key}/secrets/{id}",
+  "POST /api/projects/{key}/secrets/{id}/rotate",
+  "POST /api/projects/{key}/secrets/{id}/revoke",
+  "POST /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}",
+  "DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}",
+  "POST /api/projects/{key}/secrets/{id}/bindings/roles/{role}",
+  "DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}",
   "POST /api/tasks",
   "GET /api/tasks",
   "GET /api/tasks/{id}",
@@ -130,6 +147,9 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "POST /api/mcp/keys/{id}/revoke",
   "POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}",
   "DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}",
+  "POST /api/mcp/keys/{id}/constraints/templates/{template_id}",
+  "DELETE /api/mcp/keys/{id}/constraints/templates/{template_id}",
+  "POST /api/mcp/authz/evaluate",
   "POST /api/memory/entries",
   "GET /api/memory/entries",
   "PATCH /api/memory/entries/{id}",
@@ -194,6 +214,24 @@ interface ProjectPatchRequest {
   workspace_path?: unknown;
   meta_json?: unknown;
   is_active?: unknown;
+}
+
+interface ProjectSecretCreateRequest {
+  key?: unknown;
+  value?: unknown;
+  description?: unknown;
+  is_active?: unknown;
+  bind_template_ids?: unknown;
+  bind_roles?: unknown;
+}
+
+interface ProjectSecretPatchRequest {
+  description?: unknown;
+  is_active?: unknown;
+}
+
+interface ProjectSecretRotateRequest {
+  value?: unknown;
 }
 
 interface TaskSayRequest {
@@ -360,6 +398,14 @@ interface McpApiKeyPatchRequest {
   acl_tools?: unknown;
 }
 
+interface McpAuthzEvaluateRequest {
+  api_key?: unknown;
+  tool_name?: unknown;
+  agent_profile_id?: unknown;
+  agent_template_id?: unknown;
+  actor?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
@@ -443,7 +489,10 @@ const MAX_AGENT_PROFILE_PROMPT_MCP_SERVERS = 12;
 const MAX_AGENT_PROFILE_SCRIPT_CONTENT_LENGTH = 20_000;
 const MAX_MCP_KEY_ACL_TOOLS = 200;
 const MAX_MCP_KEY_PROFILE_BINDINGS = 100;
+const MAX_PROJECT_SECRET_VALUE_LENGTH = 32_000;
+const MAX_PROJECT_SECRET_BINDINGS = 128;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const PROJECT_SECRET_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -529,6 +578,20 @@ function asProjectKey(value: unknown): string | null {
 
   const normalized = candidate.toLowerCase();
   if (!PROJECT_KEY_PATTERN.test(normalized)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function asProjectSecretKey(value: unknown): string | null {
+  const candidate = asNonEmptyString(value);
+  if (!candidate) {
+    return null;
+  }
+
+  const normalized = candidate.toUpperCase();
+  if (!PROJECT_SECRET_KEY_PATTERN.test(normalized)) {
     return null;
   }
 
@@ -626,6 +689,56 @@ function generateMcpApiKeySecret(): {
     key_prefix: secret.slice(0, 16),
     key_hash: createHash("sha256").update(secret).digest("hex")
   };
+}
+
+async function writeMcpAuthAuditEventBestEffort(
+  persistence: Persistence,
+  input: {
+    key_id?: string | null;
+    event_type: string;
+    actor: string;
+    trace_id?: string | null;
+    request_meta_json?: Record<string, unknown> | null;
+  },
+  logger?: Pick<FastifyRequest["log"], "error">
+): Promise<void> {
+  try {
+    await persistence.createMcpAuthAuditEvent({
+      key_id: input.key_id ?? null,
+      event_type: input.event_type,
+      actor: input.actor,
+      trace_id: input.trace_id ?? null,
+      request_meta_json: input.request_meta_json ?? null
+    });
+  } catch (error) {
+    logger?.error({ err: error, event_type: input.event_type }, "Failed to write MCP auth audit event");
+  }
+}
+
+async function writeSecretAuditEventBestEffort(
+  persistence: Persistence,
+  input: {
+    secret_id?: string | null;
+    project_id: string;
+    event_type: string;
+    actor: string;
+    trace_id?: string | null;
+    metadata_json?: Record<string, unknown> | null;
+  },
+  logger?: Pick<FastifyRequest["log"], "error">
+): Promise<void> {
+  try {
+    await persistence.createSecretAuditEvent({
+      secret_id: input.secret_id ?? null,
+      project_id: input.project_id,
+      event_type: input.event_type,
+      actor: input.actor,
+      trace_id: input.trace_id ?? null,
+      metadata_json: input.metadata_json ?? null
+    });
+  } catch (error) {
+    logger?.error({ err: error, event_type: input.event_type }, "Failed to write secret audit event");
+  }
 }
 
 function getTraceId(request: FastifyRequest): string {
@@ -1584,6 +1697,67 @@ function projectSummaryToResponse(summary: ProjectSummaryEntity): Record<string,
   };
 }
 
+function projectSecretToResponse(secret: ProjectSecretEntity): Record<string, unknown> {
+  return {
+    id: secret.id,
+    project_id: secret.project_id,
+    key: secret.key,
+    description: secret.description,
+    masked_preview: secret.masked_preview,
+    is_active: secret.is_active,
+    algo: secret.algo,
+    version: secret.version,
+    created_by: secret.created_by,
+    updated_by: secret.updated_by,
+    created_at: secret.created_at,
+    updated_at: secret.updated_at,
+    rotated_at: secret.rotated_at,
+    revoked_at: secret.revoked_at
+  };
+}
+
+function projectSecretTemplateBindingToResponse(
+  binding: ProjectSecretTemplateBindingEntity
+): Record<string, unknown> {
+  return {
+    id: binding.id,
+    secret_id: binding.secret_id,
+    template_id: binding.template_id,
+    created_by: binding.created_by,
+    created_at: binding.created_at
+  };
+}
+
+function projectSecretRoleBindingToResponse(
+  binding: ProjectSecretRoleBindingEntity
+): Record<string, unknown> {
+  return {
+    id: binding.id,
+    secret_id: binding.secret_id,
+    role: binding.role,
+    created_by: binding.created_by,
+    created_at: binding.created_at
+  };
+}
+
+async function buildProjectSecretResponse(
+  persistence: Persistence,
+  secret: ProjectSecretEntity
+): Promise<Record<string, unknown>> {
+  const [templateBindings, roleBindings] = await Promise.all([
+    persistence.listProjectSecretTemplateBindings(secret.id),
+    persistence.listProjectSecretRoleBindings(secret.id)
+  ]);
+
+  return {
+    ...projectSecretToResponse(secret),
+    template_bindings: templateBindings.map((item) =>
+      projectSecretTemplateBindingToResponse(item)
+    ),
+    role_bindings: roleBindings.map((item) => projectSecretRoleBindingToResponse(item))
+  };
+}
+
 function taskToResponse(task: TaskEntity): Record<string, unknown> {
   return {
     id: task.id,
@@ -1841,19 +2015,35 @@ function mcpKeyProfileBindingToResponse(binding: McpKeyProfileBindingEntity): Re
   };
 }
 
+function mcpKeyTemplateConstraintToResponse(
+  constraint: McpKeyTemplateConstraintEntity
+): Record<string, unknown> {
+  return {
+    id: constraint.id,
+    key_id: constraint.key_id,
+    agent_template_id: constraint.agent_template_id,
+    created_by: constraint.created_by,
+    created_at: constraint.created_at
+  };
+}
+
 async function buildMcpApiKeyResponse(
   persistence: Persistence,
   key: McpApiKeyEntity
 ): Promise<Record<string, unknown>> {
-  const [aclRules, profileBindings] = await Promise.all([
+  const [aclRules, profileBindings, templateConstraints] = await Promise.all([
     persistence.listMcpKeyAclRules(key.id),
-    persistence.listMcpKeyProfileBindings(key.id)
+    persistence.listMcpKeyProfileBindings(key.id),
+    persistence.listMcpKeyTemplateConstraints(key.id)
   ]);
 
   return {
     ...mcpApiKeyToResponse(key),
     acl_rules: aclRules.map((item) => mcpKeyAclRuleToResponse(item)),
-    profile_bindings: profileBindings.map((item) => mcpKeyProfileBindingToResponse(item))
+    profile_bindings: profileBindings.map((item) => mcpKeyProfileBindingToResponse(item)),
+    template_constraints: templateConstraints.map((item) =>
+      mcpKeyTemplateConstraintToResponse(item)
+    )
   };
 }
 
@@ -2375,6 +2565,502 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return reply.send(projectSummaryToResponse(summary));
+  });
+
+  app.post("/api/projects/:key/secrets", async (request, reply) => {
+    const { key: keyParam } = request.params as { key: string };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey) {
+      return sendError(reply, 400, "Invalid project key", "VALIDATION_ERROR");
+    }
+
+    const project = await persistence.getProjectByKey(projectKey);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+
+    const body = request.body as ProjectSecretCreateRequest;
+    const secretKey = asProjectSecretKey(body?.key);
+    const secretValue = asNonEmptyString(body?.value);
+    if (!secretKey || !secretValue) {
+      return sendError(
+        reply,
+        400,
+        "key and value are required; key must match ^[A-Z][A-Z0-9_]{1,127}$",
+        "VALIDATION_ERROR"
+      );
+    }
+    if (secretValue.length > MAX_PROJECT_SECRET_VALUE_LENGTH) {
+      return sendError(
+        reply,
+        400,
+        `value is too large (max ${MAX_PROJECT_SECRET_VALUE_LENGTH} chars)`,
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const description =
+      body.description === undefined
+        ? undefined
+        : body.description === null
+          ? null
+          : asNonEmptyString(body.description);
+    if (body.description !== undefined && body.description !== null && !description) {
+      return sendError(reply, 400, "description must be a non-empty string or null", "VALIDATION_ERROR");
+    }
+
+    let isActive = true;
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      isActive = body.is_active;
+    }
+
+    let templateIds: string[] = [];
+    let bindRoles: string[] = [];
+    try {
+      templateIds = parseOptionalStringArray(body.bind_template_ids, "bind_template_ids", {
+        maxItems: MAX_PROJECT_SECRET_BINDINGS
+      }) ?? [];
+      const rawRoles = parseOptionalStringArray(body.bind_roles, "bind_roles", {
+        maxItems: MAX_PROJECT_SECRET_BINDINGS
+      }) ?? [];
+      const seenRoles = new Set<string>();
+      bindRoles = rawRoles
+        .map((role) => normalizeAgentRole(role))
+        .filter((role) => {
+          if (seenRoles.has(role)) {
+            return false;
+          }
+          seenRoles.add(role);
+          return true;
+        });
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "VALIDATION_ERROR");
+    }
+
+    if (templateIds.length > 0) {
+      const templates = await persistence.listAgentTemplates();
+      const availableTemplateIds = new Set(templates.map((item) => item.id));
+      const missingTemplateId = templateIds.find((templateId) => !availableTemplateIds.has(templateId));
+      if (missingTemplateId) {
+        return sendError(
+          reply,
+          404,
+          `Agent template not found: ${missingTemplateId}`,
+          "AGENT_TEMPLATE_NOT_FOUND"
+        );
+      }
+    }
+
+    const encrypted = encryptProjectSecretValue(secretValue, config.secretsMasterKey);
+    const maskedPreview = buildSecretMaskedPreview(secretValue);
+
+    let createdSecret: ProjectSecretEntity;
+    try {
+      createdSecret = await persistence.createProjectSecret({
+        project_id: projectKey,
+        key: secretKey,
+        description,
+        masked_preview: maskedPreview,
+        is_active: isActive,
+        ciphertext: encrypted.ciphertext,
+        dek_encrypted: encrypted.dek_encrypted,
+        dek_kms_key_id: encrypted.dek_kms_key_id,
+        algo: encrypted.algo,
+        created_by: "admin",
+        updated_by: "admin"
+      });
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        return sendError(reply, 409, "Secret key already exists in project", "PROJECT_SECRET_EXISTS");
+      }
+      throw error;
+    }
+
+    for (const templateId of templateIds) {
+      await persistence.bindProjectSecretToTemplate(createdSecret.id, templateId, "admin");
+    }
+    for (const role of bindRoles) {
+      await persistence.bindProjectSecretToRole(createdSecret.id, role, "admin");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: createdSecret.id,
+        project_id: projectKey,
+        event_type: "created",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          key: createdSecret.key,
+          template_bindings_count: templateIds.length,
+          role_bindings_count: bindRoles.length
+        }
+      },
+      request.log
+    );
+
+    const response = await buildProjectSecretResponse(persistence, createdSecret);
+    return reply.code(201).send(response);
+  });
+
+  app.get("/api/projects/:key/secrets", async (request, reply) => {
+    const { key: keyParam } = request.params as { key: string };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey) {
+      return sendError(reply, 400, "Invalid project key", "VALIDATION_ERROR");
+    }
+
+    const project = await persistence.getProjectByKey(projectKey);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+
+    const query = request.query as { include_inactive?: unknown; limit?: unknown };
+    let includeInactive = true;
+    if (query.include_inactive !== undefined) {
+      const parsed = parseBooleanLike(query.include_inactive);
+      if (parsed === null) {
+        return sendError(reply, 400, "include_inactive must be boolean", "VALIDATION_ERROR");
+      }
+      includeInactive = parsed;
+    }
+
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+
+    const items = await persistence.listProjectSecrets(projectKey, {
+      include_inactive: includeInactive,
+      limit
+    });
+    const responseItems = await Promise.all(
+      items.map((item) => buildProjectSecretResponse(persistence, item))
+    );
+    return reply.send({ items: responseItems });
+  });
+
+  app.patch("/api/projects/:key/secrets/:id", async (request, reply) => {
+    const { key: keyParam, id: secretId } = request.params as { key: string; id: string };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey || !asNonEmptyString(secretId)) {
+      return sendError(reply, 400, "Invalid project key or secret id", "VALIDATION_ERROR");
+    }
+
+    const body = request.body as ProjectSecretPatchRequest;
+    const patch: {
+      description?: string | null;
+      is_active?: boolean;
+      updated_by?: string | null;
+    } = { updated_by: "admin" };
+
+    if (body.description !== undefined) {
+      if (body.description === null) {
+        patch.description = null;
+      } else {
+        const description = asNonEmptyString(body.description);
+        if (!description) {
+          return sendError(reply, 400, "description must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.description = description;
+      }
+    }
+
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return sendError(reply, 400, "is_active must be a boolean", "VALIDATION_ERROR");
+      }
+      patch.is_active = body.is_active;
+    }
+
+    if (patch.description === undefined && patch.is_active === undefined) {
+      return sendError(reply, 400, "No fields to update", "VALIDATION_ERROR");
+    }
+
+    const updated = await persistence.patchProjectSecret(projectKey, secretId, patch);
+    if (!updated) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: updated.id,
+        project_id: projectKey,
+        event_type: "updated",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          description_updated: patch.description !== undefined,
+          is_active_updated: patch.is_active !== undefined
+        }
+      },
+      request.log
+    );
+
+    return reply.send(await buildProjectSecretResponse(persistence, updated));
+  });
+
+  app.post("/api/projects/:key/secrets/:id/rotate", async (request, reply) => {
+    const { key: keyParam, id: secretId } = request.params as { key: string; id: string };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey || !asNonEmptyString(secretId)) {
+      return sendError(reply, 400, "Invalid project key or secret id", "VALIDATION_ERROR");
+    }
+
+    const body = request.body as ProjectSecretRotateRequest;
+    const value = asNonEmptyString(body?.value);
+    if (!value) {
+      return sendError(reply, 400, "value is required", "VALIDATION_ERROR");
+    }
+    if (value.length > MAX_PROJECT_SECRET_VALUE_LENGTH) {
+      return sendError(
+        reply,
+        400,
+        `value is too large (max ${MAX_PROJECT_SECRET_VALUE_LENGTH} chars)`,
+        "VALIDATION_ERROR"
+      );
+    }
+
+    const existing = await persistence.getProjectSecretById(projectKey, secretId);
+    if (!existing) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    const encrypted = encryptProjectSecretValue(value, config.secretsMasterKey);
+    const rotated = await persistence.rotateProjectSecret(projectKey, secretId, {
+      ciphertext: encrypted.ciphertext,
+      dek_encrypted: encrypted.dek_encrypted,
+      dek_kms_key_id: encrypted.dek_kms_key_id,
+      algo: encrypted.algo,
+      masked_preview: buildSecretMaskedPreview(value),
+      updated_by: "admin",
+      rotated_at: new Date()
+    });
+    if (!rotated) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: rotated.id,
+        project_id: projectKey,
+        event_type: "rotated",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          previous_version: existing.version,
+          new_version: rotated.version
+        }
+      },
+      request.log
+    );
+
+    return reply.send(await buildProjectSecretResponse(persistence, rotated));
+  });
+
+  app.post("/api/projects/:key/secrets/:id/revoke", async (request, reply) => {
+    const { key: keyParam, id: secretId } = request.params as { key: string; id: string };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey || !asNonEmptyString(secretId)) {
+      return sendError(reply, 400, "Invalid project key or secret id", "VALIDATION_ERROR");
+    }
+
+    const revoked = await persistence.revokeProjectSecret(projectKey, secretId, {
+      updated_by: "admin",
+      revoked_at: new Date()
+    });
+    if (!revoked) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: revoked.id,
+        project_id: projectKey,
+        event_type: "revoked",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: { key: revoked.key }
+      },
+      request.log
+    );
+
+    return reply.send(await buildProjectSecretResponse(persistence, revoked));
+  });
+
+  app.post("/api/projects/:key/secrets/:id/bindings/templates/:templateId", async (request, reply) => {
+    const { key: keyParam, id: secretId, templateId } = request.params as {
+      key: string;
+      id: string;
+      templateId: string;
+    };
+    const projectKey = asProjectKey(keyParam);
+    if (!projectKey || !asNonEmptyString(secretId) || !asNonEmptyString(templateId)) {
+      return sendError(reply, 400, "Invalid project key, secret id or template id", "VALIDATION_ERROR");
+    }
+
+    const secret = await persistence.getProjectSecretById(projectKey, secretId);
+    if (!secret) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    const binding = await persistence.bindProjectSecretToTemplate(secret.id, templateId, "admin");
+    if (!binding) {
+      return sendError(reply, 404, "Secret or template not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: secret.id,
+        project_id: projectKey,
+        event_type: "binding_added",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          binding_type: "template",
+          template_id: templateId
+        }
+      },
+      request.log
+    );
+
+    return reply.send(projectSecretTemplateBindingToResponse(binding));
+  });
+
+  app.delete(
+    "/api/projects/:key/secrets/:id/bindings/templates/:templateId",
+    async (request, reply) => {
+      const { key: keyParam, id: secretId, templateId } = request.params as {
+        key: string;
+        id: string;
+        templateId: string;
+      };
+      const projectKey = asProjectKey(keyParam);
+      if (!projectKey || !asNonEmptyString(secretId) || !asNonEmptyString(templateId)) {
+        return sendError(
+          reply,
+          400,
+          "Invalid project key, secret id or template id",
+          "VALIDATION_ERROR"
+        );
+      }
+
+      const secret = await persistence.getProjectSecretById(projectKey, secretId);
+      if (!secret) {
+        return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+      }
+
+      const deleted = await persistence.unbindProjectSecretFromTemplate(secret.id, templateId);
+      if (!deleted) {
+        return sendError(reply, 404, "Secret template binding not found", "NOT_FOUND");
+      }
+
+      await writeSecretAuditEventBestEffort(
+        persistence,
+        {
+          secret_id: secret.id,
+          project_id: projectKey,
+          event_type: "binding_removed",
+          actor: "admin",
+          trace_id: getTraceId(request),
+          metadata_json: {
+            binding_type: "template",
+            template_id: templateId
+          }
+        },
+        request.log
+      );
+
+      return reply.send({ ok: true });
+    }
+  );
+
+  app.post("/api/projects/:key/secrets/:id/bindings/roles/:role", async (request, reply) => {
+    const { key: keyParam, id: secretId, role } = request.params as {
+      key: string;
+      id: string;
+      role: string;
+    };
+    const projectKey = asProjectKey(keyParam);
+    const normalizedRole = asNonEmptyString(role) ? normalizeAgentRole(role) : null;
+    if (!projectKey || !asNonEmptyString(secretId) || !normalizedRole) {
+      return sendError(reply, 400, "Invalid project key, secret id or role", "VALIDATION_ERROR");
+    }
+
+    const secret = await persistence.getProjectSecretById(projectKey, secretId);
+    if (!secret) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    const binding = await persistence.bindProjectSecretToRole(secret.id, normalizedRole, "admin");
+    if (!binding) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: secret.id,
+        project_id: projectKey,
+        event_type: "binding_added",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          binding_type: "role",
+          role: normalizedRole
+        }
+      },
+      request.log
+    );
+
+    return reply.send(projectSecretRoleBindingToResponse(binding));
+  });
+
+  app.delete("/api/projects/:key/secrets/:id/bindings/roles/:role", async (request, reply) => {
+    const { key: keyParam, id: secretId, role } = request.params as {
+      key: string;
+      id: string;
+      role: string;
+    };
+    const projectKey = asProjectKey(keyParam);
+    const normalizedRole = asNonEmptyString(role) ? normalizeAgentRole(role) : null;
+    if (!projectKey || !asNonEmptyString(secretId) || !normalizedRole) {
+      return sendError(reply, 400, "Invalid project key, secret id or role", "VALIDATION_ERROR");
+    }
+
+    const secret = await persistence.getProjectSecretById(projectKey, secretId);
+    if (!secret) {
+      return sendError(reply, 404, "Project secret not found", "NOT_FOUND");
+    }
+
+    const deleted = await persistence.unbindProjectSecretFromRole(secret.id, normalizedRole);
+    if (!deleted) {
+      return sendError(reply, 404, "Secret role binding not found", "NOT_FOUND");
+    }
+
+    await writeSecretAuditEventBestEffort(
+      persistence,
+      {
+        secret_id: secret.id,
+        project_id: projectKey,
+        event_type: "binding_removed",
+        actor: "admin",
+        trace_id: getTraceId(request),
+        metadata_json: {
+          binding_type: "role",
+          role: normalizedRole
+        }
+      },
+      request.log
+    );
+
+    return reply.send({ ok: true });
   });
 
   app.post("/api/tasks", async (request, reply) => {
@@ -5200,6 +5886,217 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return reply.code(204).send();
+  });
+
+  app.post("/api/mcp/keys/:id/constraints/templates/:templateId", async (request, reply) => {
+    const { id, templateId } = request.params as { id: string; templateId: string };
+
+    const key = await persistence.getMcpApiKeyById(id);
+    if (!key) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    const templates = await persistence.listAgentTemplates();
+    const template = templates.find((item) => item.id === templateId) ?? null;
+    if (!template) {
+      return sendError(reply, 404, "Agent template not found", "NOT_FOUND");
+    }
+
+    const constraint = await persistence.bindMcpKeyTemplateConstraint(id, templateId, "admin");
+    if (!constraint) {
+      return sendError(
+        reply,
+        404,
+        "MCP key or agent template not found",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    return reply.send(mcpKeyTemplateConstraintToResponse(constraint));
+  });
+
+  app.delete("/api/mcp/keys/:id/constraints/templates/:templateId", async (request, reply) => {
+    const { id, templateId } = request.params as { id: string; templateId: string };
+
+    const key = await persistence.getMcpApiKeyById(id);
+    if (!key) {
+      return sendError(reply, 404, "MCP key not found", "MCP_KEY_NOT_FOUND");
+    }
+
+    const templates = await persistence.listAgentTemplates();
+    const template = templates.find((item) => item.id === templateId) ?? null;
+    if (!template) {
+      return sendError(reply, 404, "Agent template not found", "NOT_FOUND");
+    }
+
+    const deleted = await persistence.unbindMcpKeyTemplateConstraint(id, templateId);
+    if (!deleted) {
+      return sendError(reply, 404, "MCP key template constraint not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
+  });
+
+  app.post("/api/mcp/authz/evaluate", async (request, reply) => {
+    const body = request.body as McpAuthzEvaluateRequest;
+    const traceId = getTraceId(request);
+    const apiKeySecret = asNonEmptyString(body.api_key);
+    const toolName = asNonEmptyString(body.tool_name);
+    const actor = asNonEmptyString(body.actor) ?? "mcp_bridge";
+    const agentProfileId = asNonEmptyString(body.agent_profile_id);
+    const agentTemplateId = asNonEmptyString(body.agent_template_id);
+
+    if (!apiKeySecret) {
+      await writeMcpAuthAuditEventBestEffort(
+        persistence,
+        {
+          event_type: "denied",
+          actor,
+          trace_id: traceId,
+          request_meta_json: {
+            code: "MCP_KEY_REQUIRED",
+            tool_name: toolName ?? null,
+            agent_profile_id: agentProfileId ?? null,
+            agent_template_id: agentTemplateId ?? null
+          }
+        },
+        request.log
+      );
+      return sendError(reply, 401, "MCP API key is required", "MCP_KEY_REQUIRED");
+    }
+
+    if (!toolName) {
+      return sendError(reply, 400, "tool_name is required", "REQUEST_VALIDATION_FAILED");
+    }
+
+    const keyHash = createHash("sha256").update(apiKeySecret).digest("hex");
+    const key = await persistence.getMcpApiKeyByHash(keyHash);
+    if (!key) {
+      await writeMcpAuthAuditEventBestEffort(
+        persistence,
+        {
+          event_type: "denied",
+          actor,
+          trace_id: traceId,
+          request_meta_json: {
+            code: "MCP_KEY_INVALID",
+            tool_name: toolName,
+            agent_profile_id: agentProfileId ?? null,
+            agent_template_id: agentTemplateId ?? null
+          }
+        },
+        request.log
+      );
+      return sendError(reply, 401, "MCP API key is invalid", "MCP_KEY_INVALID");
+    }
+
+    const denyWithAudit = async (statusCode: number, error: string, code: string): Promise<FastifyReply> => {
+      await writeMcpAuthAuditEventBestEffort(
+        persistence,
+        {
+          key_id: key.id,
+          event_type: "denied",
+          actor,
+          trace_id: traceId,
+          request_meta_json: {
+            code,
+            tool_name: toolName,
+            key_status: key.status,
+            agent_profile_id: agentProfileId ?? null,
+            agent_template_id: agentTemplateId ?? null
+          }
+        },
+        request.log
+      );
+      return sendError(reply, statusCode, error, code);
+    };
+
+    if (key.status === "revoked") {
+      return denyWithAudit(401, "MCP API key is revoked", "MCP_KEY_REVOKED");
+    }
+    if (key.status === "disabled") {
+      return denyWithAudit(401, "MCP API key is disabled", "MCP_KEY_DISABLED");
+    }
+    if (key.expires_at && key.expires_at.getTime() <= Date.now()) {
+      return denyWithAudit(401, "MCP API key is expired", "MCP_KEY_EXPIRED");
+    }
+
+    const aclRules = await persistence.listMcpKeyAclRules(key.id);
+    const allowedByAcl = aclRules.some(
+      (rule) => rule.effect === "allow" && rule.tool_name === toolName
+    );
+    if (!allowedByAcl) {
+      return denyWithAudit(403, "MCP tool is forbidden for this key", "MCP_TOOL_FORBIDDEN");
+    }
+
+    const profileBindings = await persistence.listMcpKeyProfileBindings(key.id);
+    if (profileBindings.length > 0) {
+      if (!agentProfileId) {
+        return denyWithAudit(
+          403,
+          "MCP key is restricted to specific agent profiles",
+          "MCP_PROFILE_FORBIDDEN"
+        );
+      }
+
+      const isProfileAllowed = profileBindings.some(
+        (binding) => binding.agent_profile_id === agentProfileId
+      );
+      if (!isProfileAllowed) {
+        return denyWithAudit(
+          403,
+          "MCP key is forbidden for this agent profile",
+          "MCP_PROFILE_FORBIDDEN"
+        );
+      }
+    }
+
+    const templateConstraints = await persistence.listMcpKeyTemplateConstraints(key.id);
+    if (templateConstraints.length > 0) {
+      if (!agentTemplateId) {
+        return denyWithAudit(
+          403,
+          "MCP key is restricted to specific agent templates",
+          "MCP_TEMPLATE_FORBIDDEN"
+        );
+      }
+
+      const isTemplateAllowed = templateConstraints.some(
+        (constraint) => constraint.agent_template_id === agentTemplateId
+      );
+      if (!isTemplateAllowed) {
+        return denyWithAudit(
+          403,
+          "MCP key is forbidden for this agent template",
+          "MCP_TEMPLATE_FORBIDDEN"
+        );
+      }
+    }
+
+    await persistence.markMcpApiKeyLastUsed(key.id, new Date());
+    await writeMcpAuthAuditEventBestEffort(
+      persistence,
+      {
+        key_id: key.id,
+        event_type: "allowed",
+        actor,
+        trace_id: traceId,
+        request_meta_json: {
+          tool_name: toolName,
+          agent_profile_id: agentProfileId ?? null,
+          agent_template_id: agentTemplateId ?? null
+        }
+      },
+      request.log
+    );
+
+    return reply.send({
+      allowed: true,
+      key_id: key.id,
+      tool_name: toolName,
+      agent_profile_id: agentProfileId ?? null,
+      agent_template_id: agentTemplateId ?? null
+    });
   });
 
   app.get("/api/delegation/capabilities", async (_request, reply) => {

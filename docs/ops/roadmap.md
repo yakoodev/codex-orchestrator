@@ -23,7 +23,7 @@
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Planned: MCP AuthZ ACL v2
-- Статус: `in_progress` (Phase 1 key-management backend реализован).
+- Статус: `in_progress` (Phase 1+2 backend/runtime реализованы).
 - Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и profile-aware ограничениями.
 - Зафиксированные решения:
   - `custom-only ACL` (без обязательных пресетов ролей);
@@ -34,7 +34,8 @@
   - `401` для отсутствующего/невалидного/отозванного/просроченного ключа;
   - `403` для валидного ключа без прав на запрошенный tool/profile/template.
 - Документ дизайна: `docs/ops/mcp-authz-acl-v2.md`.
-- Текущий прогресс (Phase 1 backend):
+- Текущий прогресс:
+  - Phase 1 (key-management backend):
   - добавлены Prisma-сущности и миграция `0010_mcp_authz_acl_v2_keys`:
     - `McpApiKey`
     - `McpKeyAclRule`
@@ -47,10 +48,20 @@
     - `POST/DELETE /api/mcp/keys/{id}/bindings/profiles/{profile_id}`;
   - `create/rotate` отдают one-time `secret`, остальные ответы возвращают только metadata (`key_prefix/status/...`) без raw ключа;
   - list по умолчанию исключает `revoked` ключи (`include_revoked=true` включает их обратно).
+  - Phase 2 (runtime authz enforcement):
+    - добавлены Prisma-сущности и миграция `0011_mcp_authz_audit_and_template_constraints`:
+      - `McpKeyTemplateConstraint`
+      - `McpAuthAuditEvent`;
+    - добавлены API:
+      - `POST /api/mcp/keys/{id}/constraints/templates/{template_id}`
+      - `DELETE /api/mcp/keys/{id}/constraints/templates/{template_id}`
+      - `POST /api/mcp/authz/evaluate`;
+    - MCP bridge выполняет pre-tool authz evaluate (deny-path `401/403`) по key status, ACL, profile binding, template constraints;
+    - при `allowed` обновляется `last_used_at`, на каждый outcome пишется `McpAuthAuditEvent`;
+    - добавлены env-параметры запуска MCP bridge: `MCP_API_KEY`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`.
 - Зависимости:
-  - runtime authz enforcement в MCP bridge (`401/403` deny-path на вызов tools);
-  - `McpAuthAuditEvent` + `last_used_at` обновления в authz-потоке;
-  - template constraints (`McpKeyTemplateConstraint`) как follow-up;
+  - rollout управления ключами в UI/operator workflows (в т.ч. привязка к профильным сценариям);
+  - policy/telemetry интеграция с governor/coordination каналом;
   - синхронизация MCP key state с governor/coordination telemetry.
 
 ## Planned: Agent Profiles + MCP Server Sets
@@ -136,7 +147,7 @@
   - `Topology UI` (узлы заявок и их состояния).
 
 ## Planned: Secrets Plane v1
-- Статус: `planned` (decision-complete, реализация не начата).
+- Статус: `in_progress` (Phase 1 backend реализован).
 - Цель: безопасно хранить и выдавать секреты агентам без утечек в UI, API-логах и activity-log.
 - Зафиксированные решения:
   - backend хранит секреты в БД в зашифрованном виде (envelope encryption);
@@ -145,10 +156,26 @@
   - runtime выдача секретов делается через env injection только в контекст запуска;
   - после завершения запуска секреты очищаются из runtime-контекста.
 - Документ дизайна: `docs/ops/secrets-plane-v1.md`.
+- Текущий прогресс (Phase 1 backend):
+  - добавлены Prisma-сущности + миграция `0012_secrets_plane_v1`:
+    - `ProjectSecret`
+    - `ProjectSecretTemplateBinding`
+    - `ProjectSecretRoleBinding`
+    - `SecretAuditEvent`;
+  - добавлены API:
+    - `POST/GET /api/projects/{key}/secrets`
+    - `PATCH /api/projects/{key}/secrets/{id}`
+    - `POST /api/projects/{key}/secrets/{id}/rotate`
+    - `POST /api/projects/{key}/secrets/{id}/revoke`
+    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
+    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
+  - включено envelope encryption (AES-256-GCM, DEK+master key), masked preview и lifecycle audit (`created/updated/rotated/revoked/binding_*`);
+  - raw value секрета не возвращается в API-ответах после create/rotate.
 - Зависимости:
   - KMS/master-key стратегия и ротация ключей шифрования;
-  - redaction middleware для логов/трасс;
-  - привязка к Project Registry и template-role модели.
+  - runtime env injection и очистка секрета после запуска;
+  - redaction middleware для runtime/log traces;
+  - UI-экран управления секретами.
 
 ## Planned: Coordination Channel (Planning/Control)
 - Статус: `planned` (decision-complete, реализация не начата).

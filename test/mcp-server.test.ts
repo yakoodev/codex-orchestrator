@@ -19,6 +19,7 @@ interface ApiClientMock extends OrchestratorApiClient {
   listMcpServers: ReturnType<typeof vi.fn>;
   bindAgentProfileMcpServer: ReturnType<typeof vi.fn>;
   upsertAgentProfileScript: ReturnType<typeof vi.fn>;
+  evaluateMcpToolAccess: ReturnType<typeof vi.fn>;
   listAuthProfiles: ReturnType<typeof vi.fn>;
   getAuthProfileLimits: ReturnType<typeof vi.fn>;
 }
@@ -35,6 +36,7 @@ function createApiClientMock(): ApiClientMock {
     listMcpServers: vi.fn(),
     bindAgentProfileMcpServer: vi.fn(),
     upsertAgentProfileScript: vi.fn(),
+    evaluateMcpToolAccess: vi.fn(),
     listAuthProfiles: vi.fn(),
     getAuthProfileLimits: vi.fn()
   };
@@ -757,6 +759,92 @@ describe("MCP Bridge Server", () => {
     const content = readErrorPayload(result);
     expect(content["error"]).toBe("forbidden");
     expect(content["code"]).toBe("FORBIDDEN");
+    expect(content["status_code"]).toBe(403);
+  });
+
+  it("проверяет MCP authz перед вызовом tool в authz-режиме", async () => {
+    await Promise.allSettled([client.close(), server.close()]);
+
+    server = createOrchestratorMcpServer({
+      apiClient: apiClientMock,
+      serverName: "test-mcp",
+      serverVersion: "1.0.0",
+      authz: {
+        mcp_api_key: "mcpk_secret",
+        agent_profile_id: "profile-1",
+        agent_template_id: "template-1"
+      }
+    });
+
+    client = new Client({
+      name: "test-client",
+      version: "1.0.0"
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+    apiClientMock.evaluateMcpToolAccess.mockResolvedValue({ allowed: true });
+    apiClientMock.listTasks.mockResolvedValue({
+      items: [{ id: "task-1", status: "NEW" }]
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.list_tasks",
+      arguments: {
+        status: "NEW"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.evaluateMcpToolAccess).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.evaluateMcpToolAccess.mock.calls[0]?.[0]).toMatchObject({
+      api_key: "mcpk_secret",
+      tool_name: "orchestrator.list_tasks",
+      agent_profile_id: "profile-1",
+      agent_template_id: "template-1"
+    });
+    expect(apiClientMock.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it("блокирует tool при MCP authz deny", async () => {
+    await Promise.allSettled([client.close(), server.close()]);
+
+    server = createOrchestratorMcpServer({
+      apiClient: apiClientMock,
+      serverName: "test-mcp",
+      serverVersion: "1.0.0",
+      authz: {
+        mcp_api_key: "mcpk_secret"
+      }
+    });
+
+    client = new Client({
+      name: "test-client",
+      version: "1.0.0"
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+
+    apiClientMock.evaluateMcpToolAccess.mockRejectedValue(
+      new OrchestratorApiError({
+        error: "forbidden by acl",
+        code: "MCP_TOOL_FORBIDDEN",
+        statusCode: 403,
+        method: "POST",
+        path: "/api/mcp/authz/evaluate"
+      })
+    );
+
+    const result = await client.callTool({
+      name: "orchestrator.list_tasks",
+      arguments: {}
+    });
+
+    expect(result.isError).toBe(true);
+    expect(apiClientMock.evaluateMcpToolAccess).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.listTasks).not.toHaveBeenCalled();
+    const content = readErrorPayload(result);
+    expect(content["code"]).toBe("MCP_TOOL_FORBIDDEN");
     expect(content["status_code"]).toBe(403);
   });
 });

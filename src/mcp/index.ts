@@ -5,6 +5,9 @@ import { createOrchestratorMcpServer } from "./server";
 interface McpRuntimeConfig {
   apiBaseUrl: string;
   adminToken: string;
+  mcpApiKey: string | null;
+  agentProfileId: string | null;
+  agentTemplateId: string | null;
   serverName: string;
   serverVersion: string;
   requestTimeoutMs: number;
@@ -36,6 +39,9 @@ function loadMcpRuntimeConfig(env: NodeJS.ProcessEnv = process.env): McpRuntimeC
       env["ORCHESTRATOR_API_BASE_URL"]?.trim() ||
       "http://localhost:8080",
     adminToken,
+    mcpApiKey: env["MCP_API_KEY"]?.trim() || null,
+    agentProfileId: env["MCP_AGENT_PROFILE_ID"]?.trim() || null,
+    agentTemplateId: env["MCP_AGENT_TEMPLATE_ID"]?.trim() || null,
     serverName: env["MCP_SERVER_NAME"]?.trim() || "codex-orchestrator-mcp",
     serverVersion: env["MCP_SERVER_VERSION"]?.trim() || "0.1.0",
     requestTimeoutMs: Math.max(1_000, readInt(env["MCP_REQUEST_TIMEOUT_MS"], 15_000)),
@@ -55,7 +61,13 @@ async function main(): Promise<void> {
   const server = createOrchestratorMcpServer({
     apiClient,
     serverName: config.serverName,
-    serverVersion: config.serverVersion
+    serverVersion: config.serverVersion,
+    authz: {
+      mcp_api_key: config.mcpApiKey ?? undefined,
+      agent_profile_id: config.agentProfileId ?? undefined,
+      agent_template_id: config.agentTemplateId ?? undefined,
+      actor: "mcp_bridge"
+    }
   });
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -80,7 +92,7 @@ async function main(): Promise<void> {
   });
 
   console.error(
-    `[MCP] ${config.serverName}@${config.serverVersion} started, upstream=${config.apiBaseUrl}`
+    `[MCP] ${config.serverName}@${config.serverVersion} started, upstream=${config.apiBaseUrl}, authz=${config.mcpApiKey ? "enabled" : "legacy-admin-only"}`
   );
 }
 

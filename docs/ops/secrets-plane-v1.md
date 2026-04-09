@@ -1,7 +1,7 @@
 # Secrets Plane v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `planned` (decision-complete)
+Статус: `in_progress` (Phase 1 backend реализован)
 
 ## 1. Цель
 
@@ -101,3 +101,21 @@
 - Версионирование нескольких активных версий секрета одновременно.
 - Cross-project inheritance секретов.
 - BYOK/self-managed keyring на уровне отдельного проекта.
+
+## 10. Текущий прогресс реализации
+
+- Реализовано (Phase 1 backend):
+  - Prisma: `ProjectSecret`, `ProjectSecretTemplateBinding`, `ProjectSecretRoleBinding`, `SecretAuditEvent` (+ миграция `0012_secrets_plane_v1`);
+  - API:
+    - `POST/GET /api/projects/{key}/secrets`
+    - `PATCH /api/projects/{key}/secrets/{id}`
+    - `POST /api/projects/{key}/secrets/{id}/rotate`
+    - `POST /api/projects/{key}/secrets/{id}/revoke`
+    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
+    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
+  - включено envelope encryption (AES-256-GCM, DEK+master-key), masked preview и lifecycle audit events;
+  - raw value не возвращается после create/rotate.
+- Остается:
+  - runtime env injection в dispatch/executor path;
+  - runtime/UI/API redaction, чтобы секреты не попадали в логи/activity;
+  - UI-экран управления секретами в `/ui/console.html`.

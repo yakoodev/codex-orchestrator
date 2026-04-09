@@ -263,6 +263,8 @@ model AgentTemplate {
   workers            WorkerInstance[]
   scheduled_rules    ScheduledRule[]
   delegation_targets DelegationRequest[]  @relation("delegation_target_template")
+  mcp_key_constraints McpKeyTemplateConstraint[]
+  project_secret_bindings ProjectSecretTemplateBinding[]
 
   @@map("agent_templates")
 }
@@ -792,6 +794,8 @@ model McpApiKey {
 
   acl_rules         McpKeyAclRule[]
   profile_bindings  McpKeyProfileBinding[]
+  template_constraints McpKeyTemplateConstraint[]
+  auth_audit_events McpAuthAuditEvent[]
 
   @@index([status, updated_at])
   @@index([expires_at])
@@ -826,4 +830,110 @@ model McpKeyProfileBinding {
   @@unique([key_id, agent_profile_id])
   @@index([agent_profile_id, created_at])
   @@map("mcp_key_profile_bindings")
+}
+
+model McpKeyTemplateConstraint {
+  id                String   @id @default(cuid())
+  key_id            String
+  agent_template_id String
+  created_by        String
+  created_at        DateTime @default(now())
+
+  mcp_key        McpApiKey     @relation(fields: [key_id], references: [id], onDelete: Cascade)
+  agent_template AgentTemplate @relation(fields: [agent_template_id], references: [id], onDelete: Cascade)
+
+  @@unique([key_id, agent_template_id])
+  @@index([agent_template_id, created_at])
+  @@map("mcp_key_template_constraints")
+}
+
+model McpAuthAuditEvent {
+  id               String   @id @default(cuid())
+  key_id           String?
+  event_type       String
+  actor            String
+  trace_id         String?
+  request_meta_json Json?
+  created_at       DateTime @default(now())
+
+  mcp_key McpApiKey? @relation(fields: [key_id], references: [id], onDelete: SetNull)
+
+  @@index([key_id, created_at])
+  @@index([trace_id])
+  @@map("mcp_auth_audit_events")
+}
+
+model ProjectSecret {
+  id             String   @id @default(cuid())
+  project_id     String
+  key            String
+  description    String?
+  masked_preview String?
+  is_active      Boolean  @default(true)
+  ciphertext     String
+  dek_encrypted  String
+  dek_kms_key_id String
+  algo           String
+  version        Int      @default(1)
+  created_by     String
+  updated_by     String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  rotated_at     DateTime?
+  revoked_at     DateTime?
+
+  template_bindings ProjectSecretTemplateBinding[]
+  role_bindings     ProjectSecretRoleBinding[]
+  audit_events      SecretAuditEvent[]
+
+  @@unique([project_id, key])
+  @@index([project_id, is_active, updated_at])
+  @@map("project_secrets")
+}
+
+model ProjectSecretTemplateBinding {
+  id          String   @id @default(cuid())
+  secret_id   String
+  template_id String
+  created_by  String
+  created_at  DateTime @default(now())
+
+  secret   ProjectSecret @relation(fields: [secret_id], references: [id], onDelete: Cascade)
+  template AgentTemplate @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@unique([secret_id, template_id])
+  @@index([template_id, created_at])
+  @@map("project_secret_template_bindings")
+}
+
+model ProjectSecretRoleBinding {
+  id         String   @id @default(cuid())
+  secret_id  String
+  role       String
+  created_by String
+  created_at DateTime @default(now())
+
+  secret ProjectSecret @relation(fields: [secret_id], references: [id], onDelete: Cascade)
+
+  @@unique([secret_id, role])
+  @@index([role, created_at])
+  @@map("project_secret_role_bindings")
+}
+
+model SecretAuditEvent {
+  id            String   @id @default(cuid())
+  secret_id     String?
+  project_id    String
+  event_type    String
+  actor         String
+  trace_id      String?
+  metadata_json Json?
+  created_at    DateTime @default(now())
+
+  secret ProjectSecret? @relation(fields: [secret_id], references: [id], onDelete: SetNull)
+
+  @@index([secret_id, created_at])
+  @@index([project_id, created_at])
+  @@index([trace_id])
+  @@map("secret_audit_events")
 }

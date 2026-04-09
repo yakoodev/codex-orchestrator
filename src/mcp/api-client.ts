@@ -74,6 +74,14 @@ export interface UpsertAgentProfileScriptInput {
   content: string;
 }
 
+export interface EvaluateMcpToolAccessInput {
+  api_key: string;
+  tool_name: string;
+  agent_profile_id?: string;
+  agent_template_id?: string;
+  actor?: string;
+}
+
 export interface DispatchAgentRequest {
   requester_task_id: string;
   requester_task_run_id?: string;
@@ -123,6 +131,10 @@ export interface OrchestratorApiClient {
     os: AgentProfileScriptOs,
     input: UpsertAgentProfileScriptInput,
     traceId: string
+  ): Promise<Record<string, unknown>>;
+  evaluateMcpToolAccess(
+    input: EvaluateMcpToolAccessInput,
+    traceId?: string
   ): Promise<Record<string, unknown>>;
   listAuthProfiles(): Promise<AuthProfileListResponse>;
   getAuthProfileLimits(profileId: string): Promise<Record<string, unknown>>;
@@ -419,6 +431,14 @@ export function createHttpOrchestratorApiClient(
       requestJson<Record<string, unknown>>({
         method: "PUT",
         path: `/api/agent-profiles/${encodeURIComponent(profileId)}/scripts/${encodeURIComponent(os)}`,
+        body: input,
+        traceId
+      }),
+
+    evaluateMcpToolAccess: (input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "POST",
+        path: "/api/mcp/authz/evaluate",
         body: input,
         traceId
       }),
