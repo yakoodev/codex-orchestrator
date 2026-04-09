@@ -317,21 +317,24 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests?open_pool=true&project_id=<PROJ
 - в open-пул входят `open` и `blocked_agent` (и `in_progress`, если явно включен флаг);
 - после `resolved_*` заявка больше не возвращается в open-пуле.
 
-## 3.13 Сценарий A13 (planned): Governor loop и повторная выдача blocked_agent
+## 3.13 Сценарий A13: Governor loop в MCP bridge и повторная выдача blocked_agent
 
-Статус: выполняется после реализации `docs/ops/agent-request-plane-v2.md` и `docs/ops/agent-coordination-channel.md`.
+Статус: доступно на уровне MCP bridge (`orchestrator.governor_process_open_agent_requests`), без coordination/topology событий.
 
-1. Создай несколько заявок разных типов (`mcp_tool_acl`, `script_set`, `runtime_dependency`).
-2. Запусти governor-агента и дай ему обработать open-пул.
-3. Для части заявок зафиксируй `resolved_by_agent`.
-4. Для части заявок зафиксируй `blocked_agent`.
-5. Повтори `orchestrator.list_open_agent_requests`.
-6. Убедись, что `blocked_agent` заявки снова входят в выдачу по умолчанию.
-7. Проверь lifecycle события в канале координации:
-  - `request_created`
-  - `request_claimed`
-  - `request_resolved_by_agent`
-  - `request_blocked_agent`
+1. Создай 2 заявки:
+  - A: с `request_payload.governor_auto_resolve=true`;
+  - B: без этого флага.
+2. Вызови `orchestrator.governor_process_open_agent_requests` с `dry_run=true`.
+3. Проверь, что в `actions`:
+  - для A планируется `resolved_by_agent`;
+  - для B планируется `blocked_agent`.
+4. Вызови `orchestrator.governor_process_open_agent_requests` без `dry_run`.
+5. Проверь, что governor делает `claim -> finalize` (две операции resolve на заявку).
+6. Вызови `orchestrator.list_open_agent_requests` и убедись:
+  - заявка A (`resolved_by_agent`) больше не в open-пуле;
+  - заявка B (`blocked_agent`) остаётся в open-пуле.
+7. Повтори запуск governor с `retry_blocked=false` и проверь, что `blocked_agent` заявка пропускается.
+8. Выполни manual fallback для B через `orchestrator.resolve_agent_request` (`resolved_manual` или `rejected_manual`) и проверь, что она исчезла из open-пула.
 
 ## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 2 runtime dispatch)
 

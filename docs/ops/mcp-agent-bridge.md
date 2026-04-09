@@ -44,6 +44,7 @@
 - `orchestrator.create_agent_request`
 - `orchestrator.list_open_agent_requests`
 - `orchestrator.resolve_agent_request`
+- `orchestrator.governor_process_open_agent_requests`
 
 Backend API, используемый bridge:
 - `POST /api/agent-requests`
@@ -59,7 +60,11 @@ Backend API, используемый bridge:
   - `blocked_agent`, если выполнить не удалось.
 - `blocked_agent` по умолчанию возвращается в `list_open` для повторной обработки.
 - Оператор/PM имеет manual fallback через UI (`resolved_manual` / `rejected_manual`).
-- Текущее ограничение Phase 1: audit trail и governor automation остаются follow-up.
+- MCP bridge теперь поддерживает базовый governor-loop tool:
+  - `list_open -> claim(in_progress) -> finalize(resolved_by_agent|blocked_agent)`;
+  - авто-`resolved_by_agent` выполняется только при явном флаге `request_payload.governor_auto_resolve=true`;
+  - по умолчанию заявки без этого флага переводятся в `blocked_agent`.
+- Текущее ограничение: audit trail и backend-side governor orchestration остаются follow-up.
 
 ### 3.3 Error mapping (request-plane)
 
@@ -116,5 +121,6 @@ npm run mcp:serve
 ## 7. Следующие шаги
 
 - Довести `Agent Request Plane v2`: audit trail + governor automation + UI fallback поток.
+- Расширить governor automation: добавить policy-driven резолверы (MCP attach/ACL/script/runtime) вместо флага `governor_auto_resolve`.
 - Реализовать `MCP AuthZ ACL v2` с привязкой к `AgentProfile`.
 - Добавить streamable HTTP transport.

@@ -1,7 +1,7 @@
 # Agent Request Plane v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `planned` (decision-complete)
+Статус: `in_progress` (Phase 1 backend + MCP governor loop baseline)
 
 ## 1. Цель
 
@@ -27,6 +27,7 @@
   - `orchestrator.create_agent_request`
   - `orchestrator.list_open_agent_requests`
   - `orchestrator.resolve_agent_request`
+  - `orchestrator.governor_process_open_agent_requests`
 4. Governor-агент автозапускается и решает по системному промпту:
   - если может выполнить заявку — применяет изменение и ставит `resolved_by_agent`;
   - если не может — ставит `blocked_agent`.
@@ -68,6 +69,7 @@
 - `orchestrator.create_agent_request`
 - `orchestrator.list_open_agent_requests`
 - `orchestrator.resolve_agent_request`
+- `orchestrator.governor_process_open_agent_requests`
 
 ### 5.2 REST для UI/governor integration
 
@@ -89,6 +91,12 @@
   - не может выполнить -> `blocked_agent`.
 5. При ручном вмешательстве оператора:
   - `resolved_manual` или `rejected_manual`.
+
+Текущий baseline (уже реализован в MCP bridge):
+- governor tool выполняет `list_open -> claim -> finalize`;
+- `resolved_by_agent` ставится только при явном `request_payload.governor_auto_resolve=true`;
+- без этого флага заявка переводится в `blocked_agent`;
+- policy-driven резолверы по типам заявок остаются следующим этапом.
 
 ## 7. Интеграция с другими эпиками
 

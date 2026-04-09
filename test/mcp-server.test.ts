@@ -111,6 +111,7 @@ describe("MCP Bridge Server", () => {
         "orchestrator.create_agent_request",
         "orchestrator.list_open_agent_requests",
         "orchestrator.resolve_agent_request",
+        "orchestrator.governor_process_open_agent_requests",
         "orchestrator.get_limits"
       ])
     );
@@ -307,6 +308,106 @@ describe("MCP Bridge Server", () => {
       id: "agent-request-1",
       status: "blocked_agent"
     });
+  });
+
+  it("выполняет dry-run governor цикла без изменения статусов", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-open-1",
+          status: "open",
+          type: "runtime_dependency",
+          request_payload: { governor_auto_resolve: true }
+        },
+        {
+          id: "agent-request-blocked-1",
+          status: "blocked_agent",
+          type: "other",
+          request_payload: {}
+        }
+      ]
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        project_id: "web-ui",
+        dry_run: true
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.listOpenAgentRequests).toHaveBeenCalledWith({
+      project_id: "web-ui",
+      task_id: undefined,
+      agent_profile_id: undefined,
+      agent_template_id: undefined,
+      type: undefined,
+      include_in_progress: false,
+      limit: undefined
+    });
+    expect(apiClientMock.resolveAgentRequest).not.toHaveBeenCalled();
+
+    const content = readStructuredContent(result);
+    expect(content["dry_run"]).toBe(true);
+    expect(content["total_candidates"]).toBe(2);
+    expect(content["processed"]).toBe(0);
+    expect(content["skipped"]).toBe(1);
+    const actions = content["actions"];
+    expect(Array.isArray(actions)).toBe(true);
+    expect((actions as Array<Record<string, unknown>>)[0]?.["planned_final_status"]).toBe(
+      "resolved_by_agent"
+    );
+  });
+
+  it("обрабатывает open-заявку governor циклом с claim -> finalize", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-open-2",
+          status: "open",
+          type: "runtime_dependency",
+          request_payload: { governor_auto_resolve: true }
+        }
+      ]
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-open-2",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-open-2",
+        status: "resolved_by_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main",
+        limit: 10
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.resolveAgentRequest).toHaveBeenCalledTimes(2);
+    expect(apiClientMock.resolveAgentRequest.mock.calls[0]?.[0]).toBe("agent-request-open-2");
+    expect(apiClientMock.resolveAgentRequest.mock.calls[0]?.[1]).toMatchObject({
+      status: "in_progress",
+      claimed_by_governor_id: "governor-main"
+    });
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "resolved_by_agent",
+      claimed_by_governor_id: "governor-main",
+      resolved_by: "governor-main"
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["processed"]).toBe(1);
+    expect(content["claimed"]).toBe(1);
+    expect(content["resolved_by_agent"]).toBe(1);
+    expect(content["blocked_agent"]).toBe(0);
+    expect(content["errors"]).toBe(0);
   });
 
   it("возвращает fleet snapshot с частичными ошибками в orchestrator.get_limits", async () => {

@@ -33,6 +33,8 @@ const AGENT_REQUEST_RESOLVE_STATUS_VALUES = [
   "resolved_manual",
   "rejected_manual"
 ] as const;
+const GOVERNOR_DEFAULT_ID = "mcp-governor-bridge";
+const GOVERNOR_STRATEGY_VERSION = "mcp_bridge_governor_v1";
 
 function toPrettyJson(value: unknown): string {
   try {
@@ -122,6 +124,66 @@ function asStringValue(value: unknown): string | null {
 
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function asBooleanValue(value: unknown): boolean | null {
+  if (typeof value !== "boolean") {
+    return null;
+  }
+
+  return value;
+}
+
+function toGovernorDecision(
+  request: Record<string, unknown>
+): { finalStatus: "resolved_by_agent" | "blocked_agent"; reason: string } {
+  const type = asStringValue(request["type"]) ?? "other";
+  const requestPayload = asRecord(request["request_payload"]);
+  const manualRequired =
+    asBooleanValue(requestPayload["manual_required"]) === true ||
+    asBooleanValue(requestPayload["requires_manual_approval"]) === true;
+  if (manualRequired) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "manual_approval_required"
+    };
+  }
+
+  if (asBooleanValue(requestPayload["governor_auto_resolve"]) === true) {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "explicit_auto_resolve_flag"
+    };
+  }
+
+  if (type === "other") {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "unsupported_type_other"
+    };
+  }
+
+  return {
+    finalStatus: "blocked_agent",
+    reason: "auto_resolve_flag_missing"
+  };
+}
+
+function mapGovernorError(error: unknown): Record<string, unknown> {
+  if (error instanceof OrchestratorApiError) {
+    return {
+      error: error.message,
+      code: error.code,
+      status_code: error.statusCode,
+      method: error.method,
+      path: error.path
+    };
+  }
+
+  return {
+    error: error instanceof Error ? error.message : "Unknown governor error",
+    code: "INTERNAL_ERROR"
+  };
 }
 
 function normalizeDispatchInput(input: {
@@ -414,6 +476,194 @@ export function createOrchestratorMcpServer(
           idempotency_key: input.idempotency_key ?? null,
           request: asRecord(result)
         });
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "orchestrator.governor_process_open_agent_requests",
+    {
+      description:
+        "Автообработать open-пул agent requests: claim (in_progress) и финальный статус (resolved_by_agent/blocked_agent).",
+      inputSchema: {
+        project_id: z.string().min(1).optional(),
+        task_id: z.string().min(1).optional(),
+        agent_profile_id: z.string().min(1).optional(),
+        agent_template_id: z.string().min(1).optional(),
+        type: z.enum(AGENT_REQUEST_TYPE_VALUES).optional(),
+        include_in_progress: z.boolean().optional(),
+        retry_blocked: z.boolean().optional(),
+        dry_run: z.boolean().optional(),
+        governor_id: z.string().min(1).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+        trace_id: z.string().min(1).optional(),
+        idempotency_key: z.string().min(1).optional()
+      }
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const baseTraceId = resolveTraceId(input.trace_id, input.idempotency_key);
+        const governorId = input.governor_id?.trim() || GOVERNOR_DEFAULT_ID;
+        const includeInProgress = input.include_in_progress ?? false;
+        const retryBlocked = input.retry_blocked ?? false;
+        const dryRun = input.dry_run ?? false;
+
+        const response = await options.apiClient.listOpenAgentRequests({
+          project_id: input.project_id?.trim().toLowerCase(),
+          task_id: input.task_id?.trim(),
+          agent_profile_id: input.agent_profile_id?.trim(),
+          agent_template_id: input.agent_template_id?.trim(),
+          type: input.type,
+          include_in_progress: includeInProgress,
+          limit: input.limit
+        });
+
+        const actions: Array<Record<string, unknown>> = [];
+        let claimed = 0;
+        let processed = 0;
+        let resolvedByAgent = 0;
+        let blockedAgent = 0;
+        let skipped = 0;
+        let errors = 0;
+
+        for (const rawItem of response.items) {
+          const item = asRecord(rawItem);
+          const requestId = asStringValue(item["id"]);
+          const previousStatus = asStringValue(item["status"]);
+          const requestType = asStringValue(item["type"]);
+
+          if (!requestId || !previousStatus) {
+            skipped += 1;
+            actions.push({
+              request_id: requestId ?? null,
+              action: "skipped",
+              reason: "missing_id_or_status"
+            });
+            continue;
+          }
+
+          if (previousStatus === "in_progress") {
+            skipped += 1;
+            actions.push({
+              request_id: requestId,
+              previous_status: previousStatus,
+              action: "skipped",
+              reason: "already_in_progress"
+            });
+            continue;
+          }
+
+          if (previousStatus === "blocked_agent" && !retryBlocked) {
+            skipped += 1;
+            actions.push({
+              request_id: requestId,
+              previous_status: previousStatus,
+              action: "skipped",
+              reason: "blocked_retry_disabled"
+            });
+            continue;
+          }
+
+          const decision = toGovernorDecision(item);
+          if (dryRun) {
+            actions.push({
+              request_id: requestId,
+              previous_status: previousStatus,
+              request_type: requestType,
+              action: "planned",
+              planned_final_status: decision.finalStatus,
+              decision_reason: decision.reason
+            });
+            continue;
+          }
+
+          try {
+            const claimTraceId = `${baseTraceId}:claim:${requestId}`;
+            await options.apiClient.resolveAgentRequest(
+              requestId,
+              {
+                status: "in_progress",
+                claimed_by_governor_id: governorId,
+                resolution_payload: {
+                  governor_strategy: GOVERNOR_STRATEGY_VERSION,
+                  governor_phase: "claim"
+                }
+              },
+              claimTraceId
+            );
+            claimed += 1;
+
+            const finalizeTraceId = `${baseTraceId}:finalize:${requestId}`;
+            const finalInput: AgentRequestResolveInput = {
+              status: decision.finalStatus,
+              claimed_by_governor_id: governorId,
+              resolution_payload: {
+                governor_strategy: GOVERNOR_STRATEGY_VERSION,
+                governor_phase: "finalize",
+                decision_reason: decision.reason,
+                request_type: requestType ?? null,
+                previous_status: previousStatus
+              },
+              resolved_by: decision.finalStatus === "resolved_by_agent" ? governorId : undefined
+            };
+            const finalized = await options.apiClient.resolveAgentRequest(
+              requestId,
+              finalInput,
+              finalizeTraceId
+            );
+
+            processed += 1;
+            if (decision.finalStatus === "resolved_by_agent") {
+              resolvedByAgent += 1;
+            } else {
+              blockedAgent += 1;
+            }
+
+            actions.push({
+              request_id: requestId,
+              previous_status: previousStatus,
+              request_type: requestType,
+              action: "processed",
+              claim_trace_id: claimTraceId,
+              finalize_trace_id: finalizeTraceId,
+              final_status: decision.finalStatus,
+              decision_reason: decision.reason,
+              request: asRecord(finalized)
+            });
+          } catch (error) {
+            errors += 1;
+            actions.push({
+              request_id: requestId,
+              previous_status: previousStatus,
+              request_type: requestType,
+              action: "error",
+              error: mapGovernorError(error)
+            });
+          }
+        }
+
+        return toToolSuccess(
+          dryRun
+            ? `Governor dry-run prepared ${actions.length} actions`
+            : `Governor processed ${processed} requests`,
+          {
+            trace_id: baseTraceId,
+            governor_id: governorId,
+            dry_run: dryRun,
+            retry_blocked: retryBlocked,
+            include_in_progress: includeInProgress,
+            total_candidates: response.items.length,
+            claimed,
+            processed,
+            resolved_by_agent: resolvedByAgent,
+            blocked_agent: blockedAgent,
+            skipped,
+            errors,
+            actions
+          }
+        );
       } catch (error) {
         return toToolError(error);
       }

@@ -105,7 +105,8 @@
   - добавлены MCP tools:
     - `orchestrator.create_agent_request`
     - `orchestrator.list_open_agent_requests`
-    - `orchestrator.resolve_agent_request`.
+    - `orchestrator.resolve_agent_request`
+    - `orchestrator.governor_process_open_agent_requests` (базовый loop `list_open -> claim -> finalize`).
 - Зависимости:
   - `MCP AuthZ ACL v2`;
   - `Agent Profiles + MCP Server Sets`;
