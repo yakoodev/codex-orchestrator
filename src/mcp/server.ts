@@ -4,8 +4,10 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod/v4";
 import { TASK_STATUSES } from "../types";
 import type {
+  AgentProfileScriptType,
   AgentRequestCreateInput,
   AgentRequestResolveInput,
+  BindAgentProfileMcpServerInput,
   DispatchAgentRequest,
   OrchestratorApiClient
 } from "./api-client";
@@ -35,6 +37,14 @@ const AGENT_REQUEST_RESOLVE_STATUS_VALUES = [
 ] as const;
 const GOVERNOR_DEFAULT_ID = "mcp-governor-bridge";
 const GOVERNOR_STRATEGY_VERSION = "mcp_bridge_governor_v1";
+const AGENT_PROFILE_SCRIPT_OS_VALUES = ["windows", "linux", "macos"] as const;
+const AGENT_PROFILE_SCRIPT_TYPE_VALUES = ["instruction", "shell"] as const;
+
+interface GovernorDecision {
+  finalStatus: "resolved_by_agent" | "blocked_agent";
+  reason: string;
+  metadata?: Record<string, unknown>;
+}
 
 function toPrettyJson(value: unknown): string {
   try {
@@ -134,11 +144,45 @@ function asBooleanValue(value: unknown): boolean | null {
   return value;
 }
 
-function toGovernorDecision(
-  request: Record<string, unknown>
-): { finalStatus: "resolved_by_agent" | "blocked_agent"; reason: string } {
+function asIntegerValue(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
+    return null;
+  }
+
+  return value;
+}
+
+function asAgentProfileScriptOs(value: unknown): (typeof AGENT_PROFILE_SCRIPT_OS_VALUES)[number] | null {
+  const parsed = asStringValue(value);
+  if (!parsed) {
+    return null;
+  }
+
+  return AGENT_PROFILE_SCRIPT_OS_VALUES.includes(
+    parsed as (typeof AGENT_PROFILE_SCRIPT_OS_VALUES)[number]
+  )
+    ? (parsed as (typeof AGENT_PROFILE_SCRIPT_OS_VALUES)[number])
+    : null;
+}
+
+function asAgentProfileScriptType(value: unknown): AgentProfileScriptType | null {
+  const parsed = asStringValue(value);
+  if (!parsed) {
+    return null;
+  }
+
+  return AGENT_PROFILE_SCRIPT_TYPE_VALUES.includes(parsed as AgentProfileScriptType)
+    ? (parsed as AgentProfileScriptType)
+    : null;
+}
+
+function getAgentRequestPayload(request: Record<string, unknown>): Record<string, unknown> {
+  return asRecord(request["request_payload"]);
+}
+
+function toGovernorDecision(request: Record<string, unknown>): GovernorDecision {
   const type = asStringValue(request["type"]) ?? "other";
-  const requestPayload = asRecord(request["request_payload"]);
+  const requestPayload = getAgentRequestPayload(request);
   const manualRequired =
     asBooleanValue(requestPayload["manual_required"]) === true ||
     asBooleanValue(requestPayload["requires_manual_approval"]) === true;
@@ -146,6 +190,20 @@ function toGovernorDecision(
     return {
       finalStatus: "blocked_agent",
       reason: "manual_approval_required"
+    };
+  }
+
+  if (type === "mcp_server_attach") {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "policy_mcp_server_attach"
+    };
+  }
+
+  if (type === "script_set") {
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "policy_script_set"
     };
   }
 
@@ -167,6 +225,298 @@ function toGovernorDecision(
     finalStatus: "blocked_agent",
     reason: "auto_resolve_flag_missing"
   };
+}
+
+async function executeMcpServerAttachPolicy(
+  apiClient: OrchestratorApiClient,
+  request: Record<string, unknown>,
+  traceId: string
+): Promise<GovernorDecision> {
+  const requestPayload = getAgentRequestPayload(request);
+  const profileId =
+    asStringValue(request["agent_profile_id"]) ??
+    asStringValue(requestPayload["agent_profile_id"]) ??
+    asStringValue(requestPayload["profile_id"]);
+
+  if (!profileId) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "agent_profile_id_required"
+    };
+  }
+
+  const requestedServerId =
+    asStringValue(requestPayload["mcp_server_id"]) ?? asStringValue(requestPayload["server_id"]);
+  const requestedServerName =
+    asStringValue(requestPayload["mcp_server_name"]) ?? asStringValue(requestPayload["server_name"]);
+  const includeUnapproved =
+    asBooleanValue(requestPayload["include_unapproved"]) ??
+    asBooleanValue(requestPayload["allow_unapproved"]) ??
+    false;
+
+  let resolvedServerId = requestedServerId;
+  let resolvedServerName: string | null = null;
+
+  if (!resolvedServerId) {
+    if (!requestedServerName) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "mcp_server_id_or_name_required",
+        metadata: {
+          profile_id: profileId
+        }
+      };
+    }
+
+    const servers = await apiClient.listMcpServers({
+      include_unapproved: includeUnapproved
+    });
+    const match = servers.items.find((server) => {
+      const serverRecord = asRecord(server);
+      const name = asStringValue(serverRecord["name"]);
+      return name === requestedServerName;
+    });
+
+    if (!match) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "mcp_server_not_found",
+        metadata: {
+          profile_id: profileId,
+          requested_server_name: requestedServerName,
+          include_unapproved: includeUnapproved
+        }
+      };
+    }
+
+    const matchRecord = asRecord(match);
+    resolvedServerId = asStringValue(matchRecord["id"]);
+    resolvedServerName = asStringValue(matchRecord["name"]);
+    if (!resolvedServerId) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "mcp_server_missing_id",
+        metadata: {
+          profile_id: profileId,
+          requested_server_name: requestedServerName
+        }
+      };
+    }
+  }
+
+  const priorityCandidate = requestPayload["priority"];
+  let priority: number | undefined;
+  if (priorityCandidate !== undefined) {
+    const parsedPriority = asIntegerValue(priorityCandidate);
+    if (parsedPriority === null || parsedPriority < 0 || parsedPriority > 1_000) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "invalid_priority",
+        metadata: {
+          profile_id: profileId,
+          server_id: resolvedServerId
+        }
+      };
+    }
+    priority = parsedPriority;
+  }
+
+  const isRequiredCandidate = requestPayload["is_required"];
+  const parsedIsRequired =
+    isRequiredCandidate === undefined ? undefined : asBooleanValue(isRequiredCandidate);
+  if (isRequiredCandidate !== undefined && parsedIsRequired === null) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "invalid_is_required",
+      metadata: {
+        profile_id: profileId,
+        server_id: resolvedServerId
+      }
+    };
+  }
+  const isRequired = parsedIsRequired ?? undefined;
+
+  const configCandidate = requestPayload["config_json"];
+  let configJson: Record<string, unknown> | null | undefined;
+  if (configCandidate !== undefined) {
+    if (configCandidate === null) {
+      configJson = null;
+    } else if (
+      typeof configCandidate === "object" &&
+      !Array.isArray(configCandidate)
+    ) {
+      configJson = configCandidate as Record<string, unknown>;
+    } else {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "invalid_config_json",
+        metadata: {
+          profile_id: profileId,
+          server_id: resolvedServerId
+        }
+      };
+    }
+  }
+
+  const bindInput: BindAgentProfileMcpServerInput = {
+    ...(isRequired === undefined ? {} : { is_required: isRequired }),
+    ...(priority === undefined ? {} : { priority }),
+    ...(configJson === undefined ? {} : { config_json: configJson })
+  };
+
+  try {
+    const binding = await apiClient.bindAgentProfileMcpServer(
+      profileId,
+      resolvedServerId,
+      bindInput,
+      traceId
+    );
+
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "mcp_server_attached",
+      metadata: {
+        profile_id: profileId,
+        server_id: resolvedServerId,
+        server_name: resolvedServerName ?? requestedServerName ?? null,
+        binding
+      }
+    };
+  } catch (error) {
+    if (
+      error instanceof OrchestratorApiError &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "mcp_server_attach_rejected",
+        metadata: {
+          profile_id: profileId,
+          server_id: resolvedServerId,
+          server_name: resolvedServerName ?? requestedServerName ?? null,
+          error: mapGovernorError(error)
+        }
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function executeScriptSetPolicy(
+  apiClient: OrchestratorApiClient,
+  request: Record<string, unknown>,
+  traceId: string
+): Promise<GovernorDecision> {
+  const requestPayload = getAgentRequestPayload(request);
+  const profileId =
+    asStringValue(request["agent_profile_id"]) ??
+    asStringValue(requestPayload["agent_profile_id"]) ??
+    asStringValue(requestPayload["profile_id"]);
+  if (!profileId) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "agent_profile_id_required"
+    };
+  }
+
+  const os = asAgentProfileScriptOs(requestPayload["os"]);
+  if (!os) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "script_os_required",
+      metadata: {
+        profile_id: profileId
+      }
+    };
+  }
+
+  const content = asStringValue(requestPayload["content"]);
+  if (!content) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "script_content_required",
+      metadata: {
+        profile_id: profileId,
+        os
+      }
+    };
+  }
+
+  const scriptTypeCandidate = requestPayload["script_type"];
+  const scriptType =
+    scriptTypeCandidate === undefined ? undefined : asAgentProfileScriptType(scriptTypeCandidate);
+  if (scriptTypeCandidate !== undefined && !scriptType) {
+    return {
+      finalStatus: "blocked_agent",
+      reason: "invalid_script_type",
+      metadata: {
+        profile_id: profileId,
+        os
+      }
+    };
+  }
+
+  try {
+    const script = await apiClient.upsertAgentProfileScript(
+      profileId,
+      os,
+      {
+        ...(scriptType ? { script_type: scriptType } : {}),
+        content
+      },
+      traceId
+    );
+    return {
+      finalStatus: "resolved_by_agent",
+      reason: "script_set_updated",
+      metadata: {
+        profile_id: profileId,
+        os,
+        script
+      }
+    };
+  } catch (error) {
+    if (
+      error instanceof OrchestratorApiError &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      return {
+        finalStatus: "blocked_agent",
+        reason: "script_set_rejected",
+        metadata: {
+          profile_id: profileId,
+          os,
+          error: mapGovernorError(error)
+        }
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function executeGovernorDecision(
+  apiClient: OrchestratorApiClient,
+  request: Record<string, unknown>,
+  decision: GovernorDecision,
+  traceId: string
+): Promise<GovernorDecision> {
+  if (decision.finalStatus !== "resolved_by_agent") {
+    return decision;
+  }
+
+  if (decision.reason === "policy_mcp_server_attach") {
+    return executeMcpServerAttachPolicy(apiClient, request, traceId);
+  }
+
+  if (decision.reason === "policy_script_set") {
+    return executeScriptSetPolicy(apiClient, request, traceId);
+  }
+
+  return decision;
 }
 
 function mapGovernorError(error: unknown): Record<string, unknown> {
@@ -574,7 +924,8 @@ export function createOrchestratorMcpServer(
               request_type: requestType,
               action: "planned",
               planned_final_status: decision.finalStatus,
-              decision_reason: decision.reason
+              decision_reason: decision.reason,
+              decision_metadata: decision.metadata ?? null
             });
             continue;
           }
@@ -595,18 +946,27 @@ export function createOrchestratorMcpServer(
             );
             claimed += 1;
 
+            const policyTraceId = `${baseTraceId}:policy:${requestId}`;
+            const finalDecision = await executeGovernorDecision(
+              options.apiClient,
+              item,
+              decision,
+              policyTraceId
+            );
+
             const finalizeTraceId = `${baseTraceId}:finalize:${requestId}`;
             const finalInput: AgentRequestResolveInput = {
-              status: decision.finalStatus,
+              status: finalDecision.finalStatus,
               claimed_by_governor_id: governorId,
               resolution_payload: {
                 governor_strategy: GOVERNOR_STRATEGY_VERSION,
                 governor_phase: "finalize",
-                decision_reason: decision.reason,
+                decision_reason: finalDecision.reason,
+                decision_metadata: finalDecision.metadata ?? null,
                 request_type: requestType ?? null,
                 previous_status: previousStatus
               },
-              resolved_by: decision.finalStatus === "resolved_by_agent" ? governorId : undefined
+              resolved_by: finalDecision.finalStatus === "resolved_by_agent" ? governorId : undefined
             };
             const finalized = await options.apiClient.resolveAgentRequest(
               requestId,
@@ -615,7 +975,7 @@ export function createOrchestratorMcpServer(
             );
 
             processed += 1;
-            if (decision.finalStatus === "resolved_by_agent") {
+            if (finalDecision.finalStatus === "resolved_by_agent") {
               resolvedByAgent += 1;
             } else {
               blockedAgent += 1;
@@ -627,9 +987,11 @@ export function createOrchestratorMcpServer(
               request_type: requestType,
               action: "processed",
               claim_trace_id: claimTraceId,
+              policy_trace_id: policyTraceId,
               finalize_trace_id: finalizeTraceId,
-              final_status: decision.finalStatus,
-              decision_reason: decision.reason,
+              final_status: finalDecision.finalStatus,
+              decision_reason: finalDecision.reason,
+              decision_metadata: finalDecision.metadata ?? null,
               request: asRecord(finalized)
             });
           } catch (error) {

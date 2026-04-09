@@ -16,6 +16,9 @@ interface ApiClientMock extends OrchestratorApiClient {
   createAgentRequest: ReturnType<typeof vi.fn>;
   listOpenAgentRequests: ReturnType<typeof vi.fn>;
   resolveAgentRequest: ReturnType<typeof vi.fn>;
+  listMcpServers: ReturnType<typeof vi.fn>;
+  bindAgentProfileMcpServer: ReturnType<typeof vi.fn>;
+  upsertAgentProfileScript: ReturnType<typeof vi.fn>;
   listAuthProfiles: ReturnType<typeof vi.fn>;
   getAuthProfileLimits: ReturnType<typeof vi.fn>;
 }
@@ -29,6 +32,9 @@ function createApiClientMock(): ApiClientMock {
     createAgentRequest: vi.fn(),
     listOpenAgentRequests: vi.fn(),
     resolveAgentRequest: vi.fn(),
+    listMcpServers: vi.fn(),
+    bindAgentProfileMcpServer: vi.fn(),
+    upsertAgentProfileScript: vi.fn(),
     listAuthProfiles: vi.fn(),
     getAuthProfileLimits: vi.fn()
   };
@@ -408,6 +414,127 @@ describe("MCP Bridge Server", () => {
     expect(content["resolved_by_agent"]).toBe(1);
     expect(content["blocked_agent"]).toBe(0);
     expect(content["errors"]).toBe(0);
+  });
+
+  it("автоматически привязывает MCP server для mcp_server_attach заявки", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-attach-1",
+          status: "open",
+          type: "mcp_server_attach",
+          agent_profile_id: "profile-1",
+          request_payload: {
+            mcp_server_id: "server-browser",
+            priority: 40
+          }
+        }
+      ]
+    });
+    apiClientMock.bindAgentProfileMcpServer.mockResolvedValue({
+      id: "binding-1",
+      agent_profile_id: "profile-1",
+      mcp_server_id: "server-browser",
+      priority: 40
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-attach-1",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-attach-1",
+        status: "resolved_by_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.bindAgentProfileMcpServer).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[0]).toBe("profile-1");
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[1]).toBe("server-browser");
+    expect(apiClientMock.bindAgentProfileMcpServer.mock.calls[0]?.[2]).toEqual({
+      priority: 40
+    });
+
+    expect(apiClientMock.resolveAgentRequest).toHaveBeenCalledTimes(2);
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "resolved_by_agent",
+      claimed_by_governor_id: "governor-main",
+      resolved_by: "governor-main",
+      resolution_payload: expect.objectContaining({
+        decision_reason: "mcp_server_attached"
+      })
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["processed"]).toBe(1);
+    expect(content["resolved_by_agent"]).toBe(1);
+    expect(content["blocked_agent"]).toBe(0);
+  });
+
+  it("автоматически обновляет script_set для profile через governor policy", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        {
+          id: "agent-request-script-1",
+          status: "open",
+          type: "script_set",
+          agent_profile_id: "profile-2",
+          request_payload: {
+            os: "linux",
+            script_type: "shell",
+            content: "echo smoke"
+          }
+        }
+      ]
+    });
+    apiClientMock.upsertAgentProfileScript.mockResolvedValue({
+      id: "script-1",
+      os: "linux",
+      script_type: "shell"
+    });
+    apiClientMock.resolveAgentRequest
+      .mockResolvedValueOnce({
+        id: "agent-request-script-1",
+        status: "in_progress"
+      })
+      .mockResolvedValueOnce({
+        id: "agent-request-script-1",
+        status: "resolved_by_agent"
+      });
+
+    const result = await client.callTool({
+      name: "orchestrator.governor_process_open_agent_requests",
+      arguments: {
+        governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.upsertAgentProfileScript).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.upsertAgentProfileScript.mock.calls[0]?.[0]).toBe("profile-2");
+    expect(apiClientMock.upsertAgentProfileScript.mock.calls[0]?.[1]).toBe("linux");
+    expect(apiClientMock.upsertAgentProfileScript.mock.calls[0]?.[2]).toEqual({
+      script_type: "shell",
+      content: "echo smoke"
+    });
+    expect(apiClientMock.resolveAgentRequest.mock.calls[1]?.[1]).toMatchObject({
+      status: "resolved_by_agent",
+      resolution_payload: expect.objectContaining({
+        decision_reason: "script_set_updated"
+      })
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["processed"]).toBe(1);
+    expect(content["resolved_by_agent"]).toBe(1);
+    expect(content["blocked_agent"]).toBe(0);
   });
 
   it("возвращает fleet snapshot с частичными ошибками в orchestrator.get_limits", async () => {

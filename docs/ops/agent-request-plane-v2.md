@@ -1,7 +1,7 @@
 # Agent Request Plane v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
-Статус: `in_progress` (backend + MCP governor loop baseline + audit trail)
+Статус: `in_progress` (backend + MCP governor policy v1 + audit trail)
 
 ## 1. Цель
 
@@ -94,11 +94,13 @@
   - `resolved_manual` или `rejected_manual`.
 
 Текущий baseline (уже реализован в MCP bridge):
-- governor tool выполняет `list_open -> claim -> finalize`;
-- `resolved_by_agent` ставится только при явном `request_payload.governor_auto_resolve=true`;
-- без этого флага заявка переводится в `blocked_agent`;
+- governor tool выполняет `list_open -> claim -> policy -> finalize`;
+- policy v1 поддерживает:
+  - `mcp_server_attach`: bind MCP server к `AgentProfile` (по `server_id` или резолву `server_name`);
+  - `script_set`: upsert OS script set (`windows/linux/macos`) в `AgentProfile`;
 - backend пишет audit события на create/resolve переходах с `from_status/to_status`, `trace_id`, `actor_type/actor_id`;
-- policy-driven резолверы по типам заявок остаются следующим этапом.
+- для validation/domain `4xx` в policy-action заявка финализируется как `blocked_agent` с diagnostic metadata;
+- policy-driven резолверы для `mcp_tool_acl` и части `runtime_dependency` остаются следующим этапом.
 
 ## 7. Интеграция с другими эпиками
 
@@ -127,9 +129,13 @@
 2. Governor получает заявку через `list_open`.
 3. Governor переводит заявку в `resolved_by_agent` или `blocked_agent`.
 4. Убедиться, что `blocked_agent` повторно возвращается в `list_open`.
-5. Оператор вручную закрывает одну `blocked_agent` заявку как `resolved_manual` и другую как `rejected_manual`.
-6. Проверить через `GET /api/agent-requests/{id}/audit`, что переходы зафиксированы в правильном порядке и с корректными `from_status/to_status`.
-7. Проверить отображение переходов в topology/coordination после реализации соответствующих эпиков.
+5. Проверить policy v1:
+  - `mcp_server_attach` с валидными `profile + server` уходит в `resolved_by_agent`;
+  - `script_set` с валидными `profile + os + content` уходит в `resolved_by_agent`;
+  - невалидные payload/4xx кейсы уходят в `blocked_agent`.
+6. Оператор вручную закрывает одну `blocked_agent` заявку как `resolved_manual` и другую как `rejected_manual`.
+7. Проверить через `GET /api/agent-requests/{id}/audit`, что переходы зафиксированы в правильном порядке и с корректными `from_status/to_status`.
+8. Проверить отображение переходов в topology/coordination после реализации соответствующих эпиков.
 
 ## 11. Out of scope v2
 

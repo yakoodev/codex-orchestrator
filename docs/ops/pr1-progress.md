@@ -196,6 +196,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - при создании/resolve заявки пишутся lifecycle события (`request_created`, `request_claimed`, `request_blocked_agent`, `request_resolved_*`, `request_rejected_manual`) с `from_status/to_status`, `trace_id`, `actor_type/actor_id`, `metadata_json`;
   - добавлен endpoint `GET /api/agent-requests/{id}/audit?limit=...`;
   - OpenAPI/route-coverage и API-тесты синхронизированы.
+- [x] Усилен governor-loop в MCP bridge policy-driven резолверами:
+  - `mcp_server_attach`: governor умеет автоматически привязывать MCP server к `AgentProfile` через API (`bind`), включая резолв server по `server_id/server_name`;
+  - `script_set`: governor умеет автоматически upsert-ить OS script set (`windows/linux/macos`) в профиль;
+  - для валидационных и доменных `4xx` ошибок заявка переводится в `blocked_agent` с reason/metadata, а не падает в terminal error.
 - [x] Стартована кодовая реализация `Agent Profiles + MCP Server Sets` (Phase 1 backend):
   - добавлены Prisma-сущности + миграция `0008_agent_profiles_mcp_servers`:
     - `AgentProfile`
@@ -242,7 +246,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
-- [~] Agent Request Plane v2 (backend + MCP create/list_open/resolve + governor-loop + request audit trail реализованы; остаются policy-driven resolver'ы и topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
+- [~] Agent Request Plane v2 (backend + MCP create/list_open/resolve + governor-loop + audit trail + policy-driven resolver'ы `mcp_server_attach/script_set` реализованы; остаются resolver'ы для `mcp_tool_acl/runtime_dependency` и topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
 - [~] Agent Profiles + MCP Server Sets (Phase 1 backend + UI-конфигуратор + runtime-resolve в dispatch реализованы; остаются ACL/governor и authz-ограничения MCP): `docs/ops/agent-profiles-mcp-servers.md`.
 - [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 

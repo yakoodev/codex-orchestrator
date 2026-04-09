@@ -330,7 +330,7 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests/<REQUEST_ID>/audit?limit=20" `
 
 ## 3.13 Сценарий A13: Governor loop в MCP bridge и повторная выдача blocked_agent
 
-Статус: доступно на уровне MCP bridge (`orchestrator.governor_process_open_agent_requests`), без coordination/topology событий.
+Статус: доступно на уровне MCP bridge (`orchestrator.governor_process_open_agent_requests`) с policy v1 для `mcp_server_attach/script_set`, без coordination/topology событий.
 
 1. Создай 2 заявки:
   - A: с `request_payload.governor_auto_resolve=true`;
@@ -346,6 +346,25 @@ Invoke-RestMethod -Uri "$BASE/api/agent-requests/<REQUEST_ID>/audit?limit=20" `
   - заявка B (`blocked_agent`) остаётся в open-пуле.
 7. Повтори запуск governor с `retry_blocked=false` и проверь, что `blocked_agent` заявка пропускается.
 8. Выполни manual fallback для B через `orchestrator.resolve_agent_request` (`resolved_manual` или `rejected_manual`) и проверь, что она исчезла из open-пула.
+9. Проверь policy `mcp_server_attach`:
+  - создай заявку с `type = mcp_server_attach`, `agent_profile_id`, `request_payload.mcp_server_id` (или `server_name`);
+  - запусти governor и проверь, что заявка уходит в `resolved_by_agent`;
+  - проверь binding через API:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/<PROFILE_ID>/mcp-servers" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+10. Проверь policy `script_set`:
+  - создай заявку с `type = script_set`, `agent_profile_id`, `request_payload = { os, script_type, content }`;
+  - запусти governor и проверь `resolved_by_agent`;
+  - проверь сохранение script set через API:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/agent-profiles/<PROFILE_ID>/scripts" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
 
 ## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 2 runtime dispatch)
 

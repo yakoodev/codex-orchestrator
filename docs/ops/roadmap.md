@@ -82,7 +82,7 @@
   - `Topology UI` (визуализация профилей и их активных связей).
 
 ## Planned: Agent Request Plane v2
-- Статус: `in_progress` (backend + MCP governor baseline + audit trail).
+- Статус: `in_progress` (backend + MCP governor policy v1 + audit trail).
 - Цель: заменить tool-only заявки универсальным механизмом запросов агента на недостающие возможности.
 - Зафиксированные решения:
   - универсальные типы заявок: `mcp_server_attach`, `mcp_tool_acl`, `script_set`, `runtime_dependency`, `other`;
@@ -109,7 +109,11 @@
     - `orchestrator.create_agent_request`
     - `orchestrator.list_open_agent_requests`
     - `orchestrator.resolve_agent_request`
-    - `orchestrator.governor_process_open_agent_requests` (базовый loop `list_open -> claim -> finalize`).
+    - `orchestrator.governor_process_open_agent_requests` (loop `list_open -> claim -> policy -> finalize`);
+  - в governor policy v1 добавлены auto-resolver'ы:
+    - `mcp_server_attach` -> bind MCP server к `AgentProfile` (по `server_id` или резолву по `server_name`);
+    - `script_set` -> upsert OS script set (`windows/linux/macos`) в `AgentProfile`;
+    - для валидационных/domain `4xx` заявка финализируется как `blocked_agent` с diagnostic metadata.
 - Зависимости:
   - `MCP AuthZ ACL v2`;
   - `Agent Profiles + MCP Server Sets`;

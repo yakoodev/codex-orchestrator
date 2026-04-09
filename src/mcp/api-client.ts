@@ -16,6 +16,10 @@ export interface TasksResponse {
   items: Array<Record<string, unknown>>;
 }
 
+export interface McpServersResponse {
+  items: Array<Record<string, unknown>>;
+}
+
 export type AgentRequestType =
   | "mcp_server_attach"
   | "mcp_tool_acl"
@@ -56,6 +60,20 @@ export interface AgentRequestsResponse {
   items: Array<Record<string, unknown>>;
 }
 
+export interface BindAgentProfileMcpServerInput {
+  is_required?: boolean;
+  priority?: number;
+  config_json?: Record<string, unknown> | null;
+}
+
+export type AgentProfileScriptOs = "windows" | "linux" | "macos";
+export type AgentProfileScriptType = "instruction" | "shell";
+
+export interface UpsertAgentProfileScriptInput {
+  script_type?: AgentProfileScriptType;
+  content: string;
+}
+
 export interface DispatchAgentRequest {
   requester_task_id: string;
   requester_task_run_id?: string;
@@ -93,12 +111,25 @@ export interface OrchestratorApiClient {
     input: AgentRequestResolveInput,
     traceId: string
   ): Promise<Record<string, unknown>>;
+  listMcpServers(options?: { include_unapproved?: boolean }): Promise<McpServersResponse>;
+  bindAgentProfileMcpServer(
+    profileId: string,
+    serverId: string,
+    input: BindAgentProfileMcpServerInput,
+    traceId: string
+  ): Promise<Record<string, unknown>>;
+  upsertAgentProfileScript(
+    profileId: string,
+    os: AgentProfileScriptOs,
+    input: UpsertAgentProfileScriptInput,
+    traceId: string
+  ): Promise<Record<string, unknown>>;
   listAuthProfiles(): Promise<AuthProfileListResponse>;
   getAuthProfileLimits(profileId: string): Promise<Record<string, unknown>>;
 }
 
 interface RequestOptions {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   path: string;
   traceId?: string;
   query?: Record<string, string | undefined>;
@@ -363,6 +394,31 @@ export function createHttpOrchestratorApiClient(
       requestJson<Record<string, unknown>>({
         method: "POST",
         path: `/api/agent-requests/${encodeURIComponent(requestId)}/resolve`,
+        body: input,
+        traceId
+      }),
+
+    listMcpServers: (listOptions) =>
+      requestJson<McpServersResponse>({
+        method: "GET",
+        path: "/api/mcp/servers",
+        query: {
+          include_unapproved: listOptions?.include_unapproved ? "true" : undefined
+        }
+      }),
+
+    bindAgentProfileMcpServer: (profileId, serverId, input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "POST",
+        path: `/api/agent-profiles/${encodeURIComponent(profileId)}/mcp-servers/${encodeURIComponent(serverId)}`,
+        body: input,
+        traceId
+      }),
+
+    upsertAgentProfileScript: (profileId, os, input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "PUT",
+        path: `/api/agent-profiles/${encodeURIComponent(profileId)}/scripts/${encodeURIComponent(os)}`,
         body: input,
         traceId
       }),
