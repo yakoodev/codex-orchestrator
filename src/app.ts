@@ -15,6 +15,9 @@ import {
   createAuthProfileRateLimitsReader
 } from "./runtime/auth-profile-rate-limits";
 import type {
+  AgentRequestEntity,
+  AgentRequestStatus,
+  AgentRequestType,
   AgentMemoryEntryEntity,
   AgentTemplateEntity,
   ArtifactEntity,
@@ -90,6 +93,10 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/delegation/capabilities",
   "POST /api/delegation/dispatch",
   "GET /api/delegation/cards",
+  "POST /api/agent-requests",
+  "GET /api/agent-requests",
+  "GET /api/agent-requests/{id}",
+  "POST /api/agent-requests/{id}/resolve",
   "POST /api/memory/entries",
   "GET /api/memory/entries",
   "PATCH /api/memory/entries/{id}",
@@ -246,6 +253,27 @@ interface MemoryEntryPatchRequest {
   is_active?: unknown;
 }
 
+interface AgentRequestCreateRequest {
+  type?: unknown;
+  priority?: unknown;
+  project_id?: unknown;
+  task_id?: unknown;
+  agent_run_id?: unknown;
+  agent_profile_id?: unknown;
+  agent_template_id?: unknown;
+  requested_by_agent_id?: unknown;
+  title?: unknown;
+  reason?: unknown;
+  request_payload?: unknown;
+}
+
+interface AgentRequestResolveRequest {
+  status?: unknown;
+  resolution_payload?: unknown;
+  claimed_by_governor_id?: unknown;
+  resolved_by?: unknown;
+}
+
 interface ModulePatchRequest {
   is_enabled?: unknown;
   config_json?: unknown;
@@ -273,6 +301,33 @@ interface SchedulePatchRequest {
 }
 
 const AUTH_CONTEXT_TYPES = new Set<AuthContextType>(["apikey", "chatgpt", "chatgptAuthTokens"]);
+const AGENT_REQUEST_TYPES = new Set<AgentRequestType>([
+  "mcp_server_attach",
+  "mcp_tool_acl",
+  "script_set",
+  "runtime_dependency",
+  "other"
+]);
+const AGENT_REQUEST_STATUSES = new Set<AgentRequestStatus>([
+  "open",
+  "in_progress",
+  "resolved_by_agent",
+  "blocked_agent",
+  "resolved_manual",
+  "rejected_manual"
+]);
+const AGENT_REQUEST_TERMINAL_STATUSES = new Set<AgentRequestStatus>([
+  "resolved_by_agent",
+  "resolved_manual",
+  "rejected_manual"
+]);
+const AGENT_REQUEST_RESOLVE_ALLOWED_STATUSES = new Set<AgentRequestStatus>([
+  "in_progress",
+  "blocked_agent",
+  "resolved_by_agent",
+  "resolved_manual",
+  "rejected_manual"
+]);
 const SCHEDULE_SCOPES = new Set<ScheduleScope>(["global", "project"]);
 const SCHEDULE_OVERLAP_POLICIES = new Set<ScheduleOverlapPolicy>(["one_active_skip"]);
 const SCHEDULE_MISFIRE_POLICIES = new Set<ScheduleMisfirePolicy>(["recompute_due_on_restart"]);
@@ -497,6 +552,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isAuthContextType(value: string): value is AuthContextType {
   return AUTH_CONTEXT_TYPES.has(value as AuthContextType);
+}
+
+function isAgentRequestType(value: string): value is AgentRequestType {
+  return AGENT_REQUEST_TYPES.has(value as AgentRequestType);
+}
+
+function isAgentRequestStatus(value: string): value is AgentRequestStatus {
+  return AGENT_REQUEST_STATUSES.has(value as AgentRequestStatus);
 }
 
 function isScheduleScope(value: string): value is ScheduleScope {
@@ -1340,6 +1403,31 @@ function delegationToResponse(delegation: DelegationRequestEntity): Record<strin
     created_at: delegation.created_at,
     started_at: delegation.started_at,
     ended_at: delegation.ended_at
+  };
+}
+
+function agentRequestToResponse(agentRequest: AgentRequestEntity): Record<string, unknown> {
+  return {
+    id: agentRequest.id,
+    type: agentRequest.type,
+    status: agentRequest.status,
+    priority: agentRequest.priority,
+    project_id: agentRequest.project_id,
+    task_id: agentRequest.task_id,
+    agent_run_id: agentRequest.agent_run_id,
+    agent_profile_id: agentRequest.agent_profile_id,
+    agent_template_id: agentRequest.agent_template_id,
+    requested_by_agent_id: agentRequest.requested_by_agent_id,
+    title: agentRequest.title,
+    reason: agentRequest.reason,
+    request_payload: agentRequest.request_payload_json,
+    resolution_payload: agentRequest.resolution_payload_json,
+    claimed_by_governor_id: agentRequest.claimed_by_governor_id,
+    resolved_by: agentRequest.resolved_by,
+    resolved_at: agentRequest.resolved_at,
+    created_by: agentRequest.created_by,
+    created_at: agentRequest.created_at,
+    updated_at: agentRequest.updated_at
   };
 }
 
@@ -3429,6 +3517,335 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return reply.send(memoryEntryToResponse(updated));
+  });
+
+  app.post("/api/agent-requests", async (request, reply) => {
+    const body = request.body as AgentRequestCreateRequest;
+    const typeValue = asNonEmptyString(body.type);
+    const projectId = asProjectKey(body.project_id);
+    const taskId = asNonEmptyString(body.task_id);
+    const title = asNonEmptyString(body.title);
+    const reason = asNonEmptyString(body.reason);
+
+    if (!typeValue || !projectId || !taskId || !title || !reason) {
+      return sendError(
+        reply,
+        400,
+        "type, project_id, task_id, title and reason are required",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    if (!isAgentRequestType(typeValue)) {
+      return sendError(reply, 400, "Invalid agent request type", "REQUEST_VALIDATION_FAILED");
+    }
+
+    let priority = 100;
+    if (body.priority !== undefined) {
+      if (
+        typeof body.priority !== "number" ||
+        !Number.isInteger(body.priority) ||
+        body.priority < 0 ||
+        body.priority > 1_000
+      ) {
+        return sendError(
+          reply,
+          400,
+          "priority must be an integer between 0 and 1000",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      priority = body.priority;
+    }
+
+    const parseOptionalField = (value: unknown, fieldName: string): string | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+
+      const parsed = asNonEmptyString(value);
+      if (!parsed) {
+        throw new Error(`${fieldName} must be a non-empty string or null`);
+      }
+      return parsed;
+    };
+
+    let agentRunId: string | null | undefined;
+    let agentProfileId: string | null | undefined;
+    let agentTemplateId: string | null | undefined;
+    let requestedByAgentId: string | null | undefined;
+    try {
+      agentRunId = parseOptionalField(body.agent_run_id, "agent_run_id");
+      agentProfileId = parseOptionalField(body.agent_profile_id, "agent_profile_id");
+      agentTemplateId = parseOptionalField(body.agent_template_id, "agent_template_id");
+      requestedByAgentId = parseOptionalField(body.requested_by_agent_id, "requested_by_agent_id");
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+    }
+
+    let requestPayload: Record<string, unknown> | null | undefined;
+    if (body.request_payload !== undefined) {
+      if (body.request_payload === null) {
+        requestPayload = null;
+      } else if (!isPlainObject(body.request_payload)) {
+        return sendError(
+          reply,
+          400,
+          "request_payload must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        requestPayload = body.request_payload;
+      }
+    }
+
+    const project = await persistence.getProjectByKey(projectId);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+    if (!project.is_active) {
+      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
+    }
+
+    const task = await persistence.getTaskById(taskId);
+    if (!task) {
+      return sendError(reply, 404, "Task not found", "TASK_NOT_FOUND");
+    }
+    if (task.project_id !== projectId) {
+      return sendError(
+        reply,
+        409,
+        "Task belongs to another project",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    const created = await persistence.createAgentRequest({
+      type: typeValue,
+      priority,
+      project_id: projectId,
+      task_id: taskId,
+      agent_run_id: agentRunId,
+      agent_profile_id: agentProfileId,
+      agent_template_id: agentTemplateId,
+      requested_by_agent_id: requestedByAgentId,
+      title,
+      reason,
+      request_payload_json: requestPayload,
+      created_by: "admin"
+    });
+
+    return reply.code(201).send(agentRequestToResponse(created));
+  });
+
+  app.get("/api/agent-requests", async (request, reply) => {
+    const query = request.query as {
+      project_id?: unknown;
+      task_id?: unknown;
+      agent_profile_id?: unknown;
+      agent_template_id?: unknown;
+      type?: unknown;
+      status?: unknown;
+      limit?: unknown;
+      open_pool?: unknown;
+      include_in_progress?: unknown;
+    };
+
+    const projectId = asProjectKey(query.project_id) ?? undefined;
+    const taskId = asNonEmptyString(query.task_id) ?? undefined;
+    const agentProfileId = asNonEmptyString(query.agent_profile_id) ?? undefined;
+    const agentTemplateId = asNonEmptyString(query.agent_template_id) ?? undefined;
+
+    const typeCandidate = asNonEmptyString(query.type);
+    let type: AgentRequestType | undefined;
+    if (typeCandidate) {
+      if (!isAgentRequestType(typeCandidate)) {
+        return sendError(reply, 400, "Invalid type filter", "REQUEST_VALIDATION_FAILED");
+      }
+      type = typeCandidate;
+    }
+
+    const statusCandidate = asNonEmptyString(query.status);
+    let status: AgentRequestStatus | undefined;
+    if (statusCandidate) {
+      if (!isAgentRequestStatus(statusCandidate)) {
+        return sendError(reply, 400, "Invalid status filter", "REQUEST_VALIDATION_FAILED");
+      }
+      status = statusCandidate;
+    }
+    const parsedLimit = asNonNegativeInteger(query.limit);
+    if (query.limit !== undefined && (!parsedLimit || parsedLimit < 1)) {
+      return sendError(reply, 400, "limit must be a positive integer", "REQUEST_VALIDATION_FAILED");
+    }
+    const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
+
+    let openPool = false;
+    if (query.open_pool !== undefined) {
+      const parsed = parseBooleanLike(query.open_pool);
+      if (parsed === null) {
+        return sendError(reply, 400, "open_pool must be boolean", "REQUEST_VALIDATION_FAILED");
+      }
+      openPool = parsed;
+    }
+
+    let includeInProgress = false;
+    if (query.include_in_progress !== undefined) {
+      const parsed = parseBooleanLike(query.include_in_progress);
+      if (parsed === null) {
+        return sendError(
+          reply,
+          400,
+          "include_in_progress must be boolean",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      }
+      includeInProgress = parsed;
+    }
+
+    if (openPool && status) {
+      return sendError(
+        reply,
+        400,
+        "status filter cannot be combined with open_pool",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    const statuses = openPool
+      ? ([
+          "open",
+          "blocked_agent",
+          ...(includeInProgress ? (["in_progress"] as const) : [])
+        ] as AgentRequestStatus[])
+      : status
+        ? ([status] as AgentRequestStatus[])
+        : undefined;
+
+    const items = await persistence.listAgentRequests({
+      project_id: projectId,
+      task_id: taskId,
+      agent_profile_id: agentProfileId,
+      agent_template_id: agentTemplateId,
+      type,
+      statuses,
+      limit
+    });
+
+    return reply.send({
+      items: items.map((item) => agentRequestToResponse(item))
+    });
+  });
+
+  app.get("/api/agent-requests/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const item = await persistence.getAgentRequestById(id);
+    if (!item) {
+      return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
+    }
+
+    return reply.send(agentRequestToResponse(item));
+  });
+
+  app.post("/api/agent-requests/:id/resolve", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as AgentRequestResolveRequest;
+    const statusValue = asNonEmptyString(body.status);
+    if (!statusValue || !isAgentRequestStatus(statusValue)) {
+      return sendError(reply, 400, "Invalid status", "REQUEST_VALIDATION_FAILED");
+    }
+    if (!AGENT_REQUEST_RESOLVE_ALLOWED_STATUSES.has(statusValue)) {
+      return sendError(
+        reply,
+        400,
+        "status is not allowed for resolve flow",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    let resolutionPayload: Record<string, unknown> | null | undefined;
+    if (body.resolution_payload !== undefined) {
+      if (body.resolution_payload === null) {
+        resolutionPayload = null;
+      } else if (!isPlainObject(body.resolution_payload)) {
+        return sendError(
+          reply,
+          400,
+          "resolution_payload must be an object or null",
+          "REQUEST_VALIDATION_FAILED"
+        );
+      } else {
+        resolutionPayload = body.resolution_payload;
+      }
+    }
+
+    const parseNullableActor = (
+      value: unknown,
+      fieldName: string
+    ): string | null | undefined => {
+      if (value === undefined) {
+        return undefined;
+      }
+      if (value === null) {
+        return null;
+      }
+      const parsed = asNonEmptyString(value);
+      if (!parsed) {
+        throw new Error(`${fieldName} must be a non-empty string or null`);
+      }
+      return parsed;
+    };
+
+    let claimedByGovernorId: string | null | undefined;
+    let resolvedBy: string | null | undefined;
+    try {
+      claimedByGovernorId = parseNullableActor(body.claimed_by_governor_id, "claimed_by_governor_id");
+      resolvedBy = parseNullableActor(body.resolved_by, "resolved_by");
+    } catch (error) {
+      return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
+    }
+
+    const existing = await persistence.getAgentRequestById(id);
+    if (!existing) {
+      return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
+    }
+
+    if (
+      AGENT_REQUEST_TERMINAL_STATUSES.has(existing.status) &&
+      existing.status !== statusValue
+    ) {
+      return sendError(
+        reply,
+        409,
+        `Terminal request cannot transition from ${existing.status} to ${statusValue}`,
+        "REQUEST_STATE_CONFLICT"
+      );
+    }
+
+    const isTerminalStatus = AGENT_REQUEST_TERMINAL_STATUSES.has(statusValue);
+    const resolvedAt = isTerminalStatus
+      ? existing.status === statusValue
+        ? (existing.resolved_at ?? new Date())
+        : new Date()
+      : null;
+
+    const updated = await persistence.resolveAgentRequest(id, {
+      status: statusValue,
+      resolution_payload_json: resolutionPayload,
+      claimed_by_governor_id:
+        claimedByGovernorId === undefined ? existing.claimed_by_governor_id : claimedByGovernorId,
+      resolved_by: isTerminalStatus
+        ? (resolvedBy ?? existing.resolved_by ?? "admin")
+        : null,
+      resolved_at: resolvedAt
+    });
+    if (!updated) {
+      return sendError(reply, 404, "Agent request not found", "REQUEST_NOT_FOUND");
+    }
+
+    return reply.send(agentRequestToResponse(updated));
   });
 
   app.get("/api/delegation/capabilities", async (_request, reply) => {

@@ -1,7 +1,7 @@
 # MCP Agent Bridge (MVP + Request Plane + AuthZ v2)
 
 Обновлено: 2026-04-09  
-Статус: `completed` (MVP), `planned` (Request Plane + AuthZ ACL v2)
+Статус: `completed` (MVP), `in_progress` (Request Plane v2 Phase 1), `planned` (AuthZ ACL v2)
 
 ## 1. Цель
 
@@ -36,14 +36,20 @@
 - В MVP bridge использует `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN` и проксирует его как `X-Admin-Token` в upstream API.
 - Ошибки upstream API маппятся в единый формат: `error`, `code`, `status_code`.
 
-## 3. Agent Request Plane v2 (planned)
+## 3. Agent Request Plane v2 (in_progress)
 
 ### 3.1 Новые MCP tools
 
-Для агентов и governor-агента добавляются:
+Для агентов и governor-агента доступны:
 - `orchestrator.create_agent_request`
 - `orchestrator.list_open_agent_requests`
 - `orchestrator.resolve_agent_request`
+
+Backend API, используемый bridge:
+- `POST /api/agent-requests`
+- `GET /api/agent-requests` (`open_pool=true` + optional `include_in_progress`)
+- `GET /api/agent-requests/{id}`
+- `POST /api/agent-requests/{id}/resolve`
 
 ### 3.2 Семантика
 
@@ -53,6 +59,7 @@
   - `blocked_agent`, если выполнить не удалось.
 - `blocked_agent` по умолчанию возвращается в `list_open` для повторной обработки.
 - Оператор/PM имеет manual fallback через UI (`resolved_manual` / `rejected_manual`).
+- Текущее ограничение Phase 1: audit trail и governor automation остаются follow-up.
 
 ### 3.3 Error mapping (request-plane)
 
@@ -108,6 +115,6 @@ npm run mcp:serve
 
 ## 7. Следующие шаги
 
-- Реализовать `Agent Request Plane v2` tools и REST-layer.
+- Довести `Agent Request Plane v2`: audit trail + governor automation + UI fallback поток.
 - Реализовать `MCP AuthZ ACL v2` с привязкой к `AgentProfile`.
 - Добавить streamable HTTP transport.

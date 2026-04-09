@@ -55,7 +55,7 @@
   - `Topology UI` (визуализация профилей и их активных связей).
 
 ## Planned: Agent Request Plane v2
-- Статус: `planned` (decision-complete, реализация не начата).
+- Статус: `in_progress` (Phase 1 backend started).
 - Цель: заменить tool-only заявки универсальным механизмом запросов агента на недостающие возможности.
 - Зафиксированные решения:
   - универсальные типы заявок: `mcp_server_attach`, `mcp_tool_acl`, `script_set`, `runtime_dependency`, `other`;
@@ -67,6 +67,18 @@
   - `blocked_agent` включается в open-пул по умолчанию для повторной обработки;
   - есть manual fallback в UI: оператор/PM может вручную завершить или отклонить заявку.
 - Документ дизайна: `docs/ops/agent-request-plane-v2.md`.
+- Текущий прогресс (Phase 1):
+  - добавлена Prisma-модель `AgentRequest` + миграция `0007_agent_request_plane_v2`;
+  - добавлены REST endpoints:
+    - `POST /api/agent-requests`
+    - `GET /api/agent-requests`
+    - `GET /api/agent-requests/{id}`
+    - `POST /api/agent-requests/{id}/resolve`
+  - реализован open-pool фильтр (`open + blocked_agent`, опционально `in_progress`);
+  - добавлены MCP tools:
+    - `orchestrator.create_agent_request`
+    - `orchestrator.list_open_agent_requests`
+    - `orchestrator.resolve_agent_request`.
 - Зависимости:
   - `MCP AuthZ ACL v2`;
   - `Agent Profiles + MCP Server Sets`;

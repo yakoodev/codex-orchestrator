@@ -167,6 +167,27 @@ enum DelegationStatus {
   @@map("delegation_status")
 }
 
+enum AgentRequestType {
+  mcp_server_attach
+  mcp_tool_acl
+  script_set
+  runtime_dependency
+  other
+
+  @@map("agent_request_type")
+}
+
+enum AgentRequestStatus {
+  open
+  in_progress
+  resolved_by_agent
+  blocked_agent
+  resolved_manual
+  rejected_manual
+
+  @@map("agent_request_status")
+}
+
 model AgentTemplate {
   id                     String   @id @default(cuid())
   name                   String
@@ -577,4 +598,33 @@ model DelegationRequest {
   @@index([requester_task_id, created_at])
   @@index([target_agent_template_id, status])
   @@map("delegation_requests")
+}
+
+model AgentRequest {
+  id                     String             @id @default(cuid())
+  type                   AgentRequestType
+  status                 AgentRequestStatus @default(open)
+  priority               Int                @default(100)
+  project_id             String
+  task_id                String
+  agent_run_id           String?
+  agent_profile_id       String?
+  agent_template_id      String?
+  requested_by_agent_id  String?
+  title                  String
+  reason                 String
+  request_payload_json   Json?
+  resolution_payload_json Json?
+  claimed_by_governor_id String?
+  resolved_by            String?
+  resolved_at            DateTime?
+  created_by             String
+  created_at             DateTime           @default(now())
+  updated_at             DateTime           @updatedAt
+
+  @@index([status, updated_at])
+  @@index([project_id, created_at])
+  @@index([task_id, created_at])
+  @@index([type, status, created_at])
+  @@map("agent_requests")
 }

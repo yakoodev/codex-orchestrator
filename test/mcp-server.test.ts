@@ -13,6 +13,9 @@ interface ApiClientMock extends OrchestratorApiClient {
   listDelegationCapabilities: ReturnType<typeof vi.fn>;
   listTasks: ReturnType<typeof vi.fn>;
   dispatchAgent: ReturnType<typeof vi.fn>;
+  createAgentRequest: ReturnType<typeof vi.fn>;
+  listOpenAgentRequests: ReturnType<typeof vi.fn>;
+  resolveAgentRequest: ReturnType<typeof vi.fn>;
   listAuthProfiles: ReturnType<typeof vi.fn>;
   getAuthProfileLimits: ReturnType<typeof vi.fn>;
 }
@@ -23,6 +26,9 @@ function createApiClientMock(): ApiClientMock {
     listDelegationCapabilities: vi.fn(),
     listTasks: vi.fn(),
     dispatchAgent: vi.fn(),
+    createAgentRequest: vi.fn(),
+    listOpenAgentRequests: vi.fn(),
+    resolveAgentRequest: vi.fn(),
     listAuthProfiles: vi.fn(),
     getAuthProfileLimits: vi.fn()
   };
@@ -102,6 +108,9 @@ describe("MCP Bridge Server", () => {
         "orchestrator.list_agents",
         "orchestrator.list_tasks",
         "orchestrator.dispatch_agent",
+        "orchestrator.create_agent_request",
+        "orchestrator.list_open_agent_requests",
+        "orchestrator.resolve_agent_request",
         "orchestrator.get_limits"
       ])
     );
@@ -193,6 +202,111 @@ describe("MCP Bridge Server", () => {
     const content = readStructuredContent(result);
     expect(content["trace_id"]).toBe(traceIdArg);
     expect(content["idempotency_key"]).toBe("same-input");
+  });
+
+  it("создает универсальную заявку через orchestrator.create_agent_request", async () => {
+    apiClientMock.createAgentRequest.mockResolvedValue({
+      id: "agent-request-1",
+      status: "open",
+      type: "runtime_dependency"
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.create_agent_request",
+      arguments: {
+        type: "runtime_dependency",
+        project_id: "web-ui",
+        task_id: "task-1",
+        title: "Need browser access",
+        reason: "No browser MCP in current profile",
+        request_payload: { server: "browser-mcp" }
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.createAgentRequest).toHaveBeenCalledTimes(1);
+
+    const [payloadArg, traceIdArg] = apiClientMock.createAgentRequest.mock.calls[0] as [
+      Record<string, unknown>,
+      string
+    ];
+    expect(payloadArg["project_id"]).toBe("web-ui");
+    expect(payloadArg["task_id"]).toBe("task-1");
+    expect(typeof traceIdArg).toBe("string");
+    expect(traceIdArg.length).toBeGreaterThan(10);
+
+    const content = readStructuredContent(result);
+    expect(content["request"]).toEqual({
+      id: "agent-request-1",
+      status: "open",
+      type: "runtime_dependency"
+    });
+  });
+
+  it("возвращает open-пул заявок через orchestrator.list_open_agent_requests", async () => {
+    apiClientMock.listOpenAgentRequests.mockResolvedValue({
+      items: [
+        { id: "agent-request-1", status: "open" },
+        { id: "agent-request-2", status: "blocked_agent" }
+      ]
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.list_open_agent_requests",
+      arguments: {
+        project_id: "web-ui",
+        include_in_progress: true,
+        limit: 20
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.listOpenAgentRequests).toHaveBeenCalledWith({
+      project_id: "web-ui",
+      task_id: undefined,
+      agent_profile_id: undefined,
+      agent_template_id: undefined,
+      type: undefined,
+      include_in_progress: true,
+      limit: 20
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["total"]).toBe(2);
+    expect(content["open_pool_statuses"]).toEqual(["open", "blocked_agent", "in_progress"]);
+  });
+
+  it("обновляет статус заявки через orchestrator.resolve_agent_request", async () => {
+    apiClientMock.resolveAgentRequest.mockResolvedValue({
+      id: "agent-request-1",
+      status: "blocked_agent"
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.resolve_agent_request",
+      arguments: {
+        request_id: "agent-request-1",
+        status: "blocked_agent",
+        resolution_payload: { reason: "waiting_for_manual_approval" },
+        claimed_by_governor_id: "governor-main"
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.resolveAgentRequest).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.resolveAgentRequest.mock.calls[0]?.[0]).toBe("agent-request-1");
+    expect(apiClientMock.resolveAgentRequest.mock.calls[0]?.[1]).toEqual({
+      status: "blocked_agent",
+      resolution_payload: { reason: "waiting_for_manual_approval" },
+      claimed_by_governor_id: "governor-main",
+      resolved_by: undefined
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["request"]).toEqual({
+      id: "agent-request-1",
+      status: "blocked_agent"
+    });
   });
 
   it("возвращает fleet snapshot с частичными ошибками в orchestrator.get_limits", async () => {

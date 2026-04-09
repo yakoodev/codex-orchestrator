@@ -173,6 +173,19 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
 - [x] В docs добавлен feature backlog `Agent Tool Access Requests` (v1, tool-only).
 - [x] Выполнен Doc Upgrade v4: v1 tool-only модель superseded универсальным `Agent Request Plane v2`; добавлены docs по `Agent Profiles + MCP Server Sets`, governor-loop, MCP request tools и обновленные manual acceptance сценарии.
+- [x] Стартована кодовая реализация `Agent Request Plane v2` (Phase 1 backend):
+  - добавлена Prisma-модель `AgentRequest` + миграция `0007_agent_request_plane_v2`;
+  - добавлены API:
+    - `POST /api/agent-requests`
+    - `GET /api/agent-requests`
+    - `GET /api/agent-requests/{id}`
+    - `POST /api/agent-requests/{id}/resolve`
+  - добавлен open-pool фильтр (`open|blocked_agent` + optional `in_progress`);
+  - MCP bridge расширен инструментами:
+    - `orchestrator.create_agent_request`
+    - `orchestrator.list_open_agent_requests`
+    - `orchestrator.resolve_agent_request`;
+  - добавлены unit/API тесты для request-plane и MCP bridge.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -190,7 +203,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
-- [~] Agent Request Plane v2 (универсальные заявки агента + MCP методы create/list_open/resolve + open-пул `open|blocked_agent`): `docs/ops/agent-request-plane-v2.md`.
+- [~] Agent Request Plane v2 (Phase 1 backend + MCP create/list_open/resolve реализованы; остаются governor automation, audit trail, topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.
 - [~] Agent Profiles + MCP Server Sets (per-agent MCP servers, source policy, OS script sets): `docs/ops/agent-profiles-mcp-servers.md`.
 - [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 
@@ -199,4 +212,4 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `npm run typecheck`
 - [x] `npm run test`
 - [x] `npm run contracts:check`
-- [x] `npm run smoke:local`
+- [~] `npm run smoke:local` (последний прогон в этой итерации: `ECONNREFUSED 127.0.0.1:8080`, сервис не был запущен локально)

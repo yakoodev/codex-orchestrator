@@ -249,6 +249,44 @@ export interface AgentMemoryEntryEntity {
   updated_at: Date;
 }
 
+export type AgentRequestType =
+  | "mcp_server_attach"
+  | "mcp_tool_acl"
+  | "script_set"
+  | "runtime_dependency"
+  | "other";
+
+export type AgentRequestStatus =
+  | "open"
+  | "in_progress"
+  | "resolved_by_agent"
+  | "blocked_agent"
+  | "resolved_manual"
+  | "rejected_manual";
+
+export interface AgentRequestEntity {
+  id: string;
+  type: AgentRequestType;
+  status: AgentRequestStatus;
+  priority: number;
+  project_id: string;
+  task_id: string;
+  agent_run_id: string | null;
+  agent_profile_id: string | null;
+  agent_template_id: string | null;
+  requested_by_agent_id: string | null;
+  title: string;
+  reason: string;
+  request_payload_json: Record<string, unknown> | null;
+  resolution_payload_json: Record<string, unknown> | null;
+  claimed_by_governor_id: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export type ScheduleScope = "global" | "project";
 export type ScheduleOverlapPolicy = "one_active_skip";
 export type ScheduleMisfirePolicy = "recompute_due_on_restart";
@@ -401,6 +439,21 @@ export interface CreateAgentMemoryEntryInput {
   created_by: string;
 }
 
+export interface CreateAgentRequestInput {
+  type: AgentRequestType;
+  priority?: number;
+  project_id: string;
+  task_id: string;
+  agent_run_id?: string | null;
+  agent_profile_id?: string | null;
+  agent_template_id?: string | null;
+  requested_by_agent_id?: string | null;
+  title: string;
+  reason: string;
+  request_payload_json?: Record<string, unknown> | null;
+  created_by: string;
+}
+
 export interface CreateModuleExecutionInput {
   module_key: string;
   event_type: string;
@@ -518,6 +571,27 @@ export interface Persistence {
     is_active?: boolean;
     limit?: number;
   }): Promise<AgentMemoryEntryEntity[]>;
+  createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity>;
+  listAgentRequests(options?: {
+    project_id?: string;
+    task_id?: string;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    type?: AgentRequestType;
+    statuses?: AgentRequestStatus[];
+    limit?: number;
+  }): Promise<AgentRequestEntity[]>;
+  getAgentRequestById(id: string): Promise<AgentRequestEntity | null>;
+  resolveAgentRequest(
+    id: string,
+    input: {
+      status: AgentRequestStatus;
+      resolution_payload_json?: Record<string, unknown> | null;
+      claimed_by_governor_id?: string | null;
+      resolved_by?: string | null;
+      resolved_at?: Date | null;
+    }
+  ): Promise<AgentRequestEntity | null>;
   patchAgentMemoryEntry(
     id: string,
     patch: {

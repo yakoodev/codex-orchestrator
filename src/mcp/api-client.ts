@@ -16,6 +16,46 @@ export interface TasksResponse {
   items: Array<Record<string, unknown>>;
 }
 
+export type AgentRequestType =
+  | "mcp_server_attach"
+  | "mcp_tool_acl"
+  | "script_set"
+  | "runtime_dependency"
+  | "other";
+
+export type AgentRequestStatus =
+  | "open"
+  | "in_progress"
+  | "resolved_by_agent"
+  | "blocked_agent"
+  | "resolved_manual"
+  | "rejected_manual";
+
+export interface AgentRequestCreateInput {
+  type: AgentRequestType;
+  priority?: number;
+  project_id: string;
+  task_id: string;
+  agent_run_id?: string | null;
+  agent_profile_id?: string | null;
+  agent_template_id?: string | null;
+  requested_by_agent_id?: string | null;
+  title: string;
+  reason: string;
+  request_payload?: Record<string, unknown> | null;
+}
+
+export interface AgentRequestResolveInput {
+  status: "in_progress" | "blocked_agent" | "resolved_by_agent" | "resolved_manual" | "rejected_manual";
+  resolution_payload?: Record<string, unknown> | null;
+  claimed_by_governor_id?: string | null;
+  resolved_by?: string | null;
+}
+
+export interface AgentRequestsResponse {
+  items: Array<Record<string, unknown>>;
+}
+
 export interface DispatchAgentRequest {
   requester_task_id: string;
   requester_task_run_id?: string;
@@ -38,6 +78,21 @@ export interface OrchestratorApiClient {
   listDelegationCapabilities(): Promise<DelegationCapabilitiesResponse>;
   listTasks(options?: { status?: string }): Promise<TasksResponse>;
   dispatchAgent(input: DispatchAgentRequest, traceId: string): Promise<Record<string, unknown>>;
+  createAgentRequest(input: AgentRequestCreateInput, traceId: string): Promise<Record<string, unknown>>;
+  listOpenAgentRequests(options?: {
+    project_id?: string;
+    task_id?: string;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    type?: AgentRequestType;
+    include_in_progress?: boolean;
+    limit?: number;
+  }): Promise<AgentRequestsResponse>;
+  resolveAgentRequest(
+    requestId: string,
+    input: AgentRequestResolveInput,
+    traceId: string
+  ): Promise<Record<string, unknown>>;
   listAuthProfiles(): Promise<AuthProfileListResponse>;
   getAuthProfileLimits(profileId: string): Promise<Record<string, unknown>>;
 }
@@ -275,6 +330,39 @@ export function createHttpOrchestratorApiClient(
       requestJson<Record<string, unknown>>({
         method: "POST",
         path: "/api/delegation/dispatch",
+        body: input,
+        traceId
+      }),
+
+    createAgentRequest: (input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "POST",
+        path: "/api/agent-requests",
+        body: input,
+        traceId
+      }),
+
+    listOpenAgentRequests: (listOptions) =>
+      requestJson<AgentRequestsResponse>({
+        method: "GET",
+        path: "/api/agent-requests",
+        query: {
+          project_id: listOptions?.project_id,
+          task_id: listOptions?.task_id,
+          agent_profile_id: listOptions?.agent_profile_id,
+          agent_template_id: listOptions?.agent_template_id,
+          type: listOptions?.type,
+          open_pool: "true",
+          include_in_progress: listOptions?.include_in_progress ? "true" : undefined,
+          limit:
+            typeof listOptions?.limit === "number" ? String(listOptions.limit) : undefined
+        }
+      }),
+
+    resolveAgentRequest: (requestId, input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "POST",
+        path: `/api/agent-requests/${encodeURIComponent(requestId)}/resolve`,
         body: input,
         traceId
       }),

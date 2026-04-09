@@ -3,7 +3,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import * as z from "zod/v4";
 import { TASK_STATUSES } from "../types";
-import type { DispatchAgentRequest, OrchestratorApiClient } from "./api-client";
+import type {
+  AgentRequestCreateInput,
+  AgentRequestResolveInput,
+  DispatchAgentRequest,
+  OrchestratorApiClient
+} from "./api-client";
 import { OrchestratorApiError } from "./api-client";
 
 export interface CreateOrchestratorMcpServerOptions {
@@ -14,6 +19,20 @@ export interface CreateOrchestratorMcpServerOptions {
 
 const DEFAULT_SERVER_NAME = "codex-orchestrator-mcp";
 const DEFAULT_SERVER_VERSION = "0.1.0";
+const AGENT_REQUEST_TYPE_VALUES = [
+  "mcp_server_attach",
+  "mcp_tool_acl",
+  "script_set",
+  "runtime_dependency",
+  "other"
+] as const;
+const AGENT_REQUEST_RESOLVE_STATUS_VALUES = [
+  "in_progress",
+  "blocked_agent",
+  "resolved_by_agent",
+  "resolved_manual",
+  "rejected_manual"
+] as const;
 
 function toPrettyJson(value: unknown): string {
   try {
@@ -120,6 +139,34 @@ function normalizeDispatchInput(input: {
     target_selector: input.target_selector ?? {},
     payload: input.payload,
     priority: input.priority
+  };
+}
+
+function normalizeAgentRequestCreateInput(input: {
+  type: AgentRequestCreateInput["type"];
+  priority?: number;
+  project_id: string;
+  task_id: string;
+  agent_run_id?: string | null;
+  agent_profile_id?: string | null;
+  agent_template_id?: string | null;
+  requested_by_agent_id?: string | null;
+  title: string;
+  reason: string;
+  request_payload?: Record<string, unknown> | null;
+}): AgentRequestCreateInput {
+  return {
+    type: input.type,
+    priority: input.priority,
+    project_id: input.project_id.trim().toLowerCase(),
+    task_id: input.task_id.trim(),
+    agent_run_id: input.agent_run_id?.trim() ?? null,
+    agent_profile_id: input.agent_profile_id?.trim() ?? null,
+    agent_template_id: input.agent_template_id?.trim() ?? null,
+    requested_by_agent_id: input.requested_by_agent_id?.trim() ?? null,
+    title: input.title.trim(),
+    reason: input.reason.trim(),
+    request_payload: input.request_payload ?? null
   };
 }
 
@@ -242,6 +289,131 @@ export function createOrchestratorMcpServer(
         };
 
         return toToolSuccess("Dispatch request accepted", structuredContent);
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "orchestrator.create_agent_request",
+    {
+      description:
+        "Создать универсальную агентскую заявку (MCP/server/ACL/script/runtime/other) через request-plane API.",
+      inputSchema: {
+        type: z.enum(AGENT_REQUEST_TYPE_VALUES),
+        priority: z.number().int().min(0).max(1_000).optional(),
+        project_id: z.string().min(1),
+        task_id: z.string().min(1),
+        agent_run_id: z.string().min(1).optional(),
+        agent_profile_id: z.string().min(1).optional(),
+        agent_template_id: z.string().min(1).optional(),
+        requested_by_agent_id: z.string().min(1).optional(),
+        title: z.string().min(1),
+        reason: z.string().min(1),
+        request_payload: z.record(z.string(), z.unknown()).nullable().optional(),
+        trace_id: z.string().min(1).optional(),
+        idempotency_key: z.string().min(1).optional()
+      }
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
+        const payload = normalizeAgentRequestCreateInput(input);
+        const result = await options.apiClient.createAgentRequest(payload, traceId);
+
+        return toToolSuccess("Agent request created", {
+          trace_id: traceId,
+          idempotency_key: input.idempotency_key ?? null,
+          request: asRecord(result)
+        });
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "orchestrator.list_open_agent_requests",
+    {
+      description:
+        "Получить open-пул agent requests (open + blocked_agent, опционально in_progress).",
+      inputSchema: {
+        project_id: z.string().min(1).optional(),
+        task_id: z.string().min(1).optional(),
+        agent_profile_id: z.string().min(1).optional(),
+        agent_template_id: z.string().min(1).optional(),
+        type: z.enum(AGENT_REQUEST_TYPE_VALUES).optional(),
+        include_in_progress: z.boolean().optional(),
+        limit: z.number().int().min(1).max(500).optional()
+      }
+    },
+    async ({
+      project_id: projectId,
+      task_id: taskId,
+      agent_profile_id: agentProfileId,
+      agent_template_id: agentTemplateId,
+      type,
+      include_in_progress: includeInProgress,
+      limit
+    }): Promise<CallToolResult> => {
+      try {
+        const response = await options.apiClient.listOpenAgentRequests({
+          project_id: projectId?.trim().toLowerCase(),
+          task_id: taskId?.trim(),
+          agent_profile_id: agentProfileId?.trim(),
+          agent_template_id: agentTemplateId?.trim(),
+          type,
+          include_in_progress: includeInProgress,
+          limit
+        });
+
+        return toToolSuccess(`Loaded ${response.items.length} open agent requests`, {
+          open_pool_statuses: includeInProgress ? ["open", "blocked_agent", "in_progress"] : ["open", "blocked_agent"],
+          total: response.items.length,
+          items: response.items
+        });
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "orchestrator.resolve_agent_request",
+    {
+      description:
+        "Обновить статус agent request (claim/in-progress, blocked, resolved_by_agent/manual, rejected_manual).",
+      inputSchema: {
+        request_id: z.string().min(1),
+        status: z.enum(AGENT_REQUEST_RESOLVE_STATUS_VALUES),
+        resolution_payload: z.record(z.string(), z.unknown()).nullable().optional(),
+        claimed_by_governor_id: z.string().min(1).nullable().optional(),
+        resolved_by: z.string().min(1).nullable().optional(),
+        trace_id: z.string().min(1).optional(),
+        idempotency_key: z.string().min(1).optional()
+      }
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
+        const resolveInput: AgentRequestResolveInput = {
+          status: input.status,
+          resolution_payload: input.resolution_payload,
+          claimed_by_governor_id: input.claimed_by_governor_id,
+          resolved_by: input.resolved_by
+        };
+        const result = await options.apiClient.resolveAgentRequest(
+          input.request_id.trim(),
+          resolveInput,
+          traceId
+        );
+
+        return toToolSuccess("Agent request updated", {
+          trace_id: traceId,
+          idempotency_key: input.idempotency_key ?? null,
+          request: asRecord(result)
+        });
       } catch (error) {
         return toToolError(error);
       }

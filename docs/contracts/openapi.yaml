@@ -19,6 +19,7 @@ tags:
   - name: Queue
   - name: Packs
   - name: Memory
+  - name: Agent Requests
   - name: Delegation
   - name: Schedules
   - name: Health
@@ -1031,6 +1032,145 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemoryEntry"
 
+  /api/agent-requests:
+    post:
+      tags: [Agent Requests]
+      summary: Create universal agent request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRequestCreateRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRequest"
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [Agent Requests]
+      summary: List agent requests with filters or open-pool mode
+      parameters:
+        - in: query
+          name: project_id
+          schema:
+            type: string
+        - in: query
+          name: task_id
+          schema:
+            type: string
+        - in: query
+          name: agent_profile_id
+          schema:
+            type: string
+        - in: query
+          name: agent_template_id
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            $ref: "#/components/schemas/AgentRequestType"
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/AgentRequestStatus"
+        - in: query
+          name: open_pool
+          schema:
+            type: boolean
+          description: When true, return open + blocked_agent (and optionally in_progress).
+        - in: query
+          name: include_in_progress
+          schema:
+            type: boolean
+          description: Works only with open_pool=true.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Agent request list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentRequest"
+                required: [items]
+        "400":
+          description: Invalid filter query
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-requests/{id}:
+    get:
+      tags: [Agent Requests]
+      summary: Get agent request by id
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "200":
+          description: Agent request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRequest"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/agent-requests/{id}/resolve:
+    post:
+      tags: [Agent Requests]
+      summary: Resolve/advance agent request status
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRequestResolveRequest"
+      responses:
+        "200":
+          description: Updated request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRequest"
+        "404":
+          description: Request not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: State conflict for terminal request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/delegation/capabilities:
     get:
       tags: [Delegation]
@@ -1967,6 +2107,123 @@ components:
         - title
         - content
         - is_active
+        - created_by
+        - created_at
+        - updated_at
+
+    AgentRequestType:
+      type: string
+      enum: [mcp_server_attach, mcp_tool_acl, script_set, runtime_dependency, other]
+
+    AgentRequestStatus:
+      type: string
+      enum: [open, in_progress, resolved_by_agent, blocked_agent, resolved_manual, rejected_manual]
+
+    AgentRequestCreateRequest:
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/AgentRequestType"
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        project_id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        task_id:
+          type: string
+        agent_run_id:
+          type: [string, "null"]
+        agent_profile_id:
+          type: [string, "null"]
+        agent_template_id:
+          type: [string, "null"]
+        requested_by_agent_id:
+          type: [string, "null"]
+        title:
+          type: string
+        reason:
+          type: string
+        request_payload:
+          type: [object, "null"]
+          additionalProperties: true
+      required: [type, project_id, task_id, title, reason]
+      additionalProperties: false
+
+    AgentRequestResolveRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [in_progress, blocked_agent, resolved_by_agent, resolved_manual, rejected_manual]
+        resolution_payload:
+          type: [object, "null"]
+          additionalProperties: true
+        claimed_by_governor_id:
+          type: [string, "null"]
+        resolved_by:
+          type: [string, "null"]
+      required: [status]
+      additionalProperties: false
+
+    AgentRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/AgentRequestType"
+        status:
+          $ref: "#/components/schemas/AgentRequestStatus"
+        priority:
+          type: integer
+        project_id:
+          type: string
+        task_id:
+          type: string
+        agent_run_id:
+          type: [string, "null"]
+        agent_profile_id:
+          type: [string, "null"]
+        agent_template_id:
+          type: [string, "null"]
+        requested_by_agent_id:
+          type: [string, "null"]
+        title:
+          type: string
+        reason:
+          type: string
+        request_payload:
+          type: [object, "null"]
+          additionalProperties: true
+        resolution_payload:
+          type: [object, "null"]
+          additionalProperties: true
+        claimed_by_governor_id:
+          type: [string, "null"]
+        resolved_by:
+          type: [string, "null"]
+        resolved_at:
+          type: [string, "null"]
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - status
+        - priority
+        - project_id
+        - task_id
+        - title
+        - reason
         - created_by
         - created_at
         - updated_at

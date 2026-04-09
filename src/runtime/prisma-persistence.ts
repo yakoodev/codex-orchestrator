@@ -1,4 +1,6 @@
 import {
+  AgentRequestStatus as PrismaAgentRequestStatus,
+  AgentRequestType as PrismaAgentRequestType,
   AuthContextType as PrismaAuthContextType,
   ArtifactType as PrismaArtifactType,
   DelegationStatus as PrismaDelegationStatus,
@@ -17,6 +19,9 @@ import {
 } from "@prisma/client";
 import type {
   ActiveAuthProfileRuntimeEntity,
+  AgentRequestEntity,
+  AgentRequestStatus,
+  AgentRequestType,
   AgentMemoryEntryEntity,
   AgentTemplateEntity,
   ArtifactEntity,
@@ -25,6 +30,7 @@ import type {
   AuthProfileEntity,
   AuthSwitchEventEntity,
   CreateProjectInput,
+  CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateAuthProfileInput,
   CreateAuthSwitchEventInput,
@@ -291,6 +297,52 @@ function toAgentMemoryEntryEntity(entity: {
     is_active: entity.is_active,
     created_by: entity.created_by,
     updated_by: entity.updated_by,
+    created_at: entity.created_at,
+    updated_at: entity.updated_at
+  };
+}
+
+function toAgentRequestEntity(entity: {
+  id: string;
+  type: PrismaAgentRequestType;
+  status: PrismaAgentRequestStatus;
+  priority: number;
+  project_id: string;
+  task_id: string;
+  agent_run_id: string | null;
+  agent_profile_id: string | null;
+  agent_template_id: string | null;
+  requested_by_agent_id: string | null;
+  title: string;
+  reason: string;
+  request_payload_json: Prisma.JsonValue | null;
+  resolution_payload_json: Prisma.JsonValue | null;
+  claimed_by_governor_id: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  created_by: string;
+  created_at: Date;
+  updated_at: Date;
+}): AgentRequestEntity {
+  return {
+    id: entity.id,
+    type: entity.type as AgentRequestType,
+    status: entity.status as AgentRequestStatus,
+    priority: entity.priority,
+    project_id: entity.project_id,
+    task_id: entity.task_id,
+    agent_run_id: entity.agent_run_id,
+    agent_profile_id: entity.agent_profile_id,
+    agent_template_id: entity.agent_template_id,
+    requested_by_agent_id: entity.requested_by_agent_id,
+    title: entity.title,
+    reason: entity.reason,
+    request_payload_json: entity.request_payload_json as Record<string, unknown> | null,
+    resolution_payload_json: entity.resolution_payload_json as Record<string, unknown> | null,
+    claimed_by_governor_id: entity.claimed_by_governor_id,
+    resolved_by: entity.resolved_by,
+    resolved_at: entity.resolved_at,
+    created_by: entity.created_by,
     created_at: entity.created_at,
     updated_at: entity.updated_at
   };
@@ -902,6 +954,123 @@ export class PrismaPersistence implements Persistence {
     });
 
     return entries.map((entry) => toAgentMemoryEntryEntity(entry));
+  }
+
+  public async createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity> {
+    const created = await this.prisma.agentRequest.create({
+      data: {
+        type: input.type as PrismaAgentRequestType,
+        status: "open",
+        priority: input.priority ?? 100,
+        project_id: input.project_id,
+        task_id: input.task_id,
+        agent_run_id: input.agent_run_id ?? null,
+        agent_profile_id: input.agent_profile_id ?? null,
+        agent_template_id: input.agent_template_id ?? null,
+        requested_by_agent_id: input.requested_by_agent_id ?? null,
+        title: input.title,
+        reason: input.reason,
+        request_payload_json:
+          input.request_payload_json === undefined
+            ? undefined
+            : ((input.request_payload_json ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput),
+        created_by: input.created_by
+      }
+    });
+
+    return toAgentRequestEntity(created);
+  }
+
+  public async listAgentRequests(options?: {
+    project_id?: string;
+    task_id?: string;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    type?: AgentRequestType;
+    statuses?: AgentRequestStatus[];
+    limit?: number;
+  }): Promise<AgentRequestEntity[]> {
+    const where: Prisma.AgentRequestWhereInput = {};
+    if (options?.project_id) {
+      where.project_id = options.project_id;
+    }
+    if (options?.task_id) {
+      where.task_id = options.task_id;
+    }
+    if (options?.agent_profile_id) {
+      where.agent_profile_id = options.agent_profile_id;
+    }
+    if (options?.agent_template_id) {
+      where.agent_template_id = options.agent_template_id;
+    }
+    if (options?.type) {
+      where.type = options.type as PrismaAgentRequestType;
+    }
+    if (options?.statuses?.length) {
+      where.status = {
+        in: options.statuses as PrismaAgentRequestStatus[]
+      };
+    }
+
+    const items = await this.prisma.agentRequest.findMany({
+      where,
+      orderBy: { created_at: "desc" },
+      take: Math.max(1, Math.min(options?.limit ?? 100, 500))
+    });
+
+    return items.map((item) => toAgentRequestEntity(item));
+  }
+
+  public async getAgentRequestById(id: string): Promise<AgentRequestEntity | null> {
+    const request = await this.prisma.agentRequest.findUnique({
+      where: { id }
+    });
+    if (!request) {
+      return null;
+    }
+
+    return toAgentRequestEntity(request);
+  }
+
+  public async resolveAgentRequest(
+    id: string,
+    input: {
+      status: AgentRequestStatus;
+      resolution_payload_json?: Record<string, unknown> | null;
+      claimed_by_governor_id?: string | null;
+      resolved_by?: string | null;
+      resolved_at?: Date | null;
+    }
+  ): Promise<AgentRequestEntity | null> {
+    const existing = await this.prisma.agentRequest.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.agentRequest.update({
+      where: { id },
+      data: {
+        status: input.status as PrismaAgentRequestStatus,
+        resolution_payload_json:
+          input.resolution_payload_json === undefined
+            ? undefined
+            : ((input.resolution_payload_json ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput),
+        claimed_by_governor_id:
+          input.claimed_by_governor_id === undefined
+            ? undefined
+            : input.claimed_by_governor_id,
+        resolved_by: input.resolved_by === undefined ? undefined : input.resolved_by,
+        resolved_at: input.resolved_at === undefined ? undefined : input.resolved_at
+      }
+    });
+
+    return toAgentRequestEntity(updated);
   }
 
   public async patchAgentMemoryEntry(

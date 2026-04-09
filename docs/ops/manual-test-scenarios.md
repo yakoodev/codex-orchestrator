@@ -293,9 +293,9 @@ npm run mcp:serve
 4. Проверь, что события появились в topology inspector и в `GET /api/coordination/channels/{id}/messages`.
 5. Убедись, что runtime stdout/stderr и чувствительные payload не дублируются в coordination channel.
 
-## 3.12 Сценарий A12 (planned): Agent Request Plane v2 через MCP
+## 3.12 Сценарий A12: Agent Request Plane v2 через MCP (Phase 1)
 
-Статус: выполняется после реализации `docs/ops/agent-request-plane-v2.md`.
+Статус: доступно в backend + MCP bridge (без governor automation и topology UI).
 
 1. Запусти агента без нужной возможности (например, без browser MCP) и получи блокер.
 2. Через MCP вызови `orchestrator.create_agent_request` с типом `mcp_server_attach`.
@@ -305,7 +305,16 @@ npm run mcp:serve
 6. Через MCP вызови `orchestrator.resolve_agent_request`:
   - путь A: `resolved_by_agent`;
   - путь B: `blocked_agent`.
-7. Проверь в UI/topology, что статус и тип заявки отображаются корректно.
+7. Через API проверь open-pool фильтр:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/agent-requests?open_pool=true&project_id=<PROJECT_KEY>" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- в open-пул входят `open` и `blocked_agent` (и `in_progress`, если явно включен флаг);
+- после `resolved_*` заявка больше не возвращается в open-пуле.
 
 ## 3.13 Сценарий A13 (planned): Governor loop и повторная выдача blocked_agent
 

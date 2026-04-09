@@ -7,6 +7,8 @@ import type { AppConfig } from "../src/config";
 import type {
   ActiveAuthProfileRuntimeEntity,
   AgentMemoryEntryEntity,
+  AgentRequestEntity,
+  AgentRequestStatus,
   AgentTemplateEntity,
   ArtifactEntity,
   AuthContextEntity,
@@ -16,6 +18,7 @@ import type {
   AuthProfileRuntimeEntity,
   AuthContextType,
   AuthSwitchEventEntity,
+  CreateAgentRequestInput,
   CreateAgentMemoryEntryInput,
   CreateDelegationRequestInput,
   CreateProjectInput,
@@ -74,6 +77,7 @@ class FakePersistence implements Persistence {
   public readonly moduleExecutions: ModuleExecutionEntity[] = [];
   public readonly delegations: DelegationRequestEntity[] = [];
   public readonly memoryEntries: AgentMemoryEntryEntity[] = [];
+  public readonly agentRequests: AgentRequestEntity[] = [];
   public readonly projects: ProjectEntity[] = [];
   public readonly schedules: ScheduledRuleEntity[] = [];
   public readonly scheduledRuns: ScheduledRunEntity[] = [];
@@ -90,6 +94,7 @@ class FakePersistence implements Persistence {
   private moduleExecutionCounter = 1;
   private delegationCounter = 1;
   private memoryEntryCounter = 1;
+  private agentRequestCounter = 1;
   private projectCounter = 1;
   private scheduleCounter = 1;
   private scheduleRunCounter = 1;
@@ -579,6 +584,95 @@ class FakePersistence implements Persistence {
       )
       .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
     return filtered.slice(0, limit);
+  }
+
+  public async createAgentRequest(input: CreateAgentRequestInput): Promise<AgentRequestEntity> {
+    const now = new Date();
+    const item: AgentRequestEntity = {
+      id: `agent-request-${this.agentRequestCounter++}`,
+      type: input.type,
+      status: "open",
+      priority: input.priority ?? 100,
+      project_id: input.project_id,
+      task_id: input.task_id,
+      agent_run_id: input.agent_run_id ?? null,
+      agent_profile_id: input.agent_profile_id ?? null,
+      agent_template_id: input.agent_template_id ?? null,
+      requested_by_agent_id: input.requested_by_agent_id ?? null,
+      title: input.title,
+      reason: input.reason,
+      request_payload_json: input.request_payload_json ?? null,
+      resolution_payload_json: null,
+      claimed_by_governor_id: null,
+      resolved_by: null,
+      resolved_at: null,
+      created_by: input.created_by,
+      created_at: now,
+      updated_at: now
+    };
+    this.agentRequests.push(item);
+    return item;
+  }
+
+  public async listAgentRequests(options?: {
+    project_id?: string;
+    task_id?: string;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    type?: AgentRequestEntity["type"];
+    statuses?: AgentRequestEntity["status"][];
+    limit?: number;
+  }): Promise<AgentRequestEntity[]> {
+    const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
+    const filtered = this.agentRequests
+      .filter((item) => (options?.project_id ? item.project_id === options.project_id : true))
+      .filter((item) => (options?.task_id ? item.task_id === options.task_id : true))
+      .filter((item) =>
+        options?.agent_profile_id ? item.agent_profile_id === options.agent_profile_id : true
+      )
+      .filter((item) =>
+        options?.agent_template_id ? item.agent_template_id === options.agent_template_id : true
+      )
+      .filter((item) => (options?.type ? item.type === options.type : true))
+      .filter((item) => (options?.statuses?.length ? options.statuses.includes(item.status) : true))
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+    return filtered.slice(0, limit);
+  }
+
+  public async getAgentRequestById(id: string): Promise<AgentRequestEntity | null> {
+    return this.agentRequests.find((item) => item.id === id) ?? null;
+  }
+
+  public async resolveAgentRequest(
+    id: string,
+    input: {
+      status: AgentRequestStatus;
+      resolution_payload_json?: Record<string, unknown> | null;
+      claimed_by_governor_id?: string | null;
+      resolved_by?: string | null;
+      resolved_at?: Date | null;
+    }
+  ): Promise<AgentRequestEntity | null> {
+    const item = this.agentRequests.find((entry) => entry.id === id);
+    if (!item) {
+      return null;
+    }
+
+    item.status = input.status;
+    if (input.resolution_payload_json !== undefined) {
+      item.resolution_payload_json = input.resolution_payload_json;
+    }
+    if (input.claimed_by_governor_id !== undefined) {
+      item.claimed_by_governor_id = input.claimed_by_governor_id;
+    }
+    if (input.resolved_by !== undefined) {
+      item.resolved_by = input.resolved_by;
+    }
+    if (input.resolved_at !== undefined) {
+      item.resolved_at = input.resolved_at;
+    }
+    item.updated_at = new Date();
+    return item;
   }
 
   public async patchAgentMemoryEntry(
@@ -2954,6 +3048,182 @@ describe("smoke-core API", () => {
     });
     expect(inactiveListResponse.statusCode).toBe(200);
     expect(inactiveListResponse.json().items).toHaveLength(1);
+  });
+
+  it("creates and lists agent requests including open-pool filters", async () => {
+    const task = await persistence.createTask({
+      title: "Agent request seed",
+      description: "Need extra runtime capability",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/agent-requests",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        type: "runtime_dependency",
+        project_id: "project",
+        task_id: task.id,
+        title: "Need playwright",
+        reason: "Browser tests are blocked without dependency",
+        request_payload: { dependency: "playwright" }
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json()).toMatchObject({
+      type: "runtime_dependency",
+      status: "open",
+      project_id: "project",
+      task_id: task.id
+    });
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/agent-requests?open_pool=true&project_id=project",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items).toHaveLength(1);
+    expect(listResponse.json().items[0].status).toBe("open");
+  });
+
+  it("keeps blocked_agent requests in open-pool and removes resolved_manual", async () => {
+    const task = await persistence.createTask({
+      title: "Resolve request seed",
+      description: "Need ACL update",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/agent-requests",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        type: "mcp_tool_acl",
+        project_id: "project",
+        task_id: task.id,
+        title: "Need write access",
+        reason: "Reviewer can only read now"
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const requestId = created.json().id as string;
+
+    const blockedResponse = await app.inject({
+      method: "POST",
+      url: `/api/agent-requests/${requestId}/resolve`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        status: "blocked_agent",
+        claimed_by_governor_id: "governor-main",
+        resolution_payload: { reason: "need_manual_approval" }
+      }
+    });
+    expect(blockedResponse.statusCode).toBe(200);
+    expect(blockedResponse.json().status).toBe("blocked_agent");
+
+    const openPoolWithBlocked = await app.inject({
+      method: "GET",
+      url: "/api/agent-requests?open_pool=true&project_id=project",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(openPoolWithBlocked.statusCode).toBe(200);
+    expect(
+      openPoolWithBlocked
+        .json()
+        .items.some((item: { id: string; status: string }) => item.id === requestId && item.status === "blocked_agent")
+    ).toBe(true);
+
+    const resolvedManual = await app.inject({
+      method: "POST",
+      url: `/api/agent-requests/${requestId}/resolve`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        status: "resolved_manual",
+        resolved_by: "operator",
+        resolution_payload: { decision: "approved" }
+      }
+    });
+    expect(resolvedManual.statusCode).toBe(200);
+    expect(resolvedManual.json().status).toBe("resolved_manual");
+
+    const openPoolAfterResolve = await app.inject({
+      method: "GET",
+      url: "/api/agent-requests?open_pool=true&project_id=project",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(openPoolAfterResolve.statusCode).toBe(200);
+    expect(
+      openPoolAfterResolve
+        .json()
+        .items.some((item: { id: string }) => item.id === requestId)
+    ).toBe(false);
+  });
+
+  it("returns REQUEST_STATE_CONFLICT for terminal agent request transition", async () => {
+    const task = await persistence.createTask({
+      title: "Conflict request seed",
+      description: "Request conflict checks",
+      project_id: "project",
+      repo_id: "repo",
+      branch: null,
+      priority: 100,
+      status: "NEW",
+      source: "api",
+      created_by: "admin"
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/agent-requests",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        type: "other",
+        project_id: "project",
+        task_id: task.id,
+        title: "Need policy override",
+        reason: "Custom ask"
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const requestId = created.json().id as string;
+
+    const resolved = await app.inject({
+      method: "POST",
+      url: `/api/agent-requests/${requestId}/resolve`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        status: "resolved_manual"
+      }
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json().status).toBe("resolved_manual");
+
+    const conflict = await app.inject({
+      method: "POST",
+      url: `/api/agent-requests/${requestId}/resolve`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        status: "blocked_agent"
+      }
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().code).toBe("REQUEST_STATE_CONFLICT");
   });
 
   it("injects project-role memory into delegation execution payload", async () => {
