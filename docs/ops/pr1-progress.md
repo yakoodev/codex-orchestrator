@@ -171,7 +171,8 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
 - [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
-- [x] В docs добавлен отдельный feature backlog `Agent Tool Access Requests` (заявки на недостающие инструменты, например browser-доступ для тестировщика): roadmap + дизайн-док + manual acceptance.
+- [x] В docs добавлен feature backlog `Agent Tool Access Requests` (v1, tool-only).
+- [x] Выполнен Doc Upgrade v4: v1 tool-only модель superseded универсальным `Agent Request Plane v2`; добавлены docs по `Agent Profiles + MCP Server Sets`, governor-loop, MCP request tools и обновленные manual acceptance сценарии.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.
@@ -185,11 +186,13 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 - [x] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача закрыта в `docs/ops/roadmap.md`).
-- [~] MCP AuthZ ACL v2 (multi-key, custom-only ACL, template-only binding, 401/403 модели отказов): `docs/ops/mcp-authz-acl-v2.md`.
+- [~] MCP AuthZ ACL v2 (multi-key, custom-only ACL, agent-profile primary binding, 401/403 модели отказов): `docs/ops/mcp-authz-acl-v2.md`.
 - [~] Secrets Plane v1 (encrypted storage, project+role/template bindings, runtime env injection, redaction): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
-- [~] Agent Tool Access Requests (заявки агента на недостающие инструменты + approve/reject/apply через ACL/template binding): `docs/ops/agent-tool-access-requests.md`.
+- [~] Agent Request Plane v2 (универсальные заявки агента + MCP методы create/list_open/resolve + open-пул `open|blocked_agent`): `docs/ops/agent-request-plane-v2.md`.
+- [~] Agent Profiles + MCP Server Sets (per-agent MCP servers, source policy, OS script sets): `docs/ops/agent-profiles-mcp-servers.md`.
+- [~] Governor automation (автообработка заявок с результатами `resolved_by_agent|blocked_agent` + manual fallback): `docs/ops/agent-request-plane-v2.md`.
 
 ## Текущее состояние проверок (ветка PR1)
 - [x] `npm run lint`

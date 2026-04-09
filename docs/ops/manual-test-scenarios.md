@@ -260,9 +260,9 @@ npm run mcp:serve
 2. Настрой ACL только на `orchestrator.list_agents`, `orchestrator.list_tasks`.
 3. Вызови `orchestrator.dispatch_agent` этим ключом.
 4. Ожидаемо: `403` с кодом `MCP_TOOL_FORBIDDEN`.
-5. Привяжи ключ к конкретному шаблону через `POST /api/mcp/keys/{id}/bindings/templates/{template_id}`.
-6. Выполни dispatch с другим `template_id`.
-7. Ожидаемо: `403` с кодом `MCP_TEMPLATE_FORBIDDEN`.
+5. Привяжи ключ к конкретному профилю через `POST /api/mcp/keys/{id}/bindings/profiles/{profile_id}`.
+6. Выполни вызов этим ключом из другого профиля.
+7. Ожидаемо: `403` с кодом `MCP_PROFILE_FORBIDDEN`.
 8. Отзови ключ (`POST /api/mcp/keys/{id}/revoke`) и повтори любой MCP вызов.
 9. Ожидаемо: `401` с кодом `MCP_KEY_REVOKED`.
 
@@ -293,21 +293,53 @@ npm run mcp:serve
 4. Проверь, что события появились в topology inspector и в `GET /api/coordination/channels/{id}/messages`.
 5. Убедись, что runtime stdout/stderr и чувствительные payload не дублируются в coordination channel.
 
-## 3.12 Сценарий A12 (planned): Agent Tool Access Requests
+## 3.12 Сценарий A12 (planned): Agent Request Plane v2 через MCP
 
-Статус: выполняется после реализации `docs/ops/agent-tool-access-requests.md`.
+Статус: выполняется после реализации `docs/ops/agent-request-plane-v2.md`.
 
-1. Создай задачу web-тестирования для шаблона агента без browser-инструмента.
-2. Запусти делегацию и проверь создание заявки на недостающий tool:
-  - `POST /api/tool-access/requests` (авто от агента или вручную для smoke).
-3. Убедись, что заявка содержит:
-  - `project_id`, `task_id`, `agent_template_id`, `tool_name`, `reason`.
-4. Выполни `approve`, затем `apply`:
-  - `POST /api/tool-access/requests/{id}/approve`
-  - `POST /api/tool-access/requests/{id}/apply`
-5. Проверь, что ACL/template binding обновлен и повторный вызов инструмента больше не падает из-за доступа.
-6. Выполни негативный сценарий `reject` и проверь, что доступ не выдается.
-7. Проверь в UI/topology, что статус заявки (`new/in_review/approved/rejected/applied`) отображается корректно.
+1. Запусти агента без нужной возможности (например, без browser MCP) и получи блокер.
+2. Через MCP вызови `orchestrator.create_agent_request` с типом `mcp_server_attach`.
+3. Проверь, что заявка создана со статусом `open`.
+4. Через MCP вызови `orchestrator.list_open_agent_requests`.
+5. Убедись, что созданная заявка возвращается в open-пуле.
+6. Через MCP вызови `orchestrator.resolve_agent_request`:
+  - путь A: `resolved_by_agent`;
+  - путь B: `blocked_agent`.
+7. Проверь в UI/topology, что статус и тип заявки отображаются корректно.
+
+## 3.13 Сценарий A13 (planned): Governor loop и повторная выдача blocked_agent
+
+Статус: выполняется после реализации `docs/ops/agent-request-plane-v2.md` и `docs/ops/agent-coordination-channel.md`.
+
+1. Создай несколько заявок разных типов (`mcp_tool_acl`, `script_set`, `runtime_dependency`).
+2. Запусти governor-агента и дай ему обработать open-пул.
+3. Для части заявок зафиксируй `resolved_by_agent`.
+4. Для части заявок зафиксируй `blocked_agent`.
+5. Повтори `orchestrator.list_open_agent_requests`.
+6. Убедись, что `blocked_agent` заявки снова входят в выдачу по умолчанию.
+7. Проверь lifecycle события в канале координации:
+  - `request_created`
+  - `request_claimed`
+  - `request_resolved_by_agent`
+  - `request_blocked_agent`
+
+## 3.14 Сценарий A14 (planned): Agent Profiles + MCP Server Sets + OS scripts
+
+Статус: выполняется после реализации `docs/ops/agent-profiles-mcp-servers.md`.
+
+1. Создай два профиля:
+  - `tester-profile`
+  - `devops-profile`
+2. Для `tester-profile` добавь browser MCP, для `devops-profile` — docker MCP.
+3. Проверь, что наборы MCP-серверов различаются.
+4. Попробуй удалить orchestrator MCP из профиля.
+5. Ожидаемо: удаление запрещено (инвариант обязательного orchestrator MCP).
+6. Для одного профиля заполни скрипты:
+  - `PUT /api/agent-profiles/{id}/scripts/windows`
+  - `PUT /api/agent-profiles/{id}/scripts/linux`
+  - `PUT /api/agent-profiles/{id}/scripts/macos`
+7. Проверь в UI, что отображаются отдельные script sets по ОС.
+8. Выполни запуск на конкретной ОС и проверь, что используется соответствующий script set.
 
 ## 4. Сценарий B: Security boundary
 

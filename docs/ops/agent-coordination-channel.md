@@ -5,14 +5,14 @@
 
 ## 1. Цель
 
-Ввести отдельный централизованный канал координации агентов для planning/control сообщений, отделив его от runtime execution логов.
+Ввести отдельный централизованный канал координации агентов для planning/control сообщений и lifecycle-событий `Agent Request Plane`.
 
 ## 2. Зафиксированные решения
 
 1. Канал идентифицируется по `project_id + agent_bundle_id`.
-2. Канал хранит только planning/control события.
-3. Runtime-логи и контент выполнения в канал не дублируются.
-4. Канал используется как источник данных для topology-инспектора и операционного контроля handoff/blockers.
+2. Канал хранит planning/control сообщения и request lifecycle (без runtime output).
+3. Runtime-логи и сырой контент выполнения в канал не дублируются.
+4. Канал служит источником для topology-инспектора и governor-loop наблюдаемости.
 
 ## 3. Модель данных (v1)
 
@@ -24,11 +24,11 @@
 
 - `CoordinationMessage`
   - `id`, `channel_id`, `message_type`, `sender_type`, `sender_id`
-  - `step_id`, `task_id`, `payload_json`, `created_at`
+  - `step_id`, `task_id`, `agent_request_id`, `payload_json`, `created_at`
 
 ## 4. Допустимые типы сообщений
 
-Минимальный набор (planning/control):
+### 4.1 Planning/control
 - `plan_created`
 - `step_assigned`
 - `handoff_requested`
@@ -37,8 +37,16 @@
 - `blocker_reported`
 - `step_closed`
 
+### 4.2 Agent request lifecycle
+- `request_created`
+- `request_claimed`
+- `request_resolved_by_agent`
+- `request_blocked_agent`
+- `request_resolved_manual`
+- `request_rejected_manual`
+
 Ограничение:
-- сообщения вида runtime stdout/stderr, chain-of-thought и сырой tool-output в канал не записываются.
+- runtime stdout/stderr, chain-of-thought и сырой tool-output в канал не записываются.
 
 ## 5. API-контракт (planned)
 
@@ -47,34 +55,35 @@
 - `POST /api/coordination/channels/{id}/messages`
 
 Дополнительно:
-- в `GET /api/topology/graph` возвращаются ссылки на active channels и последние planning/control сообщения.
+- в `GET /api/topology/graph` возвращаются active channels и последние planning/request lifecycle сообщения.
 
 ## 6. Поток событий (high-level)
 
-1. PM/оркестратор создает plan -> `plan_created`.
+1. PM/оркестратор создает план -> `plan_created`.
 2. Шаг назначается агенту -> `step_assigned`.
-3. При передаче контекста между агентами -> `handoff_*`.
-4. При блокере -> `blocker_reported`.
-5. При завершении шага -> `step_closed`.
+3. Агент создает заявку -> `request_created`.
+4. Governor берет заявку -> `request_claimed`.
+5. Governor завершает -> `request_resolved_by_agent` или `request_blocked_agent`.
+6. Оператор (fallback) закрывает -> `request_resolved_manual` или `request_rejected_manual`.
 
 ## 7. Интеграция с UI
 
-- На `#/topology` канал отображается отдельным типом узла `channel`.
+- На `#/topology` канал отображается отдельным узлом `channel`.
 - Inspector канала показывает:
-  - последние сообщения planning/control;
-  - текущие связанные шаги;
-  - состояние bundle и активных агентов.
+  - последние planning/control события;
+  - последние request lifecycle события;
+  - текущие активные `blocked_agent` заявки.
 
 ## 8. Manual acceptance (planned)
 
 1. Создать bundle и канал для проекта.
-2. Отправить последовательность `plan_created -> step_assigned -> blocker_reported -> step_closed`.
-3. Проверить, что сообщения видны через `GET /api/coordination/channels/{id}/messages`.
-4. Проверить, что runtime logs агента не попали в канал.
-5. Проверить отображение этих же событий в topology-инспекторе.
+2. Отправить последовательность `plan_created -> step_assigned`.
+3. Создать request и прогнать `request_claimed -> request_blocked_agent`.
+4. Выполнить manual fallback (`request_resolved_manual`).
+5. Проверить сообщения в `GET /api/coordination/channels/{id}/messages` и topology inspector.
 
 ## 9. Out of scope v1
 
-- Автоматическая генерация плана через LLM внутри канала.
-- Консенсус/голосование между агентами.
-- Полноценный чат для произвольной переписки агентов.
+- автогенерация плана внутри канала;
+- консенсус/голосование между агентами;
+- произвольный агентский чат.

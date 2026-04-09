@@ -24,36 +24,54 @@
 
 ## Planned: MCP AuthZ ACL v2
 - Статус: `planned` (decision-complete, реализация не начата).
-- Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и template-bound ограничениями.
+- Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и profile-aware ограничениями.
 - Зафиксированные решения:
   - `custom-only ACL` (без обязательных пресетов ролей);
   - ключи хранятся и управляются в БД (`DB managed`);
-  - доступ к MCP для агента привязывается только через `agent template` (`template-only binding`);
+  - для настройки MCP-серверов primary сущность — `AgentProfile` (а не `AgentTemplate`);
+  - template binding допускается как execution-constraint, но не как primary owner MCP server set;
   - ACL-проверка по точным именам методов/tools (exact match);
   - `401` для отсутствующего/невалидного/отозванного/просроченного ключа;
-  - `403` для валидного ключа без прав на запрошенный tool/template.
+  - `403` для валидного ключа без прав на запрошенный tool/profile/template.
 - Документ дизайна: `docs/ops/mcp-authz-acl-v2.md`.
 - Зависимости:
   - API и persistence слой MCP keys;
+  - API и persistence слой `AgentProfile` и MCP server bindings;
   - аудит и `last_used` обновления;
   - синхронизация с MCP bridge runtime.
 
-## Planned: Agent Tool Access Requests
+## Planned: Agent Profiles + MCP Server Sets
 - Статус: `planned` (decision-complete, реализация не начата).
-- Цель: дать агенту встроенный механизм запросить недостающий инструмент/доступ вместо немого падения задачи.
-- Ключевой кейс:
-  - тестировщику назначена задача web-тестирования, но у него нет доступа к browser tool.
-  - агент создает заявку на доступ, оператор/PM ее подтверждает или отклоняет.
+- Цель: дать каждому агенту собственный набор MCP-серверов и OS-специфичных script sets через web UI.
 - Зафиксированные решения:
-  - заявка создается на уровне `project + task + agent template`;
-  - запрашивается конкретный инструмент (`tool_name`) и обоснование (`reason`);
-  - после `approved` применяется через ACL/template binding (без ручной правки в БД);
-  - заявка и ее статусы отображаются в UI и в topology inspector.
-- Документ дизайна: `docs/ops/agent-tool-access-requests.md`.
+  - primary entity: `AgentProfile`;
+  - orchestrator MCP для профиля обязателен и не удаляется из UI;
+  - per-agent source policy определяет, откуда агент может подключать MCP-серверы;
+  - per-agent script sets хранятся отдельно для `windows/linux/macos`.
+- Документ дизайна: `docs/ops/agent-profiles-mcp-servers.md`.
 - Зависимости:
-  - `MCP AuthZ ACL v2` (источник прав и template bindings);
-  - `Coordination Channel` (уведомления `request_created/approved/rejected/applied`);
-  - `Topology UI` (видимость заявок и текущего статуса применения).
+  - `MCP AuthZ ACL v2` (источник прав и audit);
+  - `Project Registry` (привязка профилей к проектам);
+  - `Topology UI` (визуализация профилей и их активных связей).
+
+## Planned: Agent Request Plane v2
+- Статус: `planned` (decision-complete, реализация не начата).
+- Цель: заменить tool-only заявки универсальным механизмом запросов агента на недостающие возможности.
+- Зафиксированные решения:
+  - универсальные типы заявок: `mcp_server_attach`, `mcp_tool_acl`, `script_set`, `runtime_dependency`, `other`;
+  - MCP-методы для агентов/ governor-агента:
+    - `orchestrator.create_agent_request`
+    - `orchestrator.list_open_agent_requests`
+    - `orchestrator.resolve_agent_request`
+  - статусы: `open`, `in_progress`, `resolved_by_agent`, `blocked_agent`, `resolved_manual`, `rejected_manual`;
+  - `blocked_agent` включается в open-пул по умолчанию для повторной обработки;
+  - есть manual fallback в UI: оператор/PM может вручную завершить или отклонить заявку.
+- Документ дизайна: `docs/ops/agent-request-plane-v2.md`.
+- Зависимости:
+  - `MCP AuthZ ACL v2`;
+  - `Agent Profiles + MCP Server Sets`;
+  - `Coordination Channel` (request lifecycle события);
+  - `Topology UI` (узлы заявок и их состояния).
 
 ## Planned: Secrets Plane v1
 - Статус: `planned` (decision-complete, реализация не начата).
