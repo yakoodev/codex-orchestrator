@@ -2924,6 +2924,20 @@ export class PrismaPersistence implements Persistence {
     return result.count > 0;
   }
 
+  public async deleteAuthProfile(id: string): Promise<boolean> {
+    try {
+      await this.prisma.chatGptAuthProfile.delete({
+        where: { id }
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   public async createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity> {
     const created = await this.prisma.authSwitchEvent.create({
       data: {

@@ -112,6 +112,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/artifacts/{id}",
   "POST /api/auth-profiles/chatgpt/upload",
   "GET /api/auth-profiles/chatgpt",
+  "DELETE /api/auth-profiles/chatgpt/{id}",
   "POST /api/auth-profiles/chatgpt/{id}/activate",
   "POST /api/auth-profiles/chatgpt/{id}/deactivate",
   "GET /api/auth-profiles/chatgpt/{id}/limits",
@@ -3743,6 +3744,16 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   app.get("/api/auth-profiles/chatgpt", async (_request, reply) => {
     const profiles = await persistence.listAuthProfiles();
     return reply.send({ items: profiles.map((profile) => authProfileToResponse(profile)) });
+  });
+
+  app.delete("/api/auth-profiles/chatgpt/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const deleted = await persistence.deleteAuthProfile(id);
+    if (!deleted) {
+      return sendError(reply, 404, "Profile not found", "NOT_FOUND");
+    }
+
+    return reply.code(204).send();
   });
 
   app.post("/api/auth-profiles/chatgpt/:id/activate", async (request, reply) => {

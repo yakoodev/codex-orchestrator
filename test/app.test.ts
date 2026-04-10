@@ -2053,6 +2053,25 @@ class FakePersistence implements Persistence {
     return true;
   }
 
+  public async deleteAuthProfile(id: string): Promise<boolean> {
+    const index = this.profiles.findIndex((profile) => profile.id === id);
+    if (index < 0) {
+      return false;
+    }
+
+    this.profiles.splice(index, 1);
+    for (const event of this.switchEvents) {
+      if (event.from_auth_profile_id === id) {
+        event.from_auth_profile_id = null;
+      }
+      if (event.to_auth_profile_id === id) {
+        event.to_auth_profile_id = null;
+      }
+    }
+
+    return true;
+  }
+
   public async createAuthSwitchEvent(input: {
     module_key: string;
     from_auth_profile_id?: string | null;
@@ -3256,6 +3275,58 @@ describe("smoke-core API", () => {
           event.payload["reason"] === "manual_deactivate"
       )
     ).toBe(true);
+  });
+
+  it("deletes auth profile and clears switch references", async () => {
+    const profile = await persistence.createAuthProfile({
+      label: "profile-delete",
+      status: "inactive",
+      checksum: "checksum-profile-delete",
+      storage_path: "auth-profiles/profile-delete.auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    await persistence.createAuthSwitchEvent({
+      module_key: SWITCH_MODULE_KEY,
+      from_auth_profile_id: profile.id,
+      to_auth_profile_id: profile.id,
+      reason: "manual",
+      status: "completed"
+    });
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/auth-profiles/chatgpt/${profile.id}`,
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(deleteResponse.statusCode).toBe(204);
+    expect(deleteResponse.body).toBe("");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/auth-profiles/chatgpt",
+      headers: { "x-admin-token": config.adminToken }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().items.some((item: { id: string }) => item.id === profile.id)).toBe(false);
+
+    expect(persistence.switchEvents[0]?.from_auth_profile_id).toBeNull();
+    expect(persistence.switchEvents[0]?.to_auth_profile_id).toBeNull();
+  });
+
+  it("returns 404 when deleting unknown auth profile", async () => {
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/api/auth-profiles/chatgpt/profile-missing",
+      headers: { "x-admin-token": config.adminToken }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "Profile not found",
+      code: "NOT_FOUND"
+    });
   });
 
   it("returns 404 when active profile is not selected", async () => {

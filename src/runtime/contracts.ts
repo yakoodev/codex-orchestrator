@@ -1068,6 +1068,7 @@ export interface Persistence {
   getAuthProfileRuntimeById(id: string): Promise<AuthProfileRuntimeEntity | null>;
   activateAuthProfile(id: string, activatedBy: string): Promise<AuthProfileEntity | null>;
   deactivateAuthProfile(id: string): Promise<boolean>;
+  deleteAuthProfile(id: string): Promise<boolean>;
   createAuthSwitchEvent(input: CreateAuthSwitchEventInput): Promise<AuthSwitchEventEntity>;
   listAuthSwitchEvents(options?: ListAuthSwitchEventsOptions): Promise<AuthSwitchEventEntity[]>;
   listHeldTasks(): Promise<TaskEntity[]>;

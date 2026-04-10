@@ -993,6 +993,22 @@ paths:
                       $ref: "#/components/schemas/ChatGptAuthProfile"
                 required: [items]
 
+  /api/auth-profiles/chatgpt/{id}:
+    delete:
+      tags: [ChatGPT Auth Profiles]
+      summary: Delete profile
+      parameters:
+        - $ref: "#/components/parameters/GenericId"
+      responses:
+        "204":
+          description: Profile deleted
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/auth-profiles/chatgpt/{id}/activate:
     post:
       tags: [ChatGPT Auth Profiles]
@@ -2810,6 +2826,8 @@ components:
       properties:
         id:
           type: string
+        display_id:
+          type: string
         label:
           type: string
         status:
@@ -2820,7 +2838,7 @@ components:
         created_at:
           type: string
           format: date-time
-      required: [id, label, status, checksum, created_at]
+      required: [id, display_id, label, status, checksum, created_at]
 
     RateLimitWindowSnapshot:
       type: object
@@ -2902,6 +2920,8 @@ components:
           properties:
             id:
               type: string
+            display_id:
+              type: string
             label:
               type: string
             status:
@@ -2909,7 +2929,7 @@ components:
               enum: [active, inactive, blocked]
             checksum:
               type: string
-          required: [id, label, status, checksum]
+          required: [id, display_id, label, status, checksum]
         rate_limits:
           $ref: "#/components/schemas/RateLimitSnapshot"
         rate_limits_by_limit_id:

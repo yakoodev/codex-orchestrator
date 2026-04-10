@@ -241,7 +241,12 @@ const I18N = {
     active_now: "активный сейчас",
     action_activate: "Активировать",
     action_deactivate: "Деактивировать",
+    action_delete: "Удалить",
     action_open_history: "История",
+    profile_delete_modal_title: "Удалить профиль?",
+    profile_delete_modal_message: "Профиль {label} ({id}) будет удален без возможности восстановления.",
+    profile_delete_modal_confirm: "Удалить профиль",
+    profile_delete_modal_cancel: "Отмена",
     no_profiles: "Профилей пока нет.",
     events_title: "События переключений",
     switch_filter_search_label: "Поиск",
@@ -330,6 +335,7 @@ const I18N = {
     log_held_released: "Удержанная очередь освобождена",
     log_profile_uploaded: "Профиль загружен",
     log_profile_action: "Операция с профилем выполнена",
+    log_profile_deleted: "Профиль удален",
     log_secret_created: "Секрет создан",
     log_secret_rotated: "Секрет ротирован",
     log_secret_revoked: "Секрет отозван",
@@ -556,7 +562,12 @@ I18N.en = {
   active_now: "active now",
   action_activate: "Activate",
   action_deactivate: "Deactivate",
+  action_delete: "Delete",
   action_open_history: "History",
+  profile_delete_modal_title: "Delete profile?",
+  profile_delete_modal_message: "Profile {label} ({id}) will be deleted permanently.",
+  profile_delete_modal_confirm: "Delete profile",
+  profile_delete_modal_cancel: "Cancel",
   no_profiles: "No profiles yet.",
   events_title: "Switch events",
   switch_filter_search_label: "Search",
@@ -636,6 +647,7 @@ I18N.en = {
   log_held_released: "Held queue released",
   log_profile_uploaded: "Profile uploaded",
   log_profile_action: "Profile action completed",
+  log_profile_deleted: "Profile deleted",
   log_secret_created: "Secret created",
   log_secret_rotated: "Secret rotated",
   log_secret_revoked: "Secret revoked",
@@ -769,6 +781,67 @@ function normalizeLimitsSnapshot(payload) {
     secondary_resets_at_utc: secondary?.resets_at_utc ?? null,
     limits_source: typeof snapshot?.source === "string" ? snapshot.source : "live"
   }
+}
+
+function findAuthProfileById(id) {
+  if (!id) return null
+  const fromProfiles = state.profiles.find((profile) => profile.id === id)
+  if (fromProfiles) return fromProfiles
+  return state.fleet.find((profile) => profile.id === id) ?? null
+}
+
+function buildAuthProfileToggleButton(item, actionAttr, profileId) {
+  const isActive = item?.status === "active"
+  const action = isActive ? "deactivate" : "activate"
+  const label = t(isActive ? "action_deactivate" : "action_activate")
+  return `<button type="button" data-${actionAttr}="${action}" data-profile-id="${escapeHtml(profileId)}">${escapeHtml(label)}</button>`
+}
+
+function confirmProfileDelete(profile) {
+  const displayId = deriveAuthProfileDisplayId(profile)
+  const title = t("profile_delete_modal_title")
+  const message = t("profile_delete_modal_message", {
+    label: profile?.label ?? t("task_field_na"),
+    id: displayId
+  })
+
+  if (!ui.confirmModal || !ui.confirmModalTitle || !ui.confirmModalMessage || !ui.confirmModalConfirm || !ui.confirmModalCancel) {
+    return Promise.resolve(window.confirm(`${title}\n\n${message}`))
+  }
+
+  ui.confirmModalTitle.textContent = title
+  ui.confirmModalMessage.textContent = message
+  ui.confirmModalConfirm.textContent = t("profile_delete_modal_confirm")
+  ui.confirmModalCancel.textContent = t("profile_delete_modal_cancel")
+  ui.confirmModal.hidden = false
+  document.body.classList.add("modal-open")
+
+  return new Promise((resolve) => {
+    const cleanup = (result) => {
+      ui.confirmModal.hidden = true
+      document.body.classList.remove("modal-open")
+      ui.confirmModalConfirm.removeEventListener("click", onConfirm)
+      ui.confirmModalCancel.removeEventListener("click", onCancel)
+      ui.confirmModal.removeEventListener("click", onBackdrop)
+      window.removeEventListener("keydown", onKeyDown)
+      resolve(result)
+    }
+
+    const onConfirm = () => cleanup(true)
+    const onCancel = () => cleanup(false)
+    const onBackdrop = (event) => {
+      if (event.target === ui.confirmModal) cleanup(false)
+    }
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") cleanup(false)
+    }
+
+    ui.confirmModalConfirm.addEventListener("click", onConfirm)
+    ui.confirmModalCancel.addEventListener("click", onCancel)
+    ui.confirmModal.addEventListener("click", onBackdrop)
+    window.addEventListener("keydown", onKeyDown)
+    ui.confirmModalConfirm.focus()
+  })
 }
 
 function toNullableString(value) {
@@ -1664,13 +1737,17 @@ function renderProfiles(items) {
     const active = item.status === "active"
     const current = state.activeProfile?.id === item.id
     const displayId = deriveAuthProfileDisplayId(item)
+    const toggleButton = buildAuthProfileToggleButton(item, "profile-action", item.id)
     return `<article>
       <div class="task-card-head">
         <div class="profile-title">${escapeHtml(item.label)}</div>
         <div class="action-bar">${current ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>` : ""}<span class="pill ${active ? "pill-active" : ""}">${escapeHtml(active ? t("profile_state_active") : t("profile_state_inactive"))}</span></div>
       </div>
       <div class="account-meta"><code>${escapeHtml(displayId)}</code></div>
-      <div class="action-bar"><button type="button" data-profile-action="activate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button><button type="button" class="button-ghost" data-profile-action="deactivate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_deactivate"))}</button></div>
+      <div class="action-bar">
+        ${toggleButton}
+        <button type="button" class="button-danger" data-profile-action="delete" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_delete"))}</button>
+      </div>
     </article>`
   }).join("")
 
@@ -1696,6 +1773,7 @@ function renderFleet(items) {
     const src = item.limits_error ? `error=${item.limits_error}` : String(item.limits_source ?? "live")
     const current = state.activeProfile?.id === item.id
     const displayId = deriveAuthProfileDisplayId(item)
+    const toggleButton = buildAuthProfileToggleButton(item, "fleet-action", item.id)
 
     return `<article>
       <div class="task-card-head"><div class="account-title">${escapeHtml(item.label)}</div><div class="action-bar">${current ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>` : ""}<span class="pill">${escapeHtml(item.status)}</span></div></div>
@@ -1708,9 +1786,9 @@ function renderFleet(items) {
       <div class="meta-note">${escapeHtml(t("account_limits_week", { remaining: l2, reset: r2 }))}</div>
       <div class="meta-note">${escapeHtml(t("account_limits_source", { source: src }))}</div>
       <div class="action-bar">
-        <button type="button" data-fleet-action="activate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button>
-        <button type="button" class="button-ghost" data-fleet-action="deactivate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_deactivate"))}</button>
+        ${toggleButton}
         <button type="button" class="button-ghost" data-fleet-action="history" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_open_history"))}</button>
+        <button type="button" class="button-danger" data-fleet-action="delete" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_delete"))}</button>
       </div>
     </article>`
   }).join("")
@@ -2375,7 +2453,8 @@ function wireConsoleRefs() {
     secretsPanelState: document.getElementById("secrets-panel-state"), refreshSecrets: document.getElementById("refresh-secrets"), secretCreateForm: document.getElementById("secret-create-form"), secretProject: document.getElementById("secret-project"), secretKey: document.getElementById("secret-key"), secretValue: document.getElementById("secret-value"), secretDescription: document.getElementById("secret-description"), secretBindRoles: document.getElementById("secret-bind-roles"), secretBindTemplates: document.getElementById("secret-bind-templates"), secretFilterSearch: document.getElementById("secret-filter-search"), secretsList: document.getElementById("secrets-list"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
     modulePanelState: document.getElementById("module-panel-state"), refreshModule: document.getElementById("refresh-module"), refreshExecutions: document.getElementById("refresh-executions"), moduleForm: document.getElementById("module-form"), moduleEnabled: document.getElementById("module-enabled"), moduleConfig: document.getElementById("module-config"), executionsList: document.getElementById("executions-list"),
-    logsPanelState: document.getElementById("logs-panel-state"), logsClear: document.getElementById("logs-clear"), logFilterLevel: document.getElementById("log-filter-level"), logFilterScope: document.getElementById("log-filter-scope"), logFilterSearch: document.getElementById("log-filter-search"), logFilterClear: document.getElementById("log-filter-clear"), logsList: document.getElementById("logs-list")
+    logsPanelState: document.getElementById("logs-panel-state"), logsClear: document.getElementById("logs-clear"), logFilterLevel: document.getElementById("log-filter-level"), logFilterScope: document.getElementById("log-filter-scope"), logFilterSearch: document.getElementById("log-filter-search"), logFilterClear: document.getElementById("log-filter-clear"), logsList: document.getElementById("logs-list"),
+    confirmModal: document.getElementById("confirm-modal"), confirmModalTitle: document.getElementById("confirm-modal-title"), confirmModalMessage: document.getElementById("confirm-modal-message"), confirmModalConfirm: document.getElementById("confirm-modal-confirm"), confirmModalCancel: document.getElementById("confirm-modal-cancel")
   }
 }
 
@@ -2845,6 +2924,17 @@ function wireConsoleHandlers() {
     const action = button.dataset.profileAction
     const id = button.dataset.profileId
     if (!id) return
+
+    if (action === "delete") {
+      const profile = findAuthProfileById(id) ?? { id, label: id }
+      const confirmed = await confirmProfileDelete(profile)
+      if (!confirmed) return
+      await requestRaw(`/api/auth-profiles/chatgpt/${id}`, { method: "DELETE" })
+      pushLog("success", "ui", t("log_profile_deleted"), { profile_id: id, source: "profiles" })
+      await Promise.allSettled([refreshProfiles(), refreshFleet(), refreshSwitches()])
+      return
+    }
+
     const route = action === "activate" ? `/api/auth-profiles/chatgpt/${id}/activate` : `/api/auth-profiles/chatgpt/${id}/deactivate`
     await requestJson(route, { method: "POST" })
     pushLog("success", "ui", t("log_profile_action"), { action, profile_id: id })
@@ -2868,6 +2958,16 @@ function wireConsoleHandlers() {
       state.switchFilters.search = ""
       saveJson(KEYS.switchFilters, state.switchFilters)
       await refreshSwitches()
+      return
+    }
+
+    if (action === "delete") {
+      const profile = findAuthProfileById(id) ?? { id, label: id }
+      const confirmed = await confirmProfileDelete(profile)
+      if (!confirmed) return
+      await requestRaw(`/api/auth-profiles/chatgpt/${id}`, { method: "DELETE" })
+      pushLog("success", "ui", t("log_profile_deleted"), { profile_id: id, source: "limits" })
+      await Promise.allSettled([refreshProfiles(), refreshFleet(), refreshSwitches()])
       return
     }
 
