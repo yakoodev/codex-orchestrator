@@ -500,6 +500,20 @@ const TASK_AUTODISPATCH_SOURCE = "task_auto_dispatcher";
 const TASK_AUTODISPATCH_PICKUP_STATUSES = new Set<TaskStatus>(["NEW", "QUEUED"]);
 const TASK_AUTODISPATCH_RUNNING_STATUSES = new Set(["requested", "accepted", "running"]);
 const TASK_AUTODISPATCH_WAITING_LIMIT_ERROR_CODES = new Set(["AUTH_PROFILE_REQUIRED"]);
+const TASK_AUTODISPATCH_RESULT_SUCCESS_MARKER = "TASK_RESULT:SUCCESS";
+const TASK_AUTODISPATCH_RESULT_FAILED_MARKER = "TASK_RESULT:FAILED";
+const TASK_AUTODISPATCH_FAILURE_TEXT_PATTERNS = [
+  "не смог",
+  "не удалось",
+  "cannot",
+  "can't",
+  "unable",
+  "failed",
+  "ошибка",
+  "нет доступа",
+  "permission denied",
+  "access denied"
+];
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -799,6 +813,9 @@ function parseJsonObject(body: string): Record<string, unknown> | null {
 function buildTaskAutoDispatchPrompt(task: TaskEntity): string {
   const lines = [
     "Выполни задачу оркестратора и верни короткий итог выполненной работы.",
+    "В конце ответа добавь строку с маркером результата:",
+    "- TASK_RESULT:SUCCESS (если задача реально выполнена по факту)",
+    "- TASK_RESULT:FAILED (если выполнить задачу не удалось или выполнена частично)",
     `task_id: ${task.id}`,
     `project_id: ${task.project_id}`,
     `repo_id: ${task.repo_id}`,
@@ -810,6 +827,28 @@ function buildTaskAutoDispatchPrompt(task: TaskEntity): string {
   ];
 
   return trimToLimit(lines.join("\n"), MAX_DELEGATION_PROMPT_LENGTH);
+}
+
+function detectTaskAutoDispatchOutcome(
+  resultSummary: string
+): "success" | "failed" | "unknown" {
+  const normalized = resultSummary.toUpperCase();
+  if (normalized.includes(TASK_AUTODISPATCH_RESULT_FAILED_MARKER)) {
+    return "failed";
+  }
+  if (normalized.includes(TASK_AUTODISPATCH_RESULT_SUCCESS_MARKER)) {
+    return "success";
+  }
+
+  const lowered = resultSummary.toLowerCase();
+  const hasFailurePattern = TASK_AUTODISPATCH_FAILURE_TEXT_PATTERNS.some((pattern) =>
+    lowered.includes(pattern)
+  );
+  if (hasFailurePattern) {
+    return "failed";
+  }
+
+  return "unknown";
 }
 
 function selectTaskAutoDispatchTemplate(
@@ -2432,13 +2471,21 @@ async function ensureCustomModuleConfig(
     return null;
   }
 
-  return persistence.createCustomModuleConfig({
-    module_key: SWITCH_MODULE_KEY,
-    is_enabled: config.switchModuleDefaultEnabled,
-    scope: "global",
-    config_json: buildSwitchModuleDefaultConfig(config),
-    updated_by: "system"
-  });
+  try {
+    return await persistence.createCustomModuleConfig({
+      module_key: SWITCH_MODULE_KEY,
+      is_enabled: config.switchModuleDefaultEnabled,
+      scope: "global",
+      config_json: buildSwitchModuleDefaultConfig(config),
+      updated_by: "system"
+    });
+  } catch (error) {
+    const raced = await persistence.getCustomModuleConfig(key);
+    if (raced) {
+      return raced;
+    }
+    throw error;
+  }
 }
 
 function adminGuard(config: AppConfig, request: FastifyRequest, reply: FastifyReply): FastifyReply | null {
@@ -2587,6 +2634,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           payload: {
             source: TASK_AUTODISPATCH_SOURCE,
             task_id: assignedTask.id,
+            execution_mode: config.taskAutoDispatchExecutionMode,
             prompt: buildTaskAutoDispatchPrompt(assignedTask)
           }
         }
@@ -2608,6 +2656,20 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
       const delegationStatus = asNonEmptyString(dispatchBody["status"]);
       if (delegationStatus === "completed") {
+        const resultSummary = asNonEmptyString(dispatchBody["result_summary"]) ?? "";
+        const outcome = detectTaskAutoDispatchOutcome(resultSummary);
+        if (outcome === "failed") {
+          await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
+          app.log.warn(
+            {
+              task_id: assignedTask.id,
+              result_summary: resultSummary
+            },
+            "Task auto-dispatch marked as FAILED_TERMINAL due to failed completion outcome"
+          );
+          return;
+        }
+
         await persistence.updateTaskStatus(assignedTask.id, "DONE");
         return;
       }
@@ -6874,7 +6936,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             target_template: {
               id: targetTemplate.id,
               role: targetTemplate.role,
-              model: targetTemplate.model
+              model: targetTemplate.model,
+              sandbox_policy: targetTemplate.sandbox_policy,
+              approval_policy: targetTemplate.approval_policy
             }
           });
         } catch (error) {

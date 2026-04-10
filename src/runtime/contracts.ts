@@ -717,7 +717,10 @@ export interface DelegationExecutionInput {
   requester_task_id: string;
   capability: string;
   payload: Record<string, unknown>;
-  target_template: Pick<AgentTemplateEntity, "id" | "role" | "model">;
+  target_template: Pick<
+    AgentTemplateEntity,
+    "id" | "role" | "model" | "sandbox_policy" | "approval_policy"
+  >;
 }
 
 export interface DelegationExecutionResult {

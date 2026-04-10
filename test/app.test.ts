@@ -32,6 +32,7 @@ import type {
   CreateMcpAuthAuditEventInput,
   CreateMcpApiKeyInput,
   CreateDelegationRequestInput,
+  DelegationExecutionInput,
   CreateMcpServerRegistryInput,
   CreateProjectInput,
   CreateProjectSecretInput,
@@ -2322,6 +2323,7 @@ describe("smoke-core API", () => {
     taskAutoDispatchEnabled: false,
     taskAutoDispatchIntervalMs: 50,
     taskAutoDispatchCapability: "reviewer",
+    taskAutoDispatchExecutionMode: "codex_exec",
     telegramEnabled: false,
     telegramBotToken: null,
     telegramProxyUrl: null,
@@ -2843,6 +2845,130 @@ describe("smoke-core API", () => {
           delegation.requester_task_id === taskId && delegation.status === "completed"
       )
     ).toBe(true);
+  });
+
+  it("marks task as failed when delegation completed with explicit failed marker", async () => {
+    await app.close();
+
+    const failedMarkerExecutor: DelegationExecutor = {
+      execute: async () => ({
+        execution_mode: "codex_exec",
+        result_summary: "TASK_RESULT:FAILED cannot write file",
+        output_text: "TASK_RESULT:FAILED cannot write file"
+      })
+    };
+
+    app = await createApp({
+      config: {
+        ...config,
+        taskAutoDispatchEnabled: true,
+        taskAutoDispatchIntervalMs: 20,
+        taskAutoDispatchCapability: "reviewer"
+      },
+      persistence,
+      storage,
+      publisher,
+      authProfileRateLimitsReader,
+      delegationExecutor: failedMarkerExecutor
+    });
+    await app.ready();
+
+    await persistence.createAgentTemplate({
+      name: "auto-dispatch-reviewer-failed-marker",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "review task",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+    await persistence.createAuthProfile({
+      label: "auto-dispatch-profile-failed-marker",
+      status: "active",
+      checksum: "checksum-auto-dispatch-profile-failed-marker",
+      storage_path: "auth-profiles/auto-dispatch-profile-failed-marker/auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        title: "Auto task failed marker",
+        description: "Task should be marked terminal failed",
+        project_id: "project-1",
+        repo_id: "repo-1",
+        priority: 10
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const taskId = createResponse.json().id as string;
+
+    let task = await persistence.getTaskById(taskId);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (task?.status === "FAILED_TERMINAL") {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      task = await persistence.getTaskById(taskId);
+    }
+
+    expect(task?.status).toBe("FAILED_TERMINAL");
+  });
+
+  it("passes sandbox and approval policy from template to delegation executor", async () => {
+    await app.close();
+
+    let capturedInput: DelegationExecutionInput | null = null;
+    const capturingExecutor: DelegationExecutor = {
+      execute: async (input) => {
+        capturedInput = input;
+        return {
+          execution_mode: "codex_exec",
+          result_summary: "TASK_RESULT:SUCCESS",
+          output_text: "TASK_RESULT:SUCCESS"
+        };
+      }
+    };
+
+    app = await createApp({
+      config,
+      persistence,
+      storage,
+      publisher,
+      authProfileRateLimitsReader,
+      delegationExecutor: capturingExecutor
+    });
+    await app.ready();
+
+    const template = await persistence.createAgentTemplate({
+      name: "sandbox-capture",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "capture sandbox",
+      sandbox_policy: "danger-full-access",
+      approval_policy: "on-request"
+    });
+
+    const dispatchResponse = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-sandbox-policy-capture" },
+      payload: {
+        requester_task_id: "task-capture-sandbox",
+        capability: "reviewer",
+        target_selector: { agent_template_id: template.id },
+        payload: { prompt: "capture run" }
+      }
+    });
+
+    expect(dispatchResponse.statusCode).toBe(202);
+    expect(capturedInput).not.toBeNull();
+    const capturedTemplate = (capturedInput as unknown as DelegationExecutionInput).target_template;
+    expect(capturedTemplate.sandbox_policy).toBe("danger-full-access");
+    expect(capturedTemplate.approval_policy).toBe("on-request");
   });
 
   it("handles task lifecycle endpoints", async () => {

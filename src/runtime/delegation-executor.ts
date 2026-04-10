@@ -19,6 +19,12 @@ const MAX_RUNTIME_SECRET_ENV_VARS = 64;
 const RUNTIME_ENV_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
 const REDACTION_PLACEHOLDER = "[REDACTED_SECRET]";
 const RESERVED_RUNTIME_ENV_KEYS = new Set(["PATH", "HOME", "CODEX_HOME"]);
+const SANDBOX_POLICIES = new Set(["read-only", "workspace-write", "danger-full-access"]);
+const APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
+
+function resolveCodexCommandForSpawn(command: string): string {
+  return command.trim();
+}
 
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -105,6 +111,24 @@ function formatMockSummary(input: DelegationExecutionInput): string {
   return `Delegation completed by template ${input.target_template.id}`;
 }
 
+function normalizeSandboxPolicy(value: unknown): "read-only" | "workspace-write" | "danger-full-access" {
+  const candidate = asNonEmptyString(value)?.toLowerCase();
+  if (candidate && SANDBOX_POLICIES.has(candidate)) {
+    return candidate as "read-only" | "workspace-write" | "danger-full-access";
+  }
+
+  return "workspace-write";
+}
+
+function normalizeApprovalPolicy(value: unknown): "never" | "on-request" | "on-failure" | "untrusted" {
+  const candidate = asNonEmptyString(value)?.toLowerCase();
+  if (candidate && APPROVAL_POLICIES.has(candidate)) {
+    return candidate as "never" | "on-request" | "on-failure" | "untrusted";
+  }
+
+  return "never";
+}
+
 function getPayloadPrompt(payload: Record<string, unknown>): string {
   const promptCandidate = asNonEmptyString(payload["prompt"]) ?? asNonEmptyString(payload["task"]);
   if (promptCandidate) {
@@ -170,6 +194,10 @@ class CodexDelegationExecutor implements DelegationExecutor {
 
   public constructor(private readonly options: CodexDelegationExecutorOptions) {}
 
+  private getCodexSpawnCommand(): string {
+    return resolveCodexCommandForSpawn(this.options.config.codexCommand);
+  }
+
   public async execute(input: DelegationExecutionInput): Promise<DelegationExecutionResult> {
     const modeOverride = asNonEmptyString(input.payload["execution_mode"]);
     const effectiveMode: "mock" | "auto" | "codex_exec" =
@@ -215,10 +243,12 @@ class CodexDelegationExecutor implements DelegationExecutor {
 
     const args = ["--version"];
     const timeoutMs = Math.min(this.options.config.delegationExecutionTimeoutMs, 10_000);
+    const codexCommand = this.getCodexSpawnCommand();
 
     const available = await new Promise<boolean>((resolve) => {
-      const child = spawn(this.options.config.codexCommand, args, {
-        stdio: "ignore"
+      const child = spawn(codexCommand, args, {
+        stdio: "ignore",
+        shell: process.platform === "win32"
       });
 
       let settled = false;
@@ -281,6 +311,8 @@ class CodexDelegationExecutor implements DelegationExecutor {
 
     const prompt = getPayloadPrompt(input.payload);
     const lastMessagePath = path.resolve(runRoot, "last-message.txt");
+    const sandboxPolicy = normalizeSandboxPolicy(input.target_template.sandbox_policy);
+    const approvalPolicy = normalizeApprovalPolicy(input.target_template.approval_policy);
 
     const args: string[] = [
       "exec",
@@ -290,9 +322,9 @@ class CodexDelegationExecutor implements DelegationExecutor {
       "-C",
       executionCwd,
       "-s",
-      "workspace-write",
+      sandboxPolicy,
       "-c",
-      "approval_policy=\"never\"",
+      `approval_policy="${approvalPolicy}"`,
       "-o",
       lastMessagePath
     ];
@@ -303,7 +335,7 @@ class CodexDelegationExecutor implements DelegationExecutor {
     }
 
     const commandResult = await this.runProcess({
-      command: this.options.config.codexCommand,
+      command: this.getCodexSpawnCommand(),
       args,
       cwd: executionCwd,
       timeoutMs: this.options.config.delegationExecutionTimeoutMs,
@@ -339,7 +371,9 @@ class CodexDelegationExecutor implements DelegationExecutor {
       metadata: {
         active_profile_id: activeProfile.id,
         auth_payload_source: source,
-        auth_json_bytes: authJsonBuffer.length
+        auth_json_bytes: authJsonBuffer.length,
+        sandbox_policy: sandboxPolicy,
+        approval_policy: approvalPolicy
       }
     };
   }
@@ -358,7 +392,8 @@ class CodexDelegationExecutor implements DelegationExecutor {
       const child = spawn(command, args, {
         cwd,
         env,
-        stdio: ["ignore", "pipe", "pipe"]
+        stdio: ["ignore", "pipe", "pipe"],
+        shell: process.platform === "win32"
       });
 
       let stdout = "";

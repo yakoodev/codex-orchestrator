@@ -40,6 +40,10 @@ interface AppServerRateLimitsResult {
   rateLimitsByLimitId: Record<string, RateLimitSnapshot> | null;
 }
 
+function resolveCodexCommandForSpawn(command: string): string {
+  return command.trim();
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -155,13 +159,15 @@ async function readRateLimitsFromAppServer(options: {
   timeoutMs: number;
 }): Promise<AppServerRateLimitsResult> {
   const { codexCommand, codexHome, timeoutMs } = options;
+  const spawnCommand = resolveCodexCommandForSpawn(codexCommand);
 
-  const child = spawn(codexCommand, ["app-server"], {
+  const child = spawn(spawnCommand, ["app-server"], {
     env: {
       ...process.env,
       CODEX_HOME: codexHome
     },
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    shell: process.platform === "win32"
   });
 
   return new Promise<AppServerRateLimitsResult>((resolve, reject) => {

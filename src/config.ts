@@ -27,6 +27,7 @@ export interface AppConfig {
   taskAutoDispatchEnabled: boolean;
   taskAutoDispatchIntervalMs: number;
   taskAutoDispatchCapability: string;
+  taskAutoDispatchExecutionMode: "mock" | "auto" | "codex_exec";
   telegramEnabled: boolean;
   telegramBotToken: string | null;
   telegramProxyUrl: string | null;
@@ -100,6 +101,17 @@ function readDelegationExecutorMode(
   return "auto";
 }
 
+function readTaskAutoDispatchExecutionMode(
+  value: string | undefined
+): "mock" | "auto" | "codex_exec" {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "mock" || normalized === "auto" || normalized === "codex_exec") {
+    return normalized;
+  }
+
+  return "codex_exec";
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const workerRuntimeDir =
     env["WORKER_RUNTIME_DIR"]?.trim() ||
@@ -135,6 +147,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     taskAutoDispatchEnabled: readBool(env["TASK_AUTODISPATCH_ENABLED"], true),
     taskAutoDispatchIntervalMs: Math.max(250, readInt(env["TASK_AUTODISPATCH_INTERVAL_MS"], 5000)),
     taskAutoDispatchCapability: env["TASK_AUTODISPATCH_CAPABILITY"]?.trim() || "reviewer",
+    taskAutoDispatchExecutionMode: readTaskAutoDispatchExecutionMode(
+      env["TASK_AUTODISPATCH_EXECUTION_MODE"]
+    ),
     telegramEnabled: readBool(env["TG_ENABLED"], Boolean(telegramBotToken)),
     telegramBotToken,
     telegramProxyUrl: readOptionalUrl(env["TG_PROXY_URL"]),

@@ -187,6 +187,8 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - backend endpoint `DELETE /api/auth-profiles/chatgpt/{id}`;
   - в `Accounts` кнопки `Активировать/Деактивировать` объединены в один взаимоисключающий toggle по текущему статусу профиля;
   - кнопка `Удалить` добавлена в `Profiles` и `Limits`.
+- [x] Исправлен Windows native-run для live лимитов и делегаций: при запуске `bus` вне Docker вызовы `codex` теперь используют корректный spawn-командный формат (`codex.cmd` на Windows), что убирает `spawn EPERM` в `GET /api/auth-profiles/chatgpt/{id}/limits` и `codex_exec`.
+- [x] Устранен race в auto-seed custom module (`switch_chatgpt_auth_on_limit`): при конкурентном первом доступе `ensureCustomModuleConfig` обрабатывает уникальный конфликт и перечитывает существующую запись вместо `500/P2002`.
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
 - [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
