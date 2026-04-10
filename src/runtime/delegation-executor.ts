@@ -316,7 +316,7 @@ class CodexDelegationExecutor implements DelegationExecutor {
 
     const args: string[] = [
       "exec",
-      prompt,
+      "-",
       "--json",
       "--skip-git-repo-check",
       "-C",
@@ -340,6 +340,7 @@ class CodexDelegationExecutor implements DelegationExecutor {
       cwd: executionCwd,
       timeoutMs: this.options.config.delegationExecutionTimeoutMs,
       redactionValues: secretRedactionValues,
+      stdin: prompt,
       env: {
         ...process.env,
         ...runtimeSecretEnv,
@@ -385,14 +386,15 @@ class CodexDelegationExecutor implements DelegationExecutor {
     timeoutMs: number;
     env: NodeJS.ProcessEnv;
     redactionValues: string[];
+    stdin?: string;
   }): Promise<{ stdout: string; stderr: string }> {
-    const { command, args, cwd, timeoutMs, env, redactionValues } = options;
+    const { command, args, cwd, timeoutMs, env, redactionValues, stdin } = options;
 
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
         cwd,
         env,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
         shell: process.platform === "win32"
       });
 
@@ -412,6 +414,11 @@ class CodexDelegationExecutor implements DelegationExecutor {
       child.stderr.on("data", (chunk: Buffer | string) => {
         stderr += chunk.toString();
       });
+
+      if (typeof stdin === "string") {
+        child.stdin.write(stdin);
+      }
+      child.stdin.end();
 
       child.on("error", (error) => {
         clearTimeout(timeout);
