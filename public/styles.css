@@ -574,12 +574,17 @@ summary:focus-visible {
 .tasks-layout,
 .agents-layout,
 .agent-profiles-layout,
+.secrets-layout,
 .memory-layout,
 .system-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   gap: 10px;
   align-items: start;
+}
+
+.secrets-layout {
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.35fr);
 }
 
 .agent-profile-subgrid {
@@ -655,6 +660,23 @@ summary:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.secret-bindings {
+  display: grid;
+  gap: 5px;
+}
+
+.secret-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.secret-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 0.82rem;
 }
 
 .toggle {
@@ -970,6 +992,7 @@ summary:focus-visible {
   .tasks-layout,
   .agents-layout,
   .agent-profiles-layout,
+  .secrets-layout,
   .memory-layout,
   .system-layout {
     grid-template-columns: 1fr;

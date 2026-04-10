@@ -1,6 +1,6 @@
 
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit"
-const ROUTES = ["dashboard", "projects", "tasks", "agents", "agent-profiles", "accounts", "memory", "system", "logs"]
+const ROUTES = ["dashboard", "projects", "tasks", "agents", "agent-profiles", "accounts", "secrets", "memory", "system", "logs"]
 const ACCOUNT_SECTIONS = ["profiles", "limits", "history"]
 const AUTOREFRESH_INTERVAL_MS = 15000
 const MAX_LOGS = 500
@@ -15,6 +15,7 @@ const KEYS = {
   projectFilters: "codex_orchestrator_project_filters",
   taskFilters: "codex_orchestrator_task_filters",
   switchFilters: "codex_orchestrator_switch_filters",
+  secretsFilters: "codex_orchestrator_secrets_filters",
   logFilters: "codex_orchestrator_log_filters",
   agentProfileFilters: "codex_orchestrator_agent_profile_filters",
   taskCollapsed: "codex_orchestrator_task_create_collapsed"
@@ -37,6 +38,7 @@ const I18N = {
     route_agents: "Агенты",
     route_agent_profiles: "Профили агентов",
     route_accounts: "Аккаунты",
+    route_secrets: "Секреты",
     route_memory: "Память",
     route_system: "Система",
     route_logs: "Логи",
@@ -46,6 +48,7 @@ const I18N = {
     route_desc_agents: "Мониторинг групп агентов и инспектор запуска.",
     route_desc_agent_profiles: "Профили агентов, MCP server sets и OS-скрипты.",
     route_desc_accounts: "Профили auth.json, лимиты и история переключений.",
+    route_desc_secrets: "Секреты проекта: создание, ротация, отзыв и привязки.",
     route_desc_memory: "Память агентов по проекту и роли.",
     route_desc_system: "Конфигурация модуля и история исполнений.",
     route_desc_logs: "Централизованный журнал операций интерфейса и ответов API.",
@@ -255,6 +258,38 @@ const I18N = {
     account_limits_week: "неделя: {remaining}% (сброс {reset})",
     account_limits_source: "источник: {source}",
     account_limit_na: "n/a",
+    secrets_title: "Секреты проекта",
+    secrets_create_title: "Создать секрет",
+    secrets_project_label: "Проект",
+    secrets_key_label: "Ключ (ENV)",
+    secrets_value_label: "Значение",
+    secrets_description_label: "Описание",
+    secrets_bind_roles_label: "Роли (через запятую)",
+    secrets_bind_templates_label: "ID шаблонов (через запятую)",
+    secrets_create_action: "Сохранить секрет",
+    secrets_filter_search_label: "Поиск",
+    secrets_filter_search_placeholder: "ключ/описание/маска",
+    secrets_project_missing: "Выбери проект, чтобы загрузить секреты.",
+    secrets_list_empty: "Секретов пока нет.",
+    secrets_field_masked: "Маска",
+    secrets_field_version: "Версия",
+    secrets_field_status: "Статус",
+    secrets_field_rotated: "Ротирован",
+    secrets_field_revoked: "Отозван",
+    secrets_bindings_roles: "Привязки ролей",
+    secrets_bindings_templates: "Привязки шаблонов",
+    secrets_action_rotate: "Ротировать",
+    secrets_action_revoke: "Отозвать",
+    secrets_action_activate: "Активировать",
+    secrets_action_deactivate: "Деактивировать",
+    secrets_action_bind_role: "Привязать роль",
+    secrets_action_unbind_role: "Отвязать роль",
+    secrets_action_bind_template: "Привязать шаблон",
+    secrets_action_unbind_template: "Отвязать шаблон",
+    secrets_prompt_rotate: "Введи новое значение секрета:",
+    secrets_prompt_role: "Укажи роль:",
+    secrets_prompt_template: "Укажи template_id/ID шаблона:",
+    error_secret_project_required: "Выбери проект для работы с секретами.",
     memory_title: "Память агентов",
     memory_project_label: "ID проекта",
     memory_role_label: "Роль агента",
@@ -295,6 +330,11 @@ const I18N = {
     log_held_released: "Удержанная очередь освобождена",
     log_profile_uploaded: "Профиль загружен",
     log_profile_action: "Операция с профилем выполнена",
+    log_secret_created: "Секрет создан",
+    log_secret_rotated: "Секрет ротирован",
+    log_secret_revoked: "Секрет отозван",
+    log_secret_updated: "Секрет обновлен",
+    log_secret_binding_updated: "Bindings секрета обновлены",
     log_memory_created: "Запись памяти создана",
     log_memory_toggled: "Статус записи памяти обновлен",
     log_module_updated: "Конфигурация модуля обновлена",
@@ -321,6 +361,7 @@ I18N.en = {
   route_agents: "Agents",
   route_agent_profiles: "Agent Profiles",
   route_accounts: "Accounts",
+  route_secrets: "Secrets",
   route_memory: "Memory",
   route_system: "System",
   route_logs: "Logs",
@@ -330,6 +371,7 @@ I18N.en = {
   route_desc_agents: "Monitor preparing/running/recent agents and inspector.",
   route_desc_agent_profiles: "Agent profiles, MCP server sets, and OS scripts.",
   route_desc_accounts: "auth.json profiles, limits, and switch history.",
+  route_desc_secrets: "Project secrets: create, rotate, revoke, and manage bindings.",
   route_desc_memory: "Agent memory by project_id and role.",
   route_desc_system: "Module config and execution history.",
   route_desc_logs: "Centralized UI actions and API responses journal.",
@@ -529,6 +571,38 @@ I18N.en = {
   account_limits_5h: "5h: {remaining}% (reset {reset})",
   account_limits_week: "week: {remaining}% (reset {reset})",
   account_limits_source: "source: {source}",
+  secrets_title: "Project secrets",
+  secrets_create_title: "Create secret",
+  secrets_project_label: "Project",
+  secrets_key_label: "Key (ENV)",
+  secrets_value_label: "Value",
+  secrets_description_label: "Description",
+  secrets_bind_roles_label: "Roles (comma-separated)",
+  secrets_bind_templates_label: "Template IDs (comma-separated)",
+  secrets_create_action: "Save secret",
+  secrets_filter_search_label: "Search",
+  secrets_filter_search_placeholder: "key/description/masked",
+  secrets_project_missing: "Select a project to load secrets.",
+  secrets_list_empty: "No secrets yet.",
+  secrets_field_masked: "Masked preview",
+  secrets_field_version: "Version",
+  secrets_field_status: "Status",
+  secrets_field_rotated: "Rotated",
+  secrets_field_revoked: "Revoked",
+  secrets_bindings_roles: "Role bindings",
+  secrets_bindings_templates: "Template bindings",
+  secrets_action_rotate: "Rotate",
+  secrets_action_revoke: "Revoke",
+  secrets_action_activate: "Activate",
+  secrets_action_deactivate: "Deactivate",
+  secrets_action_bind_role: "Bind role",
+  secrets_action_unbind_role: "Unbind role",
+  secrets_action_bind_template: "Bind template",
+  secrets_action_unbind_template: "Unbind template",
+  secrets_prompt_rotate: "Enter new secret value:",
+  secrets_prompt_role: "Enter role:",
+  secrets_prompt_template: "Enter template_id:",
+  error_secret_project_required: "Select a project for secret operations.",
   memory_project_label: "Project ID",
   memory_role_label: "Agent Role",
   no_memory_entries: "No memory entries yet.",
@@ -562,6 +636,11 @@ I18N.en = {
   log_held_released: "Held queue released",
   log_profile_uploaded: "Profile uploaded",
   log_profile_action: "Profile action completed",
+  log_secret_created: "Secret created",
+  log_secret_rotated: "Secret rotated",
+  log_secret_revoked: "Secret revoked",
+  log_secret_updated: "Secret updated",
+  log_secret_binding_updated: "Secret bindings updated",
   log_memory_created: "Memory entry created",
   log_memory_toggled: "Memory entry state updated",
   log_module_updated: "Module config updated",
@@ -581,6 +660,7 @@ const state = {
   projectFilters: { search: "", includeInactive: true },
   taskFilters: { search: "", project: "all", status: "all" },
   switchFilters: { search: "", status: "all", profile: "all" },
+  secretsFilters: { project: "", search: "" },
   logFilters: { level: "all", scope: "all", search: "" },
   tasks: [],
   held: [],
@@ -589,6 +669,7 @@ const state = {
   activeProfile: null,
   fleet: [],
   switches: [],
+  secrets: [],
   agentProfiles: [],
   mcpServers: [],
   agentProfileBindings: [],
@@ -652,6 +733,13 @@ function clampPercent(value) {
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim()
   return trimmed ? trimmed : null
+}
+
+function parseCsvList(value) {
+  return Array.from(new Set(String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)))
 }
 
 function parseJsonObjectInput(rawValue, { allowNull = true } = {}) {
@@ -746,6 +834,7 @@ function applyI18n() {
   renderProfiles(state.profiles)
   renderFleet(state.fleet)
   renderSwitches(state.switches)
+  renderSecrets(state.secrets)
   renderMemory(state.memory)
   renderExecutions(state.executions)
   renderDashboardSignals()
@@ -825,7 +914,7 @@ function setPanelState(node, stateName, labelKey = null) {
 }
 
 function syncPanelStateLabels() {
-  const nodes = [ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
+  const nodes = [ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.secretsPanelState, ui.memoryPanelState, ui.modulePanelState, ui.logsPanelState, ui.dashboardSignalsState]
   nodes.forEach((node) => {
     if (!node) return
     const key = node.dataset.labelKey ?? "panel_state_idle"
@@ -834,7 +923,7 @@ function syncPanelStateLabels() {
 }
 
 function requireTokenPanels() {
-  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
+  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.secretsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
 }
 
 async function withPanel(node, scope, fn) {
@@ -1008,13 +1097,17 @@ function syncProjectBindings() {
   const taskProject = applyProjectSelect(ui.taskProject, activeKeys, ui.taskProject?.value ?? "", t("project_option_none"))
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
   const agentProfileProject = applyProjectSelect(ui.agentProfileProject, activeKeys, ui.agentProfileProject?.value ?? "", t("project_option_none"))
+  const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
   const agentProfileSubmit = ui.agentProfileCreateForm?.querySelector('button[type="submit"]')
+  const secretSubmit = ui.secretCreateForm?.querySelector('button[type="submit"]')
   if (taskSubmit) taskSubmit.disabled = !taskProject
   if (memorySubmit) memorySubmit.disabled = !memoryProject
   if (agentProfileSubmit) agentProfileSubmit.disabled = !agentProfileProject
+  if (secretSubmit) secretSubmit.disabled = !secretsProject
+  state.secretsFilters.project = secretsProject
 
   if (ui.taskFilterProject) {
     ui.taskFilterProject.innerHTML = [
@@ -1648,6 +1741,69 @@ function renderSwitches(items) {
   updateStats()
 }
 
+function renderSecrets(items) {
+  state.secrets = Array.isArray(items) ? items : state.secrets
+  if (state.page !== "console") return
+
+  if (ui.secretFilterSearch) {
+    ui.secretFilterSearch.value = state.secretsFilters.search
+  }
+
+  if (!state.secretsFilters.project) {
+    ui.secretsList.innerHTML = `<li class="meta-note">${escapeHtml(t("secrets_project_missing"))}</li>`
+    return
+  }
+
+  const search = state.secretsFilters.search.trim().toLowerCase()
+  const visible = state.secrets.filter((secret) => {
+    if (!search) return true
+    const haystack = `${secret.key ?? ""} ${secret.description ?? ""} ${secret.masked_preview ?? ""}`.toLowerCase()
+    return haystack.includes(search)
+  })
+
+  if (!visible.length) {
+    ui.secretsList.innerHTML = `<li class="meta-note">${escapeHtml(t("secrets_list_empty"))}</li>`
+    return
+  }
+
+  ui.secretsList.innerHTML = visible.map((secret) => {
+    const roles = Array.isArray(secret.role_bindings)
+      ? secret.role_bindings.map((item) => item?.role).filter((value) => typeof value === "string" && value.trim())
+      : []
+    const templates = Array.isArray(secret.template_bindings)
+      ? secret.template_bindings.map((item) => item?.template_id).filter((value) => typeof value === "string" && value.trim())
+      : []
+    const active = secret.is_active === true
+    const statusText = active ? t("profile_state_active") : t("profile_state_inactive")
+
+    return `<li class="secret-card" data-secret-id="${escapeHtml(secret.id)}" data-secret-project="${escapeHtml(secret.project_id)}" data-secret-active="${String(active)}">
+      <div class="task-card-head">
+        <div class="task-card-title">${escapeHtml(secret.key ?? t("task_field_na"))}</div>
+        <span class="pill ${active ? "pill-active" : ""}">${escapeHtml(statusText)}</span>
+      </div>
+      <div class="meta-note">${escapeHtml(secret.description ?? t("task_field_na"))}</div>
+      <div class="secret-bindings">
+        <div class="meta-note">${escapeHtml(t("secrets_field_masked"))}: <code>${escapeHtml(secret.masked_preview ?? t("task_field_na"))}</code></div>
+        <div class="meta-note">${escapeHtml(t("secrets_field_version"))}: ${escapeHtml(String(secret.version ?? 1))}</div>
+        <div class="meta-note">${escapeHtml(t("task_field_updated"))}: ${escapeHtml(fmtDate(secret.updated_at))}</div>
+        <div class="meta-note">${escapeHtml(t("secrets_field_rotated"))}: ${escapeHtml(fmtDate(secret.rotated_at))}</div>
+        <div class="meta-note">${escapeHtml(t("secrets_field_revoked"))}: ${escapeHtml(fmtDate(secret.revoked_at))}</div>
+        <div class="meta-note">${escapeHtml(t("secrets_bindings_roles"))}: ${roles.length ? `<code>${escapeHtml(roles.join(", "))}</code>` : escapeHtml(t("task_field_na"))}</div>
+        <div class="meta-note">${escapeHtml(t("secrets_bindings_templates"))}: ${templates.length ? `<code>${escapeHtml(templates.join(", "))}</code>` : escapeHtml(t("task_field_na"))}</div>
+      </div>
+      <div class="secret-actions">
+        <button type="button" class="button-ghost" data-secret-action="rotate">${escapeHtml(t("secrets_action_rotate"))}</button>
+        <button type="button" class="button-ghost" data-secret-action="${active ? "deactivate" : "activate"}">${escapeHtml(t(active ? "secrets_action_deactivate" : "secrets_action_activate"))}</button>
+        <button type="button" class="button-ghost" data-secret-action="bind-role">${escapeHtml(t("secrets_action_bind_role"))}</button>
+        <button type="button" class="button-ghost" data-secret-action="unbind-role">${escapeHtml(t("secrets_action_unbind_role"))}</button>
+        <button type="button" class="button-ghost" data-secret-action="bind-template">${escapeHtml(t("secrets_action_bind_template"))}</button>
+        <button type="button" class="button-ghost" data-secret-action="unbind-template">${escapeHtml(t("secrets_action_unbind_template"))}</button>
+        <button type="button" class="button-warn" data-secret-action="revoke">${escapeHtml(t("secrets_action_revoke"))}</button>
+      </div>
+    </li>`
+  }).join("")
+}
+
 function renderMemory(items) {
   state.memory = Array.isArray(items) ? items : []
   if (state.page !== "console") return
@@ -1926,6 +2082,32 @@ async function refreshMemoryEntries() {
   })
 }
 
+async function refreshSecretsRoute() {
+  if (state.token) {
+    try {
+      await fetchProjectRegistry({ includeInactive: true })
+    } catch {
+      // best-effort sync for project selector on secrets screen
+    }
+  }
+
+  return withPanel(ui.secretsPanelState, "system", async () => {
+    const projectKey = ui.secretProject?.value?.trim() ?? state.secretsFilters.project
+    state.secretsFilters.project = projectKey
+    saveJson(KEYS.secretsFilters, state.secretsFilters)
+
+    if (!projectKey) {
+      state.secrets = []
+      renderSecrets([])
+      return
+    }
+
+    const route = `/api/projects/${encodeURIComponent(projectKey)}/secrets?include_inactive=true&limit=200`
+    const response = await requestJson(route)
+    renderSecrets(response?.items ?? [])
+  })
+}
+
 async function refreshModule() {
   return withPanel(ui.modulePanelState, "system", async () => {
     const module = await requestJson(`/api/custom-modules/${SWITCH_MODULE_KEY}`)
@@ -2007,6 +2189,7 @@ async function refreshCurrentRoute() {
     if (state.section === "limits") return refreshFleet()
     return refreshSwitches()
   }
+  if (state.route === "secrets") return refreshSecretsRoute()
   if (state.route === "memory") return refreshMemoryEntries()
   if (state.route === "system") {
     return runRefreshGroupWithRetry("system_route", [
@@ -2032,6 +2215,7 @@ async function refreshAll() {
     { name: "profiles", run: () => refreshProfiles() },
     { name: "fleet", run: () => refreshFleet() },
     { name: "switches", run: () => refreshSwitches() },
+    { name: "secrets", run: () => refreshSecretsRoute() },
     { name: "memory", run: () => refreshMemoryEntries() },
     { name: "module", run: () => refreshModule() },
     { name: "executions", run: () => refreshExecutions() }
@@ -2137,6 +2321,7 @@ function wireConsoleRefs() {
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
     agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileProject: document.getElementById("agent-profile-project"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterProject: document.getElementById("agent-profile-filter-project"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditProject: document.getElementById("agent-profile-edit-project"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
+    secretsPanelState: document.getElementById("secrets-panel-state"), refreshSecrets: document.getElementById("refresh-secrets"), secretCreateForm: document.getElementById("secret-create-form"), secretProject: document.getElementById("secret-project"), secretKey: document.getElementById("secret-key"), secretValue: document.getElementById("secret-value"), secretDescription: document.getElementById("secret-description"), secretBindRoles: document.getElementById("secret-bind-roles"), secretBindTemplates: document.getElementById("secret-bind-templates"), secretFilterSearch: document.getElementById("secret-filter-search"), secretsList: document.getElementById("secrets-list"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
     modulePanelState: document.getElementById("module-panel-state"), refreshModule: document.getElementById("refresh-module"), refreshExecutions: document.getElementById("refresh-executions"), moduleForm: document.getElementById("module-form"), moduleEnabled: document.getElementById("module-enabled"), moduleConfig: document.getElementById("module-config"), executionsList: document.getElementById("executions-list"),
     logsPanelState: document.getElementById("logs-panel-state"), logsClear: document.getElementById("logs-clear"), logFilterLevel: document.getElementById("log-filter-level"), logFilterScope: document.getElementById("log-filter-scope"), logFilterSearch: document.getElementById("log-filter-search"), logFilterClear: document.getElementById("log-filter-clear"), logsList: document.getElementById("logs-list")
@@ -2154,6 +2339,7 @@ function wireConsoleHandlers() {
   ui.toggleAutoRefreshEvents.checked = state.auto.history
   ui.agentProfileFilterSearch.value = state.agentProfileFilters.search
   ui.agentProfileFilterIncludeDisabled.checked = state.agentProfileFilters.includeDisabled
+  ui.secretFilterSearch.value = state.secretsFilters.search
   if (readStorage(KEYS.taskCollapsed) === "1") ui.taskCreateShell.open = false
   syncProjectBindings()
 
@@ -2673,6 +2859,134 @@ function wireConsoleHandlers() {
     await refreshSwitches()
   })
 
+  ui.refreshSecrets.addEventListener("click", async () => state.token ? refreshSecretsRoute() : requireTokenPanels())
+  ui.secretProject.addEventListener("change", async () => {
+    state.secretsFilters.project = ui.secretProject.value
+    saveJson(KEYS.secretsFilters, state.secretsFilters)
+    if (!state.token) {
+      renderSecrets(state.secrets)
+      return
+    }
+    await refreshSecretsRoute()
+  })
+  ui.secretFilterSearch.addEventListener("input", () => {
+    state.secretsFilters.search = ui.secretFilterSearch.value
+    saveJson(KEYS.secretsFilters, state.secretsFilters)
+    renderSecrets(state.secrets)
+  })
+  ui.secretCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    const projectKey = ui.secretProject.value.trim()
+    if (!projectKey) {
+      pushLog("error", "ui", t("error_secret_project_required"))
+      return
+    }
+
+    const bindRoles = parseCsvList(ui.secretBindRoles.value)
+    const bindTemplates = parseCsvList(ui.secretBindTemplates.value)
+    const payload = {
+      key: ui.secretKey.value.trim(),
+      value: ui.secretValue.value,
+      description: toNullableString(ui.secretDescription.value),
+      bind_roles: bindRoles,
+      bind_template_ids: bindTemplates
+    }
+
+    await requestJson(`/api/projects/${encodeURIComponent(projectKey)}/secrets`, { method: "POST", json: payload })
+    pushLog("success", "ui", t("log_secret_created"), { project_id: projectKey, key: payload.key })
+    ui.secretKey.value = ""
+    ui.secretValue.value = ""
+    ui.secretDescription.value = ""
+    ui.secretBindRoles.value = ""
+    ui.secretBindTemplates.value = ""
+    await refreshSecretsRoute()
+  })
+  ui.secretsList.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-secret-action]")
+    const card = event.target.closest("[data-secret-id]")
+    if (!button || !card) return
+    if (!state.token) return requireTokenPanels()
+
+    const action = button.dataset.secretAction
+    const secretId = card.dataset.secretId
+    const projectKey = card.dataset.secretProject ?? state.secretsFilters.project
+    const isActive = card.dataset.secretActive === "true"
+    if (!action || !secretId || !projectKey) return
+
+    if (action === "rotate") {
+      const value = prompt(t("secrets_prompt_rotate"))?.trim()
+      if (!value) return
+      await requestJson(
+        `/api/projects/${encodeURIComponent(projectKey)}/secrets/${encodeURIComponent(secretId)}/rotate`,
+        { method: "POST", json: { value } }
+      )
+      pushLog("success", "ui", t("log_secret_rotated"), { project_id: projectKey, secret_id: secretId })
+      await refreshSecretsRoute()
+      return
+    }
+
+    if (action === "revoke") {
+      await requestJson(
+        `/api/projects/${encodeURIComponent(projectKey)}/secrets/${encodeURIComponent(secretId)}/revoke`,
+        { method: "POST" }
+      )
+      pushLog("success", "ui", t("log_secret_revoked"), { project_id: projectKey, secret_id: secretId })
+      await refreshSecretsRoute()
+      return
+    }
+
+    if (action === "activate" || action === "deactivate") {
+      await requestJson(
+        `/api/projects/${encodeURIComponent(projectKey)}/secrets/${encodeURIComponent(secretId)}`,
+        { method: "PATCH", json: { is_active: action === "activate" ? true : false } }
+      )
+      pushLog("success", "ui", t("log_secret_updated"), {
+        project_id: projectKey,
+        secret_id: secretId,
+        is_active: action === "activate"
+      })
+      await refreshSecretsRoute()
+      return
+    }
+
+    if (action === "bind-role" || action === "unbind-role") {
+      const role = prompt(t("secrets_prompt_role"), isActive ? "reviewer" : "")?.trim()
+      if (!role) return
+      const method = action === "bind-role" ? "POST" : "DELETE"
+      await requestJson(
+        `/api/projects/${encodeURIComponent(projectKey)}/secrets/${encodeURIComponent(secretId)}/bindings/roles/${encodeURIComponent(role)}`,
+        { method }
+      )
+      pushLog("success", "ui", t("log_secret_binding_updated"), {
+        project_id: projectKey,
+        secret_id: secretId,
+        role,
+        action
+      })
+      await refreshSecretsRoute()
+      return
+    }
+
+    if (action === "bind-template" || action === "unbind-template") {
+      const templateId = prompt(t("secrets_prompt_template"))?.trim()
+      if (!templateId) return
+      const method = action === "bind-template" ? "POST" : "DELETE"
+      await requestJson(
+        `/api/projects/${encodeURIComponent(projectKey)}/secrets/${encodeURIComponent(secretId)}/bindings/templates/${encodeURIComponent(templateId)}`,
+        { method }
+      )
+      pushLog("success", "ui", t("log_secret_binding_updated"), {
+        project_id: projectKey,
+        secret_id: secretId,
+        template_id: templateId,
+        action
+      })
+      await refreshSecretsRoute()
+    }
+  })
+
   ui.refreshMemory.addEventListener("click", async () => state.token ? refreshMemoryEntries() : requireTokenPanels())
   ui.memoryForm.addEventListener("submit", async (event) => {
     event.preventDefault()
@@ -2753,6 +3067,9 @@ function loadState() {
   state.projectFilters.includeInactive = state.projectFilters.includeInactive !== false
   state.taskFilters = { ...state.taskFilters, ...loadJson(KEYS.taskFilters, state.taskFilters) }
   state.switchFilters = { ...state.switchFilters, ...loadJson(KEYS.switchFilters, state.switchFilters) }
+  state.secretsFilters = { ...state.secretsFilters, ...loadJson(KEYS.secretsFilters, state.secretsFilters) }
+  if (typeof state.secretsFilters.project !== "string") state.secretsFilters.project = ""
+  if (typeof state.secretsFilters.search !== "string") state.secretsFilters.search = ""
   state.logFilters = { ...state.logFilters, ...loadJson(KEYS.logFilters, state.logFilters) }
   state.agentProfileFilters = { ...state.agentProfileFilters, ...loadJson(KEYS.agentProfileFilters, state.agentProfileFilters) }
   state.agentProfileFilters.includeDisabled = state.agentProfileFilters.includeDisabled !== false

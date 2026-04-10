@@ -23,6 +23,7 @@
           <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Агенты</a>
           <a href="#/agent-profiles" class="route-link" data-route-link="agent-profiles" data-i18n="route_agent_profiles">Профили агентов</a>
           <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Аккаунты</a>
+          <a href="#/secrets" class="route-link" data-route-link="secrets" data-i18n="route_secrets">Секреты</a>
           <a href="#/memory" class="route-link" data-route-link="memory" data-i18n="route_memory">Память</a>
           <a href="#/system" class="route-link" data-route-link="system" data-i18n="route_system">Система</a>
           <a href="#/logs" class="route-link" data-route-link="logs" data-i18n="route_logs">Логи</a>
@@ -772,6 +773,59 @@
               </div>
               <ul id="switch-events" class="compact-list fixed-list"></ul>
             </article>
+          </section>
+
+          <section class="screen-panel" data-screen="secrets" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="secrets_title">Секреты проекта</h3>
+              <div class="action-bar">
+                <span id="secrets-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-secrets" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="secrets-layout">
+              <article class="surface-card">
+                <p class="tiny-label" data-i18n="secrets_create_title">Создать секрет</p>
+                <form id="secret-create-form" class="form-grid">
+                  <label for="secret-project" data-i18n="secrets_project_label">Проект</label>
+                  <select id="secret-project" name="project_id" required></select>
+
+                  <label for="secret-key" data-i18n="secrets_key_label">Ключ (ENV)</label>
+                  <input id="secret-key" name="key" placeholder="OPENAI_API_KEY" required />
+
+                  <label for="secret-value" data-i18n="secrets_value_label">Значение</label>
+                  <input id="secret-value" name="value" type="password" required />
+
+                  <label for="secret-description" data-i18n="secrets_description_label">Описание</label>
+                  <input id="secret-description" name="description" />
+
+                  <div class="split-2">
+                    <div>
+                      <label for="secret-bind-roles" data-i18n="secrets_bind_roles_label">Роли (через запятую)</label>
+                      <input id="secret-bind-roles" name="bind_roles" placeholder="reviewer,tester" />
+                    </div>
+                    <div>
+                      <label for="secret-bind-templates" data-i18n="secrets_bind_templates_label">Template IDs (через запятую)</label>
+                      <input id="secret-bind-templates" name="bind_template_ids" placeholder="agent-profile-template-1" />
+                    </div>
+                  </div>
+
+                  <button type="submit" data-i18n="secrets_create_action">Сохранить секрет</button>
+                </form>
+
+                <div class="filters-grid">
+                  <div>
+                    <label for="secret-filter-search" data-i18n="secrets_filter_search_label">Поиск</label>
+                    <input id="secret-filter-search" data-i18n-placeholder="secrets_filter_search_placeholder" placeholder="ключ/описание/маска" />
+                  </div>
+                </div>
+              </article>
+
+              <article class="surface-card">
+                <ul id="secrets-list" class="compact-list fixed-list"></ul>
+              </article>
+            </div>
           </section>
 
           <section class="screen-panel" data-screen="memory" hidden>

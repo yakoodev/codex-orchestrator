@@ -1,6 +1,6 @@
 # PR1 Progress Tracker (API-only Bootstrap)
 
-Обновлено: 2026-04-09  
+Обновлено: 2026-04-10  
 Ветка: `codex/pr1-bootstrap-api-only`
 
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
@@ -228,7 +228,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - при `allowed` обновляется `last_used_at`, по каждому outcome пишется `McpAuthAuditEvent`;
   - добавлены env-конфиги MCP runtime: `MCP_API_KEY`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`;
   - добавлены unit/API тесты на allow/deny-path и sync OpenAPI/route coverage.
-- [~] Реализован `Secrets Plane v1` (Phase 1+2 backend/runtime):
+- [~] Реализован `Secrets Plane v1` (Phase 1+2 backend/runtime + Phase 3 UI):
   - добавлены Prisma-сущности + миграция `0012_secrets_plane_v1`:
     - `ProjectSecret`
     - `ProjectSecretTemplateBinding`
@@ -245,7 +245,13 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - API/тесты/OpenAPI/route coverage синхронизированы;
   - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/template`, прокидка в `runtime_env` для executor и `secrets_context` в execution metadata;
   - добавлен redaction секрета в terminal outputs: `result_summary`, `execution_log`, `execution_meta_json` (success/fail paths);
-  - остаётся UI-экран управления секретами в `/ui/console.html`.
+  - добавлен UI-экран `#/secrets` в `/ui/console.html`:
+    - создание секрета;
+    - поиск и просмотр метаданных (`masked/version/status/updated/rotated/revoked`);
+    - операции `rotate/revoke/activate/deactivate`;
+    - bindings `roles/templates` (bind/unbind);
+    - фильтры и выбранный `project` сохраняются в `localStorage`.
+  - остаются production-hardening шаги (KMS/master-key rotation strategy и rollout policy/operational guardrails).
 - [x] Стартована кодовая реализация `Agent Profiles + MCP Server Sets` (Phase 1 backend):
   - добавлены Prisma-сущности + миграция `0008_agent_profiles_mcp_servers`:
     - `AgentProfile`
@@ -289,7 +295,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.
 - [x] Дополнительный UI reliability-pass: unified route-enter hydration + retry/backoff для частичных панелей (задача закрыта в `docs/ops/roadmap.md`).
 - [~] MCP AuthZ ACL v2 (Phase 1+2 backend/runtime закрыты: key-management + authz enforcement + audit + template constraints; остаются UI для управления ключами и операционный rollout по профилям): `docs/ops/mcp-authz-acl-v2.md`.
-- [~] Secrets Plane v1 (Phase 1+2 backend/runtime закрыты: encrypted storage + API + bindings + runtime env injection/redaction; остаётся UI): `docs/ops/secrets-plane-v1.md`.
+- [~] Secrets Plane v1 (Phase 1+2 backend/runtime + Phase 3 UI закрыты: encrypted storage + API + bindings + runtime env injection/redaction + `#/secrets`; остаются KMS/rollout-hardening шаги): `docs/ops/secrets-plane-v1.md`.
 - [~] Coordination Channel (planning/control channel на `project + agent_bundle`): `docs/ops/agent-coordination-channel.md`.
 - [~] Topology UI (`#/topology`, интерактивный граф агентов/задач/каналов/проекта): `docs/ops/topology-ui.md`.
 - [~] Agent Request Plane v2 (backend + MCP create/list_open/resolve + governor-loop + audit trail + policy-driven resolver'ы `mcp_server_attach/script_set/mcp_tool_acl/runtime_dependency` реализованы; остаются полноценный ACL-plane и topology/coordination интеграции): `docs/ops/agent-request-plane-v2.md`.

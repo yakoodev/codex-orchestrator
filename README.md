@@ -82,6 +82,7 @@ Built-in web control panel:
   - `#/agents` (preparing/running/recent + inspector)
   - `#/agent-profiles` (agent profiles + MCP server sets + OS scripts)
   - `#/accounts` (profiles/limits/history sections)
+  - `#/secrets` (project secrets create/rotate/revoke + role/template bindings)
   - `#/memory` (agent memory create/list/toggle)
   - `#/system` (custom module config + executions)
   - `#/logs` (centralized UI/API log with filters)

@@ -1,6 +1,6 @@
 # Product Roadmap (Post-PR1)
 
-Обновлено: 2026-04-09  
+Обновлено: 2026-04-10  
 Статус PR1: в активной реализации (API-first).
 
 Этот roadmap фиксирует ближайшие продуктовые улучшения после закрытия PR1.
@@ -147,7 +147,7 @@
   - `Topology UI` (узлы заявок и их состояния).
 
 ## Planned: Secrets Plane v1
-- Статус: `in_progress` (Phase 1+2 backend/runtime реализованы).
+- Статус: `in_progress` (Phase 1+2 backend/runtime + Phase 3 UI реализованы).
 - Цель: безопасно хранить и выдавать секреты агентам без утечек в UI, API-логах и activity-log.
 - Зафиксированные решения:
   - backend хранит секреты в БД в зашифрованном виде (envelope encryption);
@@ -156,7 +156,7 @@
   - runtime выдача секретов делается через env injection только в контекст запуска;
   - после завершения запуска секреты очищаются из runtime-контекста.
 - Документ дизайна: `docs/ops/secrets-plane-v1.md`.
-- Текущий прогресс (Phase 1+2 backend/runtime):
+- Текущий прогресс (Phase 1+2 backend/runtime + Phase 3 UI):
   - добавлены Prisma-сущности + миграция `0012_secrets_plane_v1`:
     - `ProjectSecret`
     - `ProjectSecretTemplateBinding`
@@ -173,9 +173,14 @@
   - raw value секрета не возвращается в API-ответах после create/rotate;
   - runtime-resolve секретов добавлен в `POST /api/delegation/dispatch` по `project + role/template` с передачей в `runtime_env`;
   - добавлен redaction чувствительных значений в `result_summary`, `execution_log`, `execution_meta_json` на success/fail путях делегации.
+  - добавлен UI-экран `/ui/console.html#/secrets`:
+    - создание секрета;
+    - фильтрация списка и просмотр метаданных (masked/version/status/updated/rotated/revoked);
+    - операции `rotate/revoke/activate/deactivate`;
+    - операции привязки/отвязки `roles/templates`.
 - Зависимости:
   - KMS/master-key стратегия и ротация ключей шифрования;
-  - UI-экран управления секретами.
+  - production rollout policy + governance для доступа к секретам.
 
 ## Planned: Coordination Channel (Planning/Control)
 - Статус: `planned` (decision-complete, реализация не начата).
@@ -236,6 +241,7 @@
   - `#/agents`
   - `#/agent-profiles`
   - `#/accounts`
+  - `#/secrets`
   - `#/memory`
   - `#/system`
   - `#/logs`

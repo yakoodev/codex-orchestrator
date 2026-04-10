@@ -1,7 +1,7 @@
 # Secrets Plane v1 (Design + Rollout Plan)
 
-Обновлено: 2026-04-09  
-Статус: `in_progress` (Phase 1+2 backend/runtime реализованы)
+Обновлено: 2026-04-10  
+Статус: `in_progress` (Phase 1+2 backend/runtime + Phase 3 UI реализованы)
 
 ## 1. Цель
 
@@ -104,7 +104,7 @@
 
 ## 10. Текущий прогресс реализации
 
-- Реализовано (Phase 1+2 backend/runtime):
+- Реализовано (Phase 1+2 backend/runtime + Phase 3 UI):
   - Prisma: `ProjectSecret`, `ProjectSecretTemplateBinding`, `ProjectSecretRoleBinding`, `SecretAuditEvent` (+ миграция `0012_secrets_plane_v1`);
   - API:
     - `POST/GET /api/projects/{key}/secrets`
@@ -116,6 +116,11 @@
   - включено envelope encryption (AES-256-GCM, DEK+master-key), masked preview и lifecycle audit events;
   - raw value не возвращается после create/rotate;
   - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/template` с передачей в `payload.runtime_env` для executor;
-  - в completion/failure paths делегации добавлен redaction секретов для `result_summary`, `execution_log`, `execution_meta_json`.
+  - в completion/failure paths делегации добавлен redaction секретов для `result_summary`, `execution_log`, `execution_meta_json`;
+  - добавлен UI-экран `/ui/console.html#/secrets`:
+    - создание секрета;
+    - просмотр и фильтрация списка;
+    - rotate/revoke/activate/deactivate;
+    - bind/unbind по role/template.
 - Остается:
-  - UI-экран управления секретами в `/ui/console.html`.
+  - KMS/master-key rotation strategy и операционные rollout guardrails.
