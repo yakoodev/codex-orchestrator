@@ -1,6 +1,6 @@
 # MCP Agent Bridge (MVP + Request Plane + AuthZ v2)
 
-Обновлено: 2026-04-09  
+Обновлено: 2026-04-10  
 Статус: `completed` (MVP), `in_progress` (Request Plane v2 backend + governor baseline + audit trail + AuthZ ACL v2 runtime)
 
 ## 1. Цель
@@ -15,17 +15,24 @@
 - MCP tool: `orchestrator.list_agents`
 - Источник данных: `GET /api/agents/templates` + `GET /api/delegation/capabilities`
 
-2. Получение задач:
+2. Получение глобальных профилей агентов:
+- MCP tool: `orchestrator.list_agent_profiles`
+- Источник данных: `GET /api/agent-profiles`
+- Поддержка входных параметров: `role`, `include_disabled`, `limit`
+
+3. Получение задач:
 - MCP tool: `orchestrator.list_tasks`
 - Источник данных: `GET /api/tasks`
 - Поддержка входных параметров: `status`, `limit`
 
-3. Запуск агента/делегации:
+4. Запуск агента/делегации:
 - MCP tool: `orchestrator.dispatch_agent`
 - Источник данных: `POST /api/delegation/dispatch`
 - Поддержка `trace_id` и `idempotency_key`
+- Guard в MCP-ветке: обязателен непустой `payload.prompt|payload.task`
+- Guard в MCP-ветке: обязателен явный `target_selector.agent_profile_id`
 
-4. Получение лимитов:
+5. Получение лимитов:
 - MCP tool: `orchestrator.get_limits`
 - Источник данных:
   - `GET /api/auth-profiles/chatgpt/{id}/limits`
@@ -133,6 +140,7 @@ npm run mcp:serve
 2. Запустить MCP bridge (`npm run mcp:serve`).
 3. Вызвать:
    - `orchestrator.list_agents`
+   - `orchestrator.list_agent_profiles`
    - `orchestrator.list_tasks`
    - `orchestrator.dispatch_agent`
    - `orchestrator.get_limits`

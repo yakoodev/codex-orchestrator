@@ -538,7 +538,7 @@ function toAgentRequestAuditEventEntity(entity: {
 
 function toAgentProfileEntity(entity: {
   id: string;
-  project_id: string;
+  project_id: string | null;
   name: string;
   role: string;
   description: string | null;
@@ -1657,7 +1657,7 @@ export class PrismaPersistence implements Persistence {
   public async createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity> {
     const created = await this.prisma.agentProfile.create({
       data: {
-        project_id: input.project_id,
+        project_id: input.project_id ?? null,
         name: input.name,
         role: input.role,
         description: input.description ?? null,
@@ -1679,9 +1679,6 @@ export class PrismaPersistence implements Persistence {
     const where: Prisma.AgentProfileWhereInput = {};
     if (!includeDisabled) {
       where.is_enabled = true;
-    }
-    if (options?.project_id) {
-      where.project_id = options.project_id;
     }
     if (options?.role) {
       where.role = options.role;

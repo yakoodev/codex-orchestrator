@@ -918,7 +918,7 @@ class FakePersistence implements Persistence {
     const now = new Date();
     const profile: AgentProfileEntity = {
       id: `agent-profile-${this.agentProfileCounter++}`,
-      project_id: input.project_id,
+      project_id: input.project_id ?? null,
       name: input.name,
       role: input.role,
       description: input.description ?? null,
@@ -940,7 +940,6 @@ class FakePersistence implements Persistence {
     const includeDisabled = options?.include_disabled ?? true;
     const limit = Math.max(1, Math.min(options?.limit ?? 100, 500));
     const filtered = this.agentProfiles
-      .filter((item) => (options?.project_id ? item.project_id === options.project_id : true))
       .filter((item) => (options?.role ? item.role === options.role : true))
       .filter((item) => (includeDisabled ? true : item.is_enabled))
       .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
@@ -4610,7 +4609,6 @@ describe("smoke-core API", () => {
       url: "/api/agent-profiles",
       headers: { "x-admin-token": config.adminToken },
       payload: {
-        project_id: "project",
         name: "UI tester",
         role: "Tester",
         source_policy: "catalog_plus_custom"
@@ -4619,7 +4617,7 @@ describe("smoke-core API", () => {
 
     expect(createResponse.statusCode).toBe(201);
     expect(createResponse.json()).toMatchObject({
-      project_id: "project",
+      project_id: null,
       name: "UI tester",
       role: "tester",
       source_policy: "catalog_plus_custom",
@@ -4629,7 +4627,7 @@ describe("smoke-core API", () => {
 
     const listResponse = await app.inject({
       method: "GET",
-      url: "/api/agent-profiles?project_id=project&include_disabled=false",
+      url: "/api/agent-profiles?include_disabled=false",
       headers: { "x-admin-token": config.adminToken }
     });
     expect(listResponse.statusCode).toBe(200);
@@ -4791,7 +4789,7 @@ describe("smoke-core API", () => {
 
     const enabledOnlyResponse = await app.inject({
       method: "GET",
-      url: "/api/agent-profiles?project_id=project&include_disabled=false",
+      url: "/api/agent-profiles?include_disabled=false",
       headers: { "x-admin-token": config.adminToken }
     });
     expect(enabledOnlyResponse.statusCode).toBe(200);
@@ -5343,7 +5341,7 @@ describe("smoke-core API", () => {
     });
   });
 
-  it("returns AGENT_PROFILE_* conflicts for selector profile mismatches", async () => {
+  it("returns AGENT_PROFILE_* conflicts for selector profile role/availability mismatches", async () => {
     await persistence.createAgentTemplate({
       name: "selector-validation-template",
       role: "reviewer",
@@ -5363,30 +5361,6 @@ describe("smoke-core API", () => {
       source: "smoke-script",
       created_by: "smoke-script"
     });
-
-    const wrongProjectProfile = await persistence.createAgentProfile({
-      project_id: "proj-memory",
-      name: "wrong-project-profile",
-      role: "reviewer",
-      is_enabled: true
-    });
-    const wrongProjectResponse = await app.inject({
-      method: "POST",
-      url: "/api/delegation/dispatch",
-      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-agent-profile-project-mismatch-1" },
-      payload: {
-        requester_task_id: requesterTask.id,
-        capability: "reviewer",
-        target_selector: {
-          role: "reviewer",
-          agent_profile_id: wrongProjectProfile.id
-        },
-        payload: { prompt: "check mismatch" },
-        priority: 60
-      }
-    });
-    expect(wrongProjectResponse.statusCode).toBe(409);
-    expect(wrongProjectResponse.json().code).toBe("AGENT_PROFILE_PROJECT_MISMATCH");
 
     const wrongRoleProfile = await persistence.createAgentProfile({
       project_id: "project",

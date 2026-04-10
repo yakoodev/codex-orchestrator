@@ -348,7 +348,7 @@ interface AgentRequestResolveRequest {
 }
 
 interface AgentProfileCreateRequest {
-  project_id?: unknown;
+  project_id?: unknown; // legacy optional field
   name?: unknown;
   role?: unknown;
   description?: unknown;
@@ -5436,15 +5436,23 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/agent-profiles", async (request, reply) => {
     const body = request.body as AgentProfileCreateRequest;
-    const projectId = asProjectKey(body.project_id);
+    const legacyProjectId = asProjectKey(body.project_id) ?? null;
     const name = asNonEmptyString(body.name);
     const roleValue = asNonEmptyString(body.role);
-
-    if (!projectId || !name || !roleValue) {
+    if (body.project_id !== undefined && body.project_id !== null && !legacyProjectId) {
       return sendError(
         reply,
         400,
-        "project_id, name and role are required",
+        "project_id must be a valid project key or null",
+        "REQUEST_VALIDATION_FAILED"
+      );
+    }
+
+    if (!name || !roleValue) {
+      return sendError(
+        reply,
+        400,
+        "name and role are required",
         "REQUEST_VALIDATION_FAILED"
       );
     }
@@ -5492,16 +5500,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       isEnabled = body.is_enabled;
     }
 
-    const project = await persistence.getProjectByKey(projectId);
-    if (!project) {
-      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
-    }
-    if (!project.is_active) {
-      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
-    }
-
     const created = await persistence.createAgentProfile({
-      project_id: projectId,
+      project_id: legacyProjectId,
       name,
       role: normalizeAgentRole(roleValue),
       description,
@@ -5527,12 +5527,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       limit?: unknown;
     };
 
-    const rawProjectId = query.project_id;
-    const projectId = asProjectKey(rawProjectId) ?? undefined;
-    if (rawProjectId !== undefined && rawProjectId !== null && !projectId) {
-      return sendError(reply, 400, "Invalid project_id", "REQUEST_VALIDATION_FAILED");
-    }
-
     let includeDisabled = true;
     if (query.include_disabled !== undefined) {
       const parsed = parseBooleanLike(query.include_disabled);
@@ -5555,7 +5549,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const limit = parsedLimit && parsedLimit > 0 ? parsedLimit : 100;
 
     const items = await persistence.listAgentProfiles({
-      project_id: projectId,
       include_disabled: includeDisabled,
       role: roleCandidate ? normalizeAgentRole(roleCandidate) : undefined,
       limit
@@ -6676,14 +6669,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       if (!selectedBySelector.is_enabled) {
         return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
       }
-      if (memoryProjectId && selectedBySelector.project_id !== memoryProjectId) {
-        return sendError(
-          reply,
-          409,
-          "Agent profile belongs to another project",
-          "AGENT_PROFILE_PROJECT_MISMATCH"
-        );
-      }
       if (normalizeAgentRole(selectedBySelector.role) !== memoryAgentRole) {
         return sendError(
           reply,
@@ -6693,9 +6678,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         );
       }
       selectedAgentProfile = selectedBySelector;
-    } else if (memoryProjectId) {
+    } else {
       const candidates = await persistence.listAgentProfiles({
-        project_id: memoryProjectId,
         include_disabled: false,
         role: memoryAgentRole,
         limit: 50

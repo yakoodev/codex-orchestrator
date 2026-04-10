@@ -20,6 +20,10 @@ export interface McpServersResponse {
   items: Array<Record<string, unknown>>;
 }
 
+export interface AgentProfilesResponse {
+  items: Array<Record<string, unknown>>;
+}
+
 export type AgentRequestType =
   | "mcp_server_attach"
   | "mcp_tool_acl"
@@ -101,6 +105,11 @@ export interface HttpOrchestratorApiClientOptions {
 
 export interface OrchestratorApiClient {
   listAgentTemplates(): Promise<AgentTemplatesResponse>;
+  listAgentProfiles(options?: {
+    role?: string;
+    include_disabled?: boolean;
+    limit?: number;
+  }): Promise<AgentProfilesResponse>;
   listDelegationCapabilities(): Promise<DelegationCapabilitiesResponse>;
   listTasks(options?: { status?: string }): Promise<TasksResponse>;
   dispatchAgent(input: DispatchAgentRequest, traceId: string): Promise<Record<string, unknown>>;
@@ -352,6 +361,21 @@ export function createHttpOrchestratorApiClient(
       requestJson<AgentTemplatesResponse>({
         method: "GET",
         path: "/api/agents/templates"
+      }),
+
+    listAgentProfiles: (listOptions) =>
+      requestJson<AgentProfilesResponse>({
+        method: "GET",
+        path: "/api/agent-profiles",
+        query: {
+          role: listOptions?.role,
+          include_disabled:
+            typeof listOptions?.include_disabled === "boolean"
+              ? (listOptions.include_disabled ? "true" : "false")
+              : undefined,
+          limit:
+            typeof listOptions?.limit === "number" ? String(listOptions.limit) : undefined
+        }
       }),
 
     listDelegationCapabilities: () =>

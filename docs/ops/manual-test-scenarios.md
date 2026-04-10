@@ -243,7 +243,7 @@ npm run mcp:serve
 {
   "requester_task_id": "task-<id>",
   "capability": "reviewer",
-  "target_selector": {},
+  "target_selector": { "agent_profile_id": "<PROFILE_ID>" },
   "payload": { "execution_mode": "mock", "prompt": "mcp smoke run" },
   "idempotency_key": "mcp-smoke-dispatch-1"
 }
@@ -252,6 +252,14 @@ npm run mcp:serve
 Ожидаемо:
 - возвращается `trace_id` (детерминированный от `idempotency_key`, если `trace_id` явно не задан);
 - в `result` есть объект делегации от `/api/delegation/dispatch`.
+
+6.1. Вызови MCP tool `orchestrator.list_agent_profiles` (например `{ "role": "reviewer", "include_disabled": false }`) и выбери `PROFILE_ID` из ответа.
+
+6.2. Негативный кейс: вызови `orchestrator.dispatch_agent` без `payload.prompt|payload.task` или без `target_selector.agent_profile_id`.
+
+Ожидаемо:
+- MCP возвращает `REQUEST_VALIDATION_FAILED`;
+- делегация в backend не создается.
 
 7. Вызови MCP tool `orchestrator.get_limits`:
    - вариант 1: `{ "profile_id": "<profile-id>" }`;
@@ -635,7 +643,6 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/<PROFILE_ID>/scripts" `
 
 ```powershell
 $profileBody = @{
-  project_id = "project"
   name = "tester-profile"
   role = "tester"
   source_policy = "catalog_plus_custom"
@@ -719,7 +726,7 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
 2. Убедись, что экран содержит:
    - левую колонку `create + filters + list`;
    - правую колонку `profile summary/edit + MCP servers + OS scripts`.
-3. В форме `Создать профиль агента` выбери активный `project_id`, задай `name`, `role`, `source_policy` и нажми `Создать профиль`.
+3. В форме `Создать профиль агента` задай `name`, `role`, `source_policy` и нажми `Создать профиль` (профиль глобальный, не project-bound).
 4. Проверь, что:
    - новый профиль появился в списке;
    - справа открылся detail-инспектор профиля;
@@ -730,7 +737,7 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
 8. Нажми `Отвязать` для кастомного binding и проверь, что он исчез из списка.
 9. В блоке `OS script sets` сохрани `windows`, `linux`, `macos` script (`instruction` или `shell`).
 10. Проверь, что после сохранения у каждого OS-блока обновляется metadata (`version`, timestamp).
-11. Примени фильтры `search/project/role/include disabled` и убедись, что список профилей фильтруется без полного reload.
+11. Примени фильтры `search/role/include disabled` и убедись, что список профилей фильтруется без полного reload.
 12. Обнови страницу браузера и проверь восстановление фильтров (`localStorage`).
 
 13. Проверь runtime-resolve профиля в dispatch:

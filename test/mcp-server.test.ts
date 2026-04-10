@@ -10,6 +10,7 @@ import { createOrchestratorMcpServer } from "../src/mcp/server";
 
 interface ApiClientMock extends OrchestratorApiClient {
   listAgentTemplates: ReturnType<typeof vi.fn>;
+  listAgentProfiles: ReturnType<typeof vi.fn>;
   listDelegationCapabilities: ReturnType<typeof vi.fn>;
   listTasks: ReturnType<typeof vi.fn>;
   dispatchAgent: ReturnType<typeof vi.fn>;
@@ -27,6 +28,7 @@ interface ApiClientMock extends OrchestratorApiClient {
 function createApiClientMock(): ApiClientMock {
   return {
     listAgentTemplates: vi.fn(),
+    listAgentProfiles: vi.fn(),
     listDelegationCapabilities: vi.fn(),
     listTasks: vi.fn(),
     dispatchAgent: vi.fn(),
@@ -114,6 +116,7 @@ describe("MCP Bridge Server", () => {
     expect(names).toEqual(
       expect.arrayContaining([
         "orchestrator.list_agents",
+        "orchestrator.list_agent_profiles",
         "orchestrator.list_tasks",
         "orchestrator.dispatch_agent",
         "orchestrator.create_agent_request",
@@ -178,13 +181,48 @@ describe("MCP Bridge Server", () => {
     expect((items as unknown[]).length).toBe(2);
   });
 
+  it("возвращает глобальные профили через orchestrator.list_agent_profiles", async () => {
+    apiClientMock.listAgentProfiles.mockResolvedValue({
+      items: [
+        {
+          id: "profile-1",
+          name: "reviewer-default",
+          role: "reviewer",
+          description: "review profile",
+          source_policy: "catalog_only",
+          is_enabled: true
+        }
+      ]
+    });
+
+    const result = await client.callTool({
+      name: "orchestrator.list_agent_profiles",
+      arguments: {
+        role: "reviewer",
+        include_disabled: false,
+        limit: 50
+      }
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.listAgentProfiles).toHaveBeenCalledWith({
+      role: "reviewer",
+      include_disabled: false,
+      limit: 50
+    });
+
+    const content = readStructuredContent(result);
+    expect(content["total"]).toBe(1);
+    expect(Array.isArray(content["items"])).toBe(true);
+  });
+
   it("использует idempotency_key для детерминированного trace_id в orchestrator.dispatch_agent", async () => {
     apiClientMock.dispatchAgent.mockResolvedValue({ id: "dlg-1", status: "accepted" });
 
     const dispatchArgs: DispatchAgentRequest = {
       requester_task_id: "task-1",
       capability: "reviewer",
-      target_selector: {},
+      target_selector: { agent_profile_id: "profile-1" },
       payload: {
         prompt: "run review"
       },
@@ -211,6 +249,40 @@ describe("MCP Bridge Server", () => {
     const content = readStructuredContent(result);
     expect(content["trace_id"]).toBe(traceIdArg);
     expect(content["idempotency_key"]).toBe("same-input");
+  });
+
+  it("возвращает validation error если dispatch_agent вызван без prompt/task", async () => {
+    const result = await client.callTool({
+      name: "orchestrator.dispatch_agent",
+      arguments: {
+        requester_task_id: "task-1",
+        capability: "reviewer",
+        target_selector: { agent_profile_id: "profile-1" },
+        payload: {}
+      }
+    });
+
+    expect(result.isError).toBe(true);
+    const errorPayload = readErrorPayload(result);
+    expect(errorPayload["code"]).toBe("REQUEST_VALIDATION_FAILED");
+    expect(apiClientMock.dispatchAgent).not.toHaveBeenCalled();
+  });
+
+  it("возвращает validation error если dispatch_agent вызван без agent_profile_id", async () => {
+    const result = await client.callTool({
+      name: "orchestrator.dispatch_agent",
+      arguments: {
+        requester_task_id: "task-1",
+        capability: "reviewer",
+        target_selector: {},
+        payload: { prompt: "run review" }
+      }
+    });
+
+    expect(result.isError).toBe(true);
+    const errorPayload = readErrorPayload(result);
+    expect(errorPayload["code"]).toBe("REQUEST_VALIDATION_FAILED");
+    expect(apiClientMock.dispatchAgent).not.toHaveBeenCalled();
   });
 
   it("создает универсальную заявку через orchestrator.create_agent_request", async () => {

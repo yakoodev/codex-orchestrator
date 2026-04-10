@@ -1,6 +1,6 @@
 # Agent Profiles + MCP Server Sets v1 (Design + Rollout Plan)
 
-Обновлено: 2026-04-09  
+Обновлено: 2026-04-10  
 Статус: `in_progress` (Phase 1 backend реализован)
 
 ## 1. Цель
@@ -21,7 +21,7 @@
 ## 3. Сущности v1
 
 - `AgentProfile`
-  - `id`, `project_id`, `name`, `role`, `description`
+  - `id`, `name`, `role`, `description`, `project_id? (legacy)`
   - `source_policy` (`catalog_only`, `catalog_plus_custom`, `custom_only`)
   - `is_enabled`, `created_at`, `updated_at`
 
@@ -73,7 +73,7 @@
 ## 5. UI-контур
 
 Экран `Agent Profiles`:
-1. список профилей по проекту/роли;
+1. список глобальных профилей по роли;
 2. карточка профиля с MCP server set;
 3. editor OS script sets (`windows/linux/macos`);
 4. `source_policy` selector;
@@ -104,6 +104,6 @@
 
 ## 9. Out of scope v1
 
-- автоматическое наследование профилей между проектами;
+- project-scoped наследование профилей (профили в v2 уже глобальные);
 - version-branching script sets;
 - marketplace billing для MCP серверов.

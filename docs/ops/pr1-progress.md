@@ -298,8 +298,9 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - добавлен отдельный panel-state и route-level refresh для `agent-profiles`;
   - состояние фильтров страницы сохраняется в `localStorage`.
 - [x] Реализован runtime-resolve `AgentProfile` в `POST /api/delegation/dispatch`:
-  - поддержан selector `target_selector.agent_profile_id` с валидациями `AGENT_PROFILE_NOT_FOUND|DISABLED|PROJECT_MISMATCH|ROLE_MISMATCH`;
-  - добавлен auto-resolve профиля по `requester_task.project_id + capability(role)`, если selector не задан;
+  - поддержан selector `target_selector.agent_profile_id` с валидациями `AGENT_PROFILE_NOT_FOUND|DISABLED|ROLE_MISMATCH`;
+  - профили переведены в глобальную модель (project binding legacy-only, больше не участвует в runtime-резолве);
+  - auto-resolve профиля выполняется по `capability(role)` среди активных профилей, если selector не задан;
   - в execution payload добавлены `agent_profile_id` и `agent_profile_context` (MCP servers + runtime script `windows/linux/macos`);
   - prompt обогащается profile-aware контекстом (source policy, доступные MCP, runtime script инструкции);
   - `agent_profile_id` и `agent_profile_context` пишутся в `execution_meta_json` и lifecycle events делегации.
@@ -307,6 +308,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - MCP server set из `agent_profile_context` теперь материализуется в `CODEX_HOME/config.toml` перед запуском `codex exec`;
   - встроенный `orchestrator-core` резолвится в локальный MCP bridge process (`dist/mcp/index.js` или dev fallback) с env-контекстом (`MCP_API_BASE_URL`, `MCP_ADMIN_TOKEN`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`);
   - metadata делегации дополняется `mcp_servers_configured`, что упрощает диагностику “почему агент не видел MCP tools”.
+- [x] MCP guard для дочерних запусков ужесточен:
+  - `orchestrator.dispatch_agent` в MCP bridge теперь отклоняет вызовы без явного `payload.prompt|payload.task`;
+  - `orchestrator.dispatch_agent` требует явный `target_selector.agent_profile_id`;
+  - добавлен MCP tool `orchestrator.list_agent_profiles` для выбора профиля агентом по `role + description`.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.

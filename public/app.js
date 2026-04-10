@@ -46,7 +46,7 @@ const I18N = {
     route_desc_projects: "Реестр проектов, summary и проектные настройки.",
     route_desc_tasks: "Создание, фильтрация и управление очередью задач.",
     route_desc_agents: "Мониторинг групп агентов и инспектор запуска.",
-    route_desc_agent_profiles: "Профили агентов, MCP server sets и OS-скрипты.",
+    route_desc_agent_profiles: "Глобальные профили агентов, MCP server sets и OS-скрипты.",
     route_desc_accounts: "Профили auth.json, лимиты и история переключений.",
     route_desc_secrets: "Секреты проекта: создание, ротация, отзыв и привязки.",
     route_desc_memory: "Память агентов по проекту и роли.",
@@ -166,7 +166,7 @@ const I18N = {
     agent_field_log: "Лог",
     agent_profiles_title: "Профили агентов и MCP",
     agent_profile_create_toggle: "Создать профиль агента",
-    agent_profile_project_label: "ID проекта",
+    agent_profile_project_label: "Scope (legacy)",
     agent_profile_name_label: "Название профиля",
     agent_profile_role_label: "Роль",
     agent_profile_source_policy_label: "Source policy",
@@ -174,18 +174,18 @@ const I18N = {
     agent_profile_enabled_label: "Профиль активен",
     agent_profile_create_action: "Создать профиль",
     agent_profile_filter_search_label: "Поиск",
-    agent_profile_filter_search_placeholder: "name/role/project",
-    agent_profile_filter_project_label: "Проект",
+    agent_profile_filter_search_placeholder: "name/role/description",
+    agent_profile_filter_project_label: "Проект (legacy)",
     agent_profile_filter_role_label: "Роль",
     agent_profile_filter_include_disabled: "Показывать отключенные",
-    agent_profile_filter_any_project: "Все проекты",
+    agent_profile_filter_any_project: "Все проекты (legacy)",
     agent_profile_filter_any_role: "Все роли",
     agent_profile_list_empty: "Профилей агентов пока нет.",
     agent_profile_details_empty: "Выбери профиль агента в списке, чтобы управлять MCP серверами и script sets.",
     agent_profile_summary_title: "Сводка профиля",
     agent_profile_edit_title: "Редактирование профиля",
     agent_profile_field_id: "ID",
-    agent_profile_field_project: "Проект",
+    agent_profile_field_project: "Legacy project",
     agent_profile_field_role: "Роль",
     agent_profile_field_source_policy: "Source policy",
     agent_profile_field_status: "Статус",
@@ -375,7 +375,7 @@ I18N.en = {
   route_desc_projects: "Project registry, summary, and project settings.",
   route_desc_tasks: "Create, filter, and operate task queue.",
   route_desc_agents: "Monitor preparing/running/recent agents and inspector.",
-  route_desc_agent_profiles: "Agent profiles, MCP server sets, and OS scripts.",
+  route_desc_agent_profiles: "Global agent profiles, MCP server sets, and OS scripts.",
   route_desc_accounts: "auth.json profiles, limits, and switch history.",
   route_desc_secrets: "Project secrets: create, rotate, revoke, and manage bindings.",
   route_desc_memory: "Agent memory by project_id and role.",
@@ -489,7 +489,7 @@ I18N.en = {
   agent_field_log: "Log",
   agent_profiles_title: "Agent Profiles & MCP",
   agent_profile_create_toggle: "Create agent profile",
-  agent_profile_project_label: "Project ID",
+  agent_profile_project_label: "Scope (legacy)",
   agent_profile_name_label: "Profile name",
   agent_profile_role_label: "Role",
   agent_profile_source_policy_label: "Source policy",
@@ -497,18 +497,18 @@ I18N.en = {
   agent_profile_enabled_label: "Profile enabled",
   agent_profile_create_action: "Create profile",
   agent_profile_filter_search_label: "Search",
-  agent_profile_filter_search_placeholder: "name/role/project",
-  agent_profile_filter_project_label: "Project",
+  agent_profile_filter_search_placeholder: "name/role/description",
+  agent_profile_filter_project_label: "Project (legacy)",
   agent_profile_filter_role_label: "Role",
   agent_profile_filter_include_disabled: "Include disabled",
-  agent_profile_filter_any_project: "All projects",
+  agent_profile_filter_any_project: "All projects (legacy)",
   agent_profile_filter_any_role: "All roles",
   agent_profile_list_empty: "No agent profiles yet.",
   agent_profile_details_empty: "Select an agent profile to manage MCP servers and script sets.",
   agent_profile_summary_title: "Profile summary",
   agent_profile_edit_title: "Edit profile",
   agent_profile_field_id: "ID",
-  agent_profile_field_project: "Project",
+  agent_profile_field_project: "Legacy project",
   agent_profile_field_role: "Role",
   agent_profile_field_source_policy: "Source policy",
   agent_profile_field_status: "Status",
@@ -687,7 +687,7 @@ const state = {
   agentProfileBindings: [],
   agentProfileScripts: [],
   selectedAgentProfileId: null,
-  agentProfileFilters: { search: "", project: "all", role: "all", includeDisabled: true },
+  agentProfileFilters: { search: "", role: "all", includeDisabled: true },
   projects: [],
   selectedProjectKey: null,
   projectSummary: null,
@@ -1210,16 +1210,13 @@ function syncProjectBindings() {
 
   const taskProject = applyProjectSelect(ui.taskProject, activeKeys, ui.taskProject?.value ?? "", t("project_option_none"))
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
-  const agentProfileProject = applyProjectSelect(ui.agentProfileProject, activeKeys, ui.agentProfileProject?.value ?? "", t("project_option_none"))
   const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
-  const agentProfileSubmit = ui.agentProfileCreateForm?.querySelector('button[type="submit"]')
   const secretSubmit = ui.secretCreateForm?.querySelector('button[type="submit"]')
   if (taskSubmit) taskSubmit.disabled = !taskProject
   if (memorySubmit) memorySubmit.disabled = !memoryProject
-  if (agentProfileSubmit) agentProfileSubmit.disabled = !agentProfileProject
   if (secretSubmit) secretSubmit.disabled = !secretsProject
   state.secretsFilters.project = secretsProject
 
@@ -1232,14 +1229,6 @@ function syncProjectBindings() {
     state.taskFilters.project = ui.taskFilterProject.value
   }
 
-  if (ui.agentProfileFilterProject) {
-    ui.agentProfileFilterProject.innerHTML = [
-      `<option value="all">${escapeHtml(t("agent_profile_filter_any_project"))}</option>`,
-      ...allKeys.map((key) => `<option value="${escapeHtml(key)}">${escapeHtml(key)}</option>`)
-    ].join("")
-    ui.agentProfileFilterProject.value = allKeys.includes(state.agentProfileFilters.project) ? state.agentProfileFilters.project : "all"
-    state.agentProfileFilters.project = ui.agentProfileFilterProject.value
-  }
 }
 
 function syncTaskFilters(items) {
@@ -1636,7 +1625,6 @@ function renderAgentProfileDetails() {
 
   ui.agentProfileSummaryGrid.innerHTML = [
     [t("agent_profile_field_id"), profile.id],
-    [t("agent_profile_field_project"), profile.project_id],
     [t("agent_profile_field_role"), profile.role],
     [t("agent_profile_field_source_policy"), profile.source_policy],
     [t("agent_profile_field_status"), profile.is_enabled === true ? t("profile_state_active") : t("profile_state_inactive")],
@@ -1644,7 +1632,6 @@ function renderAgentProfileDetails() {
   ].map(([label, value]) => `<div class="project-summary-item"><p class="tiny-label">${escapeHtml(label)}</p><p>${escapeHtml(value ?? t("task_field_na"))}</p></div>`).join("")
 
   ui.agentProfileEditId.value = profile.id ?? ""
-  ui.agentProfileEditProject.value = profile.project_id ?? ""
   ui.agentProfileEditName.value = profile.name ?? ""
   ui.agentProfileEditRole.value = profile.role ?? ""
   ui.agentProfileEditSourcePolicy.value = profile.source_policy ?? "catalog_only"
@@ -1670,10 +1657,9 @@ function renderAgentProfiles(items) {
   const search = state.agentProfileFilters.search.trim().toLowerCase()
   const visible = state.agentProfiles.filter((profile) => {
     if (!state.agentProfileFilters.includeDisabled && profile.is_enabled !== true) return false
-    if (state.agentProfileFilters.project !== "all" && profile.project_id !== state.agentProfileFilters.project) return false
     if (state.agentProfileFilters.role !== "all" && profile.role !== state.agentProfileFilters.role) return false
     if (!search) return true
-    const haystack = `${profile.id ?? ""} ${profile.name ?? ""} ${profile.role ?? ""} ${profile.project_id ?? ""} ${profile.description ?? ""} ${profile.source_policy ?? ""}`
+    const haystack = `${profile.id ?? ""} ${profile.name ?? ""} ${profile.role ?? ""} ${profile.description ?? ""} ${profile.source_policy ?? ""}`
     return haystack.toLowerCase().includes(search)
   })
 
@@ -1712,7 +1698,7 @@ function renderAgentProfiles(items) {
         </div>
       </div>
       <div class="meta-note"><code>${escapeHtml(profile.id)}</code></div>
-      <div class="meta-note">${escapeHtml(profile.project_id ?? t("task_field_na"))} · ${escapeHtml(profile.source_policy ?? t("task_field_na"))}</div>
+      <div class="meta-note">${escapeHtml(profile.source_policy ?? t("task_field_na"))}</div>
     </li>`
   }).join("")
 
@@ -2092,14 +2078,6 @@ async function refreshSelectedAgentProfileContext() {
 }
 
 async function refreshAgentProfilesRoute() {
-  if (state.token) {
-    try {
-      await fetchProjectRegistry({ includeInactive: true })
-    } catch {
-      // best-effort sync for project selects in agent profile forms
-    }
-  }
-
   return withPanel(ui.agentProfilesPanelState, "system", async () => {
     const [profilesResponse, serversResponse] = await Promise.all([
       requestJson("/api/agent-profiles?include_disabled=true&limit=200"),
@@ -2448,7 +2426,7 @@ function wireConsoleRefs() {
     projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
     toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"),
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
-    agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileProject: document.getElementById("agent-profile-project"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterProject: document.getElementById("agent-profile-filter-project"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditProject: document.getElementById("agent-profile-edit-project"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
+    agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
     secretsPanelState: document.getElementById("secrets-panel-state"), refreshSecrets: document.getElementById("refresh-secrets"), secretCreateForm: document.getElementById("secret-create-form"), secretProject: document.getElementById("secret-project"), secretKey: document.getElementById("secret-key"), secretValue: document.getElementById("secret-value"), secretDescription: document.getElementById("secret-description"), secretBindRoles: document.getElementById("secret-bind-roles"), secretBindTemplates: document.getElementById("secret-bind-templates"), secretFilterSearch: document.getElementById("secret-filter-search"), secretsList: document.getElementById("secrets-list"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
@@ -2691,11 +2669,6 @@ function wireConsoleHandlers() {
     saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
     renderAgentProfiles(state.agentProfiles)
   })
-  ui.agentProfileFilterProject.addEventListener("change", () => {
-    state.agentProfileFilters.project = ui.agentProfileFilterProject.value
-    saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
-    renderAgentProfiles(state.agentProfiles)
-  })
   ui.agentProfileFilterRole.addEventListener("change", () => {
     state.agentProfileFilters.role = ui.agentProfileFilterRole.value
     saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
@@ -2707,7 +2680,7 @@ function wireConsoleHandlers() {
     renderAgentProfiles(state.agentProfiles)
   })
   ui.agentProfileFilterClear.addEventListener("click", () => {
-    state.agentProfileFilters = { search: "", project: "all", role: "all", includeDisabled: true }
+    state.agentProfileFilters = { search: "", role: "all", includeDisabled: true }
     saveJson(KEYS.agentProfileFilters, state.agentProfileFilters)
     renderAgentProfiles(state.agentProfiles)
   })
@@ -2731,7 +2704,6 @@ function wireConsoleHandlers() {
     if (!state.token) return requireTokenPanels()
 
     const payload = {
-      project_id: ui.agentProfileProject.value.trim(),
       name: ui.agentProfileName.value.trim(),
       role: ui.agentProfileRole.value.trim(),
       source_policy: ui.agentProfileSourcePolicy.value,
@@ -2741,8 +2713,7 @@ function wireConsoleHandlers() {
     const created = await requestJson("/api/agent-profiles", { method: "POST", json: payload })
     state.selectedAgentProfileId = created?.id ?? null
     pushLog("success", "ui", t("log_agent_profile_created"), {
-      id: created?.id ?? "n/a",
-      project_id: payload.project_id
+      id: created?.id ?? "n/a"
     })
     ui.agentProfileName.value = ""
     ui.agentProfileRole.value = "reviewer"

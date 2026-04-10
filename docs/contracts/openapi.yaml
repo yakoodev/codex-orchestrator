@@ -1352,11 +1352,6 @@ paths:
       summary: List agent profiles
       parameters:
         - in: query
-          name: project_id
-          schema:
-            type: string
-            pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
-        - in: query
           name: include_disabled
           schema:
             type: boolean
@@ -3169,6 +3164,7 @@ components:
           type: string
         project_id:
           type: string
+          nullable: true
         name:
           type: string
         role:
@@ -3187,7 +3183,6 @@ components:
           format: date-time
       required:
         - id
-        - project_id
         - name
         - role
         - source_policy
@@ -3201,6 +3196,7 @@ components:
         project_id:
           type: string
           pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+          nullable: true
         name:
           type: string
         role:
@@ -3211,7 +3207,7 @@ components:
           $ref: "#/components/schemas/AgentProfileSourcePolicy"
         is_enabled:
           type: boolean
-      required: [project_id, name, role]
+      required: [name, role]
       additionalProperties: false
 
     AgentProfilePatchRequest:

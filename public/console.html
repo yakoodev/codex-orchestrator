@@ -461,19 +461,15 @@
                   <form id="agent-profile-create-form" class="form-grid">
                     <div class="split-2">
                       <div>
-                        <label for="agent-profile-project" data-i18n="agent_profile_project_label">Project ID</label>
-                        <select id="agent-profile-project" name="project_id" required></select>
-                      </div>
-                      <div>
                         <label for="agent-profile-name" data-i18n="agent_profile_name_label">Название профиля</label>
                         <input id="agent-profile-name" name="name" required />
                       </div>
-                    </div>
-                    <div class="split-2">
                       <div>
                         <label for="agent-profile-role" data-i18n="agent_profile_role_label">Роль</label>
                         <input id="agent-profile-role" name="role" value="reviewer" required />
                       </div>
+                    </div>
+                    <div class="split-2">
                       <div>
                         <label for="agent-profile-source-policy" data-i18n="agent_profile_source_policy_label">Source policy</label>
                         <select id="agent-profile-source-policy" name="source_policy">
@@ -499,18 +495,12 @@
                     <input
                       id="agent-profile-filter-search"
                       data-i18n-placeholder="agent_profile_filter_search_placeholder"
-                      placeholder="name/role/project"
+                      placeholder="name/role/description"
                     />
                   </div>
-                  <div class="split-2">
-                    <div>
-                      <label for="agent-profile-filter-project" data-i18n="agent_profile_filter_project_label">Project</label>
-                      <select id="agent-profile-filter-project"></select>
-                    </div>
-                    <div>
-                      <label for="agent-profile-filter-role" data-i18n="agent_profile_filter_role_label">Role</label>
-                      <select id="agent-profile-filter-role"></select>
-                    </div>
+                  <div>
+                    <label for="agent-profile-filter-role" data-i18n="agent_profile_filter_role_label">Role</label>
+                    <select id="agent-profile-filter-role"></select>
                   </div>
                   <label class="toggle">
                     <input id="agent-profile-filter-include-disabled" type="checkbox" checked />
@@ -535,15 +525,9 @@
 
                   <form id="agent-profile-edit-form" class="form-grid">
                     <p class="tiny-label" data-i18n="agent_profile_edit_title">Редактирование профиля</p>
-                    <div class="split-2">
-                      <div>
-                        <label for="agent-profile-edit-id" data-i18n="agent_profile_field_id">ID</label>
-                        <input id="agent-profile-edit-id" disabled />
-                      </div>
-                      <div>
-                        <label for="agent-profile-edit-project" data-i18n="agent_profile_project_label">Project ID</label>
-                        <input id="agent-profile-edit-project" disabled />
-                      </div>
+                    <div>
+                      <label for="agent-profile-edit-id" data-i18n="agent_profile_field_id">ID</label>
+                      <input id="agent-profile-edit-id" disabled />
                     </div>
                     <div class="split-2">
                       <div>

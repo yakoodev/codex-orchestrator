@@ -310,7 +310,7 @@ export type McpKeyAclEffect = "allow";
 
 export interface AgentProfileEntity {
   id: string;
-  project_id: string;
+  project_id: string | null;
   name: string;
   role: string;
   description: string | null;
@@ -632,7 +632,7 @@ export interface CreateAgentRequestAuditEventInput {
 }
 
 export interface CreateAgentProfileInput {
-  project_id: string;
+  project_id?: string | null;
   name: string;
   role: string;
   description?: string | null;

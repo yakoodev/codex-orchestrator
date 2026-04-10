@@ -10,6 +10,7 @@
 - Цель: дать агентам и внешним ассистентам стандартный MCP-интерфейс для работы с оркестратором.
 - Базовый scope MCP (MVP):
   - `orchestrator.list_agents`: получить доступных агентов/шаблоны;
+  - `orchestrator.list_agent_profiles`: получить глобальные Agent Profile для явного выбора целевого профиля;
   - `orchestrator.list_tasks`: получить список задач и статусы;
   - `orchestrator.dispatch_agent`: запустить делегацию/агента на задачу;
   - `orchestrator.get_limits`: получить актуальные лимиты профилей.
@@ -17,6 +18,7 @@
   - MCP stdio bridge (`npm run mcp:serve`) как proxy-adapter поверх текущего REST API;
   - единый security boundary через `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN` -> `X-Admin-Token`;
   - trace/idempotency на уровне bridge для `orchestrator.dispatch_agent`;
+  - в MCP-ветке `orchestrator.dispatch_agent` введен guard на явный `payload.prompt|payload.task` и явный `target_selector.agent_profile_id`;
   - единый error mapping (`error`, `code`, `status_code`) для upstream ошибок.
 - Что дальше:
   - streamable HTTP transport и расширение набора MCP tools вынесены в follow-up scope.
@@ -113,13 +115,12 @@
   - управление OS script sets (`windows/linux/macos`) с сохранением `script_type/content`.
 - Дополнительно реализовано (runtime integration):
   - в `POST /api/delegation/dispatch` поддержан selector `target_selector.agent_profile_id`;
-  - если selector не задан, профиль авто-резолвится по `project_id + role(capability)`;
-  - добавлены проверки `AGENT_PROFILE_NOT_FOUND|DISABLED|PROJECT_MISMATCH|ROLE_MISMATCH`;
+  - если selector не задан, профиль авто-резолвится глобально по `role(capability)`;
+  - добавлены проверки `AGENT_PROFILE_NOT_FOUND|DISABLED|ROLE_MISMATCH`;
   - execution payload и execution meta теперь включают `agent_profile_id` и `agent_profile_context` (MCP + runtime script);
   - делегационный prompt дополняется profile-aware runtime инструкциями.
 - Зависимости:
   - `MCP AuthZ ACL v2` (источник прав и audit);
-  - `Project Registry` (привязка профилей к проектам);
   - `Topology UI` (визуализация профилей и их активных связей).
 
 ## Planned: Agent Request Plane v2

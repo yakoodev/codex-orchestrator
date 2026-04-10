@@ -130,6 +130,21 @@ function toToolError(error: unknown): CallToolResult {
   } as CallToolResult;
 }
 
+function toolValidationError(
+  toolName: string,
+  message: string,
+  details?: Record<string, unknown>
+): OrchestratorApiError {
+  return new OrchestratorApiError({
+    error: message,
+    code: "REQUEST_VALIDATION_FAILED",
+    statusCode: 400,
+    method: "MCP",
+    path: `tool://${toolName}`,
+    details
+  });
+}
+
 function resolveTraceId(traceId: string | undefined, idempotencyKey: string | undefined): string {
   if (traceId && traceId.trim()) {
     return traceId.trim();
@@ -198,6 +213,40 @@ function asAgentProfileScriptType(value: unknown): AgentProfileScriptType | null
   return AGENT_PROFILE_SCRIPT_TYPE_VALUES.includes(parsed as AgentProfileScriptType)
     ? (parsed as AgentProfileScriptType)
     : null;
+}
+
+function getDispatchPrompt(payload: Record<string, unknown>): string | null {
+  return asStringValue(payload["prompt"]) ?? asStringValue(payload["task"]);
+}
+
+function getDispatchAgentProfileId(targetSelector: Record<string, unknown>): string | null {
+  return asStringValue(targetSelector["agent_profile_id"]);
+}
+
+function validateDispatchInputForMcp(input: {
+  target_selector?: Record<string, unknown>;
+  payload: Record<string, unknown>;
+}): void {
+  const targetSelector = asRecord(input.target_selector);
+  const payload = asRecord(input.payload);
+  const prompt = getDispatchPrompt(payload);
+  const agentProfileId = getDispatchAgentProfileId(targetSelector);
+
+  if (!prompt) {
+    throw toolValidationError(
+      "orchestrator.dispatch_agent",
+      "payload.prompt or payload.task is required and must be non-empty",
+      { field: "payload.prompt|payload.task" }
+    );
+  }
+
+  if (!agentProfileId) {
+    throw toolValidationError(
+      "orchestrator.dispatch_agent",
+      "target_selector.agent_profile_id is required",
+      { field: "target_selector.agent_profile_id" }
+    );
+  }
 }
 
 function getAgentRequestPayload(request: Record<string, unknown>): Record<string, unknown> {
@@ -938,6 +987,47 @@ export function createOrchestratorMcpServer(
   );
 
   server.registerTool(
+    "orchestrator.list_agent_profiles",
+    {
+      description:
+        "Получить глобальные agent profiles для выбора целевого профиля (role/description/source_policy/status).",
+      inputSchema: {
+        role: z.string().min(1).optional(),
+        include_disabled: z.boolean().optional(),
+        limit: z.number().int().min(1).max(500).optional()
+      }
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const authError = await authorizeToolCall("orchestrator.list_agent_profiles", input);
+        if (authError) {
+          return authError;
+        }
+        const response = await options.apiClient.listAgentProfiles({
+          role: input.role?.trim().toLowerCase(),
+          include_disabled: input.include_disabled,
+          limit: input.limit
+        });
+
+        const structuredContent = {
+          role: input.role?.trim().toLowerCase() ?? null,
+          include_disabled:
+            typeof input.include_disabled === "boolean" ? input.include_disabled : true,
+          total: response.items.length,
+          items: response.items
+        };
+
+        return toToolSuccess(
+          `Loaded ${response.items.length} agent profiles`,
+          structuredContent
+        );
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
     "orchestrator.list_tasks",
     {
       description:
@@ -998,6 +1088,7 @@ export function createOrchestratorMcpServer(
         if (authError) {
           return authError;
         }
+        validateDispatchInputForMcp(input);
         const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
         const dispatchInput = normalizeDispatchInput(input);
         const response = await options.apiClient.dispatchAgent(dispatchInput, traceId);

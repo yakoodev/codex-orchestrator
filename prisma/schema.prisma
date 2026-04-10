@@ -706,7 +706,7 @@ model AgentRequestAuditEvent {
 
 model AgentProfile {
   id            String                   @id @default(cuid())
-  project_id    String
+  project_id    String?
   name          String
   role          String
   description   String?
@@ -719,8 +719,9 @@ model AgentProfile {
   script_sets  AgentProfileScriptSet[]
   mcp_key_bindings McpKeyProfileBinding[]
 
-  @@index([project_id, is_enabled, updated_at])
-  @@index([project_id, role, updated_at])
+  @@index([is_enabled, updated_at])
+  @@index([role, is_enabled, updated_at])
+  @@index([project_id, updated_at])
   @@map("agent_profiles")
 }
 
