@@ -19,8 +19,30 @@ const MAX_RUNTIME_SECRET_ENV_VARS = 64;
 const RUNTIME_ENV_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
 const REDACTION_PLACEHOLDER = "[REDACTED_SECRET]";
 const RESERVED_RUNTIME_ENV_KEYS = new Set(["PATH", "HOME", "CODEX_HOME"]);
+const SENSITIVE_ENV_KEY_PATTERN = /(TOKEN|KEY|SECRET|PASSWORD|AUTH)/i;
+const ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator-core";
+const ORCHESTRATOR_MCP_ENDPOINT = "orchestrator://core";
 const SANDBOX_POLICIES = new Set(["read-only", "workspace-write", "danger-full-access"]);
 const APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
+
+interface DelegationPayloadMcpServer {
+  name: string;
+  transport: "stdio" | "http";
+  endpoint_or_command: string;
+  is_required: boolean;
+  priority: number;
+  config_json: Record<string, unknown> | null;
+}
+
+interface RuntimeMcpServerConfig {
+  key: string;
+  name: string;
+  transport: "stdio" | "http";
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: Record<string, string>;
+}
 
 function resolveCodexCommandForSpawn(command: string): string {
   return command.trim();
@@ -37,6 +59,60 @@ function asNonEmptyString(value: unknown): string | null {
   }
 
   return trimmed;
+}
+
+function asBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+  return null;
+}
+
+function asStringArray(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const values: string[] = [];
+  for (const item of value) {
+    const parsed = asNonEmptyString(item);
+    if (!parsed) {
+      return null;
+    }
+    values.push(parsed);
+  }
+  return values;
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  const record: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const normalizedKey = key.trim();
+    if (!RUNTIME_ENV_KEY_PATTERN.test(normalizedKey) || RESERVED_RUNTIME_ENV_KEYS.has(normalizedKey)) {
+      continue;
+    }
+    const parsedValue = asNonEmptyString(raw);
+    if (!parsedValue) {
+      continue;
+    }
+    record[normalizedKey] = parsedValue;
+  }
+  return record;
 }
 
 function trimToLimit(value: string, limit: number): string {
@@ -91,6 +167,17 @@ function buildSecretRedactionValues(runtimeEnv: Record<string, string>): string[
   });
 }
 
+function extractSensitiveEnvSubset(runtimeEnv: Record<string, string>): Record<string, string> {
+  const sensitive: Record<string, string> = {};
+  for (const [key, value] of Object.entries(runtimeEnv)) {
+    if (!SENSITIVE_ENV_KEY_PATTERN.test(key)) {
+      continue;
+    }
+    sensitive[key] = value;
+  }
+  return sensitive;
+}
+
 function redactSecretsInText(value: string, redactionValues: string[]): string {
   if (!value || redactionValues.length === 0) {
     return value;
@@ -127,6 +214,374 @@ function normalizeApprovalPolicy(value: unknown): "never" | "on-request" | "on-f
   }
 
   return "never";
+}
+
+function parseShellLikeCommand(value: string): { command: string; args: string[] } {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "\"" | "'" | null = null;
+
+  for (const char of value.trim()) {
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "\"" || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  if (tokens.length === 0) {
+    return { command: value.trim(), args: [] };
+  }
+
+  return {
+    command: tokens[0] ?? value.trim(),
+    args: tokens.slice(1)
+  };
+}
+
+function getPayloadAgentProfileId(payload: Record<string, unknown>): string | null {
+  const directId = asNonEmptyString(payload["agent_profile_id"]);
+  if (directId) {
+    return directId;
+  }
+
+  const context = payload["agent_profile_context"];
+  if (!isPlainObject(context)) {
+    return null;
+  }
+
+  return asNonEmptyString(context["profile_id"]);
+}
+
+function getPayloadMcpServers(payload: Record<string, unknown>): DelegationPayloadMcpServer[] {
+  const context = payload["agent_profile_context"];
+  if (!isPlainObject(context)) {
+    return [];
+  }
+
+  const rawServers = context["mcp_servers"];
+  if (!Array.isArray(rawServers)) {
+    return [];
+  }
+
+  const servers: DelegationPayloadMcpServer[] = [];
+  for (const rawServer of rawServers) {
+    if (!isPlainObject(rawServer)) {
+      continue;
+    }
+
+    const name = asNonEmptyString(rawServer["name"]);
+    const transportRaw = asNonEmptyString(rawServer["transport"])?.toLowerCase();
+    const endpoint = asNonEmptyString(rawServer["endpoint_or_command"]);
+    if (!name || !endpoint || (transportRaw !== "stdio" && transportRaw !== "http")) {
+      continue;
+    }
+
+    const configCandidate = rawServer["config_json"];
+    servers.push({
+      name,
+      transport: transportRaw,
+      endpoint_or_command: endpoint,
+      is_required: rawServer["is_required"] === true,
+      priority:
+        typeof rawServer["priority"] === "number" && Number.isFinite(rawServer["priority"])
+          ? rawServer["priority"]
+          : 100,
+      config_json: isPlainObject(configCandidate) ? configCandidate : null
+    });
+  }
+
+  return servers.sort((left, right) => {
+    if (left.priority === right.priority) {
+      return left.name.localeCompare(right.name);
+    }
+    return left.priority - right.priority;
+  });
+}
+
+function toTomlSectionKey(name: string, index: number, used: Set<string>): string {
+  const base =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || `server_${index + 1}`;
+  const normalized = /^[a-z]/.test(base) ? base : `s_${base}`;
+  if (!used.has(normalized)) {
+    used.add(normalized);
+    return normalized;
+  }
+
+  let suffix = 2;
+  while (used.has(`${normalized}_${suffix}`)) {
+    suffix += 1;
+  }
+  const key = `${normalized}_${suffix}`;
+  used.add(key);
+  return key;
+}
+
+function escapeTomlString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveOrchestratorMcpCommand(
+  configJson: Record<string, unknown> | null
+): Promise<{ command: string; args: string[] }> {
+  const overrideCommand = asNonEmptyString(configJson?.["command"]);
+  const overrideArgs = asStringArray(configJson?.["args"]) ?? [];
+  if (overrideCommand) {
+    return {
+      command: overrideCommand,
+      args: overrideArgs
+    };
+  }
+
+  const distEntrypoint = path.resolve(process.cwd(), "dist", "mcp", "index.js");
+  if (await pathExists(distEntrypoint)) {
+    return {
+      command: process.execPath,
+      args: [distEntrypoint]
+    };
+  }
+
+  const srcEntrypoint = path.resolve(process.cwd(), "src", "mcp", "index.ts");
+  if (await pathExists(srcEntrypoint)) {
+    return {
+      command: "npx",
+      args: ["tsx", srcEntrypoint]
+    };
+  }
+
+  throw new DelegationExecutionFailure(
+    "EXECUTION_FAILED",
+    "Unable to resolve orchestrator MCP bridge entrypoint (dist/src not found)"
+  );
+}
+
+function buildOrchestratorMcpEnv(options: {
+  config: AppConfig;
+  profileId: string | null;
+  templateId: string;
+  configJson: Record<string, unknown> | null;
+}): Record<string, string> {
+  const env: Record<string, string> = {
+    MCP_ADMIN_TOKEN: options.config.adminToken,
+    MCP_API_BASE_URL:
+      asNonEmptyString(options.configJson?.["api_base_url"]) ??
+      asNonEmptyString(process.env["MCP_API_BASE_URL"]) ??
+      asNonEmptyString(process.env["ORCHESTRATOR_API_BASE_URL"]) ??
+      `http://127.0.0.1:${options.config.port}`,
+    MCP_AGENT_TEMPLATE_ID: options.templateId
+  };
+
+  const profileId = options.profileId ?? asNonEmptyString(options.configJson?.["agent_profile_id"]);
+  if (profileId) {
+    env["MCP_AGENT_PROFILE_ID"] = profileId;
+  }
+
+  const mcpApiKey =
+    asNonEmptyString(options.configJson?.["mcp_api_key"]) ??
+    asNonEmptyString(options.configJson?.["api_key"]);
+  if (mcpApiKey) {
+    env["MCP_API_KEY"] = mcpApiKey;
+  }
+
+  const requestTimeoutMs = asNonEmptyString(options.configJson?.["request_timeout_ms"]);
+  if (requestTimeoutMs) {
+    env["MCP_REQUEST_TIMEOUT_MS"] = requestTimeoutMs;
+  }
+  const maxRetries = asNonEmptyString(options.configJson?.["api_max_retries"]);
+  if (maxRetries) {
+    env["MCP_API_MAX_RETRIES"] = maxRetries;
+  }
+
+  return {
+    ...env,
+    ...asStringRecord(options.configJson?.["env"])
+  };
+}
+
+async function buildRuntimeMcpServers(options: {
+  payload: Record<string, unknown>;
+  config: AppConfig;
+  templateId: string;
+}): Promise<RuntimeMcpServerConfig[]> {
+  const servers = getPayloadMcpServers(options.payload);
+  if (servers.length === 0) {
+    return [];
+  }
+
+  const profileId = getPayloadAgentProfileId(options.payload);
+  const sectionKeys = new Set<string>();
+  const resolved: RuntimeMcpServerConfig[] = [];
+
+  for (let index = 0; index < servers.length; index += 1) {
+    const server = servers[index];
+    if (!server) {
+      continue;
+    }
+
+    const enabled = asBoolean(server.config_json?.["enabled"]);
+    if (enabled === false) {
+      continue;
+    }
+
+    const key = toTomlSectionKey(server.name, index, sectionKeys);
+
+    if (server.transport === "http") {
+      const url = asNonEmptyString(server.config_json?.["url"]) ?? server.endpoint_or_command;
+      if (!url) {
+        if (server.is_required) {
+          throw new DelegationExecutionFailure(
+            "EXECUTION_FAILED",
+            `Required MCP server ${server.name} has empty url`
+          );
+        }
+        continue;
+      }
+
+      resolved.push({
+        key,
+        name: server.name,
+        transport: "http",
+        command: null,
+        args: [],
+        url,
+        env: asStringRecord(server.config_json?.["env"])
+      });
+      continue;
+    }
+
+    const isOrchestratorCore =
+      server.name === ORCHESTRATOR_MCP_SERVER_NAME || server.endpoint_or_command === ORCHESTRATOR_MCP_ENDPOINT;
+    if (isOrchestratorCore) {
+      const command = await resolveOrchestratorMcpCommand(server.config_json);
+      resolved.push({
+        key,
+        name: server.name,
+        transport: "stdio",
+        command: command.command,
+        args: command.args,
+        url: null,
+        env: buildOrchestratorMcpEnv({
+          config: options.config,
+          profileId,
+          templateId: options.templateId,
+          configJson: server.config_json
+        })
+      });
+      continue;
+    }
+
+    const commandOverride = asNonEmptyString(server.config_json?.["command"]);
+    const argsOverride = asStringArray(server.config_json?.["args"]);
+    const parsed = parseShellLikeCommand(commandOverride ?? server.endpoint_or_command);
+    const command = commandOverride ?? parsed.command;
+    const args = argsOverride ?? (commandOverride ? [] : parsed.args);
+    if (!command) {
+      if (server.is_required) {
+        throw new DelegationExecutionFailure(
+          "EXECUTION_FAILED",
+          `Required MCP server ${server.name} has empty command`
+        );
+      }
+      continue;
+    }
+
+    resolved.push({
+      key,
+      name: server.name,
+      transport: "stdio",
+      command,
+      args,
+      url: null,
+      env: asStringRecord(server.config_json?.["env"])
+    });
+  }
+
+  return resolved;
+}
+
+function buildMcpRuntimeConfigToml(servers: RuntimeMcpServerConfig[]): string {
+  const lines: string[] = [];
+
+  for (const server of servers) {
+    lines.push(`[mcp_servers.${server.key}]`);
+    lines.push("enabled = true");
+
+    if (server.transport === "http") {
+      if (!server.url) {
+        continue;
+      }
+      lines.push(`url = "${escapeTomlString(server.url)}"`);
+    } else {
+      if (!server.command) {
+        continue;
+      }
+      lines.push(`command = "${escapeTomlString(server.command)}"`);
+      if (server.args.length > 0) {
+        const serializedArgs = server.args.map((arg) => `"${escapeTomlString(arg)}"`).join(", ");
+        lines.push(`args = [${serializedArgs}]`);
+      }
+    }
+
+    const envEntries = Object.entries(server.env);
+    if (envEntries.length > 0) {
+      lines.push("");
+      lines.push(`[mcp_servers.${server.key}.env]`);
+      for (const [key, value] of envEntries.sort((left, right) => left[0].localeCompare(right[0]))) {
+        lines.push(`${key} = "${escapeTomlString(value)}"`);
+      }
+    }
+
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+function flattenMcpRuntimeEnv(servers: RuntimeMcpServerConfig[]): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const server of servers) {
+    for (const [key, value] of Object.entries(server.env)) {
+      if (env[key] === undefined) {
+        env[key] = value;
+      }
+    }
+  }
+  return env;
 }
 
 function getPayloadPrompt(payload: Record<string, unknown>): string {
@@ -307,7 +762,20 @@ class CodexDelegationExecutor implements DelegationExecutor {
     const executionCwd = payloadCwd ? path.resolve(payloadCwd) : process.cwd();
     await fs.mkdir(executionCwd, { recursive: true });
     const runtimeSecretEnv = getRuntimeSecretEnv(input.payload);
-    const secretRedactionValues = buildSecretRedactionValues(runtimeSecretEnv);
+    const runtimeMcpServers = await buildRuntimeMcpServers({
+      payload: input.payload,
+      config: this.options.config,
+      templateId: input.target_template.id
+    });
+    if (runtimeMcpServers.length > 0) {
+      const mcpConfigToml = buildMcpRuntimeConfigToml(runtimeMcpServers);
+      await fs.writeFile(path.resolve(codexHome, "config.toml"), mcpConfigToml, "utf8");
+    }
+    const runtimeMcpEnv = flattenMcpRuntimeEnv(runtimeMcpServers);
+    const secretRedactionValues = buildSecretRedactionValues({
+      ...runtimeSecretEnv,
+      ...extractSensitiveEnvSubset(runtimeMcpEnv)
+    });
 
     const prompt = getPayloadPrompt(input.payload);
     const lastMessagePath = path.resolve(runRoot, "last-message.txt");
@@ -344,6 +812,7 @@ class CodexDelegationExecutor implements DelegationExecutor {
       env: {
         ...process.env,
         ...runtimeSecretEnv,
+        ...runtimeMcpEnv,
         CODEX_HOME: codexHome,
         HOME: runtimeRoot
       }
@@ -374,7 +843,11 @@ class CodexDelegationExecutor implements DelegationExecutor {
         auth_payload_source: source,
         auth_json_bytes: authJsonBuffer.length,
         sandbox_policy: sandboxPolicy,
-        approval_policy: approvalPolicy
+        approval_policy: approvalPolicy,
+        mcp_servers_configured: runtimeMcpServers.map((server) => ({
+          name: server.name,
+          transport: server.transport
+        }))
       }
     };
   }

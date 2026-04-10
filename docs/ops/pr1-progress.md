@@ -303,6 +303,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - в execution payload добавлены `agent_profile_id` и `agent_profile_context` (MCP servers + runtime script `windows/linux/macos`);
   - prompt обогащается profile-aware контекстом (source policy, доступные MCP, runtime script инструкции);
   - `agent_profile_id` и `agent_profile_context` пишутся в `execution_meta_json` и lifecycle events делегации.
+- [x] Реализован runtime MCP wiring в `DelegationExecutor` для `codex_exec`:
+  - MCP server set из `agent_profile_context` теперь материализуется в `CODEX_HOME/config.toml` перед запуском `codex exec`;
+  - встроенный `orchestrator-core` резолвится в локальный MCP bridge process (`dist/mcp/index.js` или dev fallback) с env-контекстом (`MCP_API_BASE_URL`, `MCP_ADMIN_TOKEN`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`);
+  - metadata делегации дополняется `mcp_servers_configured`, что упрощает диагностику “почему агент не видел MCP tools”.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.

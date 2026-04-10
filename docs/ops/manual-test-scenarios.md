@@ -629,7 +629,7 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/<PROFILE_ID>/scripts" `
 
 ## 3.14 Сценарий A14: Agent Profiles + MCP Server Sets + OS scripts (Phase 2 runtime dispatch)
 
-Статус: доступно на API-уровне + runtime-resolve в `POST /api/delegation/dispatch`.
+Статус: доступно на API-уровне + runtime-resolve + runtime MCP wiring в `codex_exec`.
 
 1. Создай профиль:
 
@@ -781,6 +781,56 @@ $dispatch | ConvertTo-Json -Depth 10
    - присутствует `execution_meta_json.agent_profile_context`;
    - `execution_meta_json.agent_profile_context.profile_id` совпадает с `$profile.id`;
    - в payload выполнения используется `agent_profile_id` и profile-aware prompt (MCP + runtime script).
+
+15. Проверь, что MCP server set реально подключается в `codex_exec` (а не только попадает в metadata):
+
+```powershell
+$taskBody = @{
+  title = "mcp-child-delegation-$(Get-Date -Format HHmmss)"
+  description = "e2e check: agent dispatches child via MCP"
+  project_id = "project"
+  repo_id = "project"
+  priority = 95
+} | ConvertTo-Json
+
+$task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
+
+$prompt = @"
+Вызови один раз MCP инструмент orchestrator.dispatch_agent.
+Используй поля:
+- requester_task_id: $($task.id)
+- capability: reviewer
+- target_selector: {"role":"reviewer","agent_profile_id":"$($profile.id)"}
+- payload: {"execution_mode":"mock","prompt":"child delegation smoke"}
+- priority: 70
+После вызова верни TASK_RESULT:SUCCESS.
+"@
+
+$dispatchBody = @{
+  requester_task_id = $task.id
+  capability = "reviewer"
+  target_selector = @{
+    role = "reviewer"
+    agent_profile_id = $profile.id
+  }
+  payload = @{
+    execution_mode = "codex_exec"
+    prompt = $prompt
+  }
+  priority = 95
+} | ConvertTo-Json -Depth 8
+
+$dispatch = Invoke-RestMethod -Uri "$BASE/api/delegation/dispatch" -Method POST -Headers $HEADERS -Body $dispatchBody
+$delegation = Invoke-RestMethod -Uri "$BASE/api/delegation/$($dispatch.id)" -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
+
+$delegation.execution_meta_json | ConvertTo-Json -Depth 10
+```
+
+Ожидаемо:
+- `status = completed`, `execution_mode = codex_exec`;
+- `result_summary` содержит `TASK_RESULT:SUCCESS`;
+- в `execution_meta_json` присутствует `mcp_servers_configured` с `orchestrator-core`;
+- в БД/карточках делегаций появляется дочерняя делегация (`execution_mode = mock`) для того же `requester_task_id`.
 
 ## 4. Сценарий B: Security boundary
 
