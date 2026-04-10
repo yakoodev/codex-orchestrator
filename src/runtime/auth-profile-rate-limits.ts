@@ -311,10 +311,16 @@ async function readRateLimitsFromAppServer(options: {
     ];
 
     try {
+      if (!child.stdin) {
+        complete(new Error("codex app-server stdin is unavailable"));
+        return;
+      }
+
       for (const rpcRequest of requests) {
         child.stdin.write(`${JSON.stringify(rpcRequest)}\n`);
       }
-      child.stdin.end();
+      // Keep stdin open while waiting for the RPC response.
+      // Closing it too early can terminate app-server before id=2 arrives.
     } catch (error) {
       complete(error);
     }
