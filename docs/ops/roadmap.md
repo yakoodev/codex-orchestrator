@@ -22,6 +22,23 @@
   - streamable HTTP transport и расширение набора MCP tools вынесены в follow-up scope.
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
+## Task Workflow Auto-Dispatch
+- Статус: `completed` (MVP baseline).
+- Цель: убрать ручной шаг запуска делегации после создания задачи.
+- Что реализовано:
+  - встроенный фоновый runner подхватывает задачи в `NEW/QUEUED`;
+  - runner переводит задачу в `ASSIGNED` и вызывает `/api/delegation/dispatch`;
+  - итог делегации синхронизируется обратно в статус задачи:
+    - `completed -> DONE`
+    - `failed -> FAILED_TERMINAL` (или `WAITING_LIMIT`/`BLOCKED` по причинам);
+  - если нет активного auth-профиля, задача автоматически уходит в `WAITING_LIMIT`;
+  - поведение настраивается env-параметрами:
+    - `TASK_AUTODISPATCH_ENABLED`
+    - `TASK_AUTODISPATCH_INTERVAL_MS`
+    - `TASK_AUTODISPATCH_CAPABILITY`.
+- Что остается:
+  - расширить strategy-политику выбора capability/template на основе project/task intent (сейчас baseline: preferred capability + fallback на первый enabled template).
+
 ## Planned: MCP AuthZ ACL v2
 - Статус: `in_progress` (Phase 1+2 backend/runtime реализованы).
 - Цель: перейти от single-token модели MCP к multi-key authorization с точным ACL по методам и profile-aware ограничениями.

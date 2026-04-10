@@ -91,6 +91,15 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `smoke:local` делегации сделаны детерминированными через `payload.execution_mode=mock`, чтобы smoke не зависел от внешней модели.
 - [x] Добавлен пошаговый manual QA guide с точными PowerShell-сценариями: `docs/ops/manual-test-scenarios.md`.
 - [x] Добавлен runtime `DelegationExecutor` с режимами `mock|auto|codex_exec` и timeout policy для реального запуска `codex exec` в `POST /api/delegation/dispatch`.
+- [x] Добавлен встроенный `Task auto-dispatch runner`: новые задачи в `NEW/QUEUED` автоматически подхватываются в фоне, переводятся в `ASSIGNED` и отправляются в `/api/delegation/dispatch` (без ручного запуска dispatch из UI).
+- [x] Для auto-dispatch добавлены env-настройки:
+  - `TASK_AUTODISPATCH_ENABLED` (default `true`);
+  - `TASK_AUTODISPATCH_INTERVAL_MS` (default `5000`);
+  - `TASK_AUTODISPATCH_CAPABILITY` (default `reviewer`).
+- [x] Добавлен failover статусов для авто-раннера:
+  - без активного auth-профиля задача уходит в `WAITING_LIMIT`;
+  - без доступного enabled template задача уходит в `BLOCKED`;
+  - terminal failure dispatch переводит задачу в `FAILED_TERMINAL`, успешное выполнение — в `DONE`.
 - [x] В строгом real режиме делегация использует активный ChatGPT auth профиль из MinIO: runtime читает сохраненный `auth.json`, пишет его в `CODEX_HOME/auth.json` и запускает `codex`.
 - [x] В Docker-образ `bus` добавлен `@openai/codex`, чтобы реальный executor работал в compose-окружении без ручной установки CLI.
 - [x] Добавлены unit/API тесты на injected executor path (`completed`) и terminal fail-path (`AUTH_PROFILE_REQUIRED`) для защиты новой runtime-ветки.

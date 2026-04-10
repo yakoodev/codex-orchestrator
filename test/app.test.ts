@@ -2319,6 +2319,9 @@ describe("smoke-core API", () => {
     codexCommand: "codex",
     workerRuntimeDir: path.resolve(process.cwd(), ".runtime", "workers-test"),
     delegationExecutionTimeoutMs: 60_000,
+    taskAutoDispatchEnabled: false,
+    taskAutoDispatchIntervalMs: 50,
+    taskAutoDispatchCapability: "reviewer",
     telegramEnabled: false,
     telegramBotToken: null,
     telegramProxyUrl: null,
@@ -2772,6 +2775,74 @@ describe("smoke-core API", () => {
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().items).toHaveLength(1);
+  });
+
+  it("auto-dispatches queued tasks and marks them done", async () => {
+    await app.close();
+
+    app = await createApp({
+      config: {
+        ...config,
+        taskAutoDispatchEnabled: true,
+        taskAutoDispatchIntervalMs: 20,
+        taskAutoDispatchCapability: "reviewer"
+      },
+      persistence,
+      storage,
+      publisher,
+      authProfileRateLimitsReader
+    });
+    await app.ready();
+
+    await persistence.createAgentTemplate({
+      name: "auto-dispatch-reviewer",
+      role: "reviewer",
+      model: "gpt-5",
+      system_prompt: "review task",
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+    await persistence.createAuthProfile({
+      label: "auto-dispatch-profile",
+      status: "active",
+      checksum: "checksum-auto-dispatch-profile",
+      storage_path: "auth-profiles/auto-dispatch-profile/auth.json",
+      meta_json: {},
+      uploaded_by: "admin"
+    });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        title: "Auto task",
+        description: "Task should be dispatched automatically",
+        project_id: "project-1",
+        repo_id: "repo-1",
+        priority: 10
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    const taskId = createResponse.json().id as string;
+
+    let task = await persistence.getTaskById(taskId);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      if (task?.status === "DONE") {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      task = await persistence.getTaskById(taskId);
+    }
+
+    expect(task?.status).toBe("DONE");
+    expect(
+      persistence.delegations.some(
+        (delegation) =>
+          delegation.requester_task_id === taskId && delegation.status === "completed"
+      )
+    ).toBe(true);
   });
 
   it("handles task lifecycle endpoints", async () => {

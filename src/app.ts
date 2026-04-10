@@ -496,6 +496,10 @@ const MAX_PROJECT_SECRET_BINDINGS = 128;
 const MAX_RUNTIME_SECRET_ENV_VARS = 64;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PROJECT_SECRET_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
+const TASK_AUTODISPATCH_SOURCE = "task_auto_dispatcher";
+const TASK_AUTODISPATCH_PICKUP_STATUSES = new Set<TaskStatus>(["NEW", "QUEUED"]);
+const TASK_AUTODISPATCH_RUNNING_STATUSES = new Set(["requested", "accepted", "running"]);
+const TASK_AUTODISPATCH_WAITING_LIMIT_ERROR_CODES = new Set(["AUTH_PROFILE_REQUIRED"]);
 const COMPARISON_OPERATORS = new Set<ComparisonOperator>([
   "eq",
   "ne",
@@ -781,6 +785,66 @@ function extractDelegationPrompt(payload: Record<string, unknown>): string | nul
   }
 
   return trimToLimit(prompt, MAX_DELEGATION_PROMPT_LENGTH);
+}
+
+function parseJsonObject(body: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildTaskAutoDispatchPrompt(task: TaskEntity): string {
+  const lines = [
+    "Выполни задачу оркестратора и верни короткий итог выполненной работы.",
+    `task_id: ${task.id}`,
+    `project_id: ${task.project_id}`,
+    `repo_id: ${task.repo_id}`,
+    `branch: ${task.branch ?? "n/a"}`,
+    `priority: ${task.priority}`,
+    "",
+    `Title: ${task.title}`,
+    `Description: ${task.description}`
+  ];
+
+  return trimToLimit(lines.join("\n"), MAX_DELEGATION_PROMPT_LENGTH);
+}
+
+function selectTaskAutoDispatchTemplate(
+  templates: AgentTemplateEntity[],
+  preferredCapability: string
+): AgentTemplateEntity | null {
+  const normalizedPreferred = preferredCapability.trim().toLowerCase();
+  const preferred =
+    templates.find((template) => template.role.trim().toLowerCase() === normalizedPreferred) ?? null;
+  if (preferred) {
+    return preferred;
+  }
+
+  return templates[0] ?? null;
+}
+
+function resolveTaskStatusAfterAutoDispatchFailure(
+  dispatchBody: Record<string, unknown>
+): TaskStatus {
+  const executionMeta = dispatchBody["execution_meta_json"];
+  if (!isPlainObject(executionMeta)) {
+    return "FAILED_TERMINAL";
+  }
+
+  const code = asNonEmptyString(executionMeta["code"]);
+  const reason = asNonEmptyString(executionMeta["reason"]);
+  if (code && TASK_AUTODISPATCH_WAITING_LIMIT_ERROR_CODES.has(code)) {
+    return "WAITING_LIMIT";
+  }
+
+  if (reason === "no_capability_target") {
+    return "BLOCKED";
+  }
+
+  return "FAILED_TERMINAL";
 }
 
 function normalizeAgentRole(role: string): string {
@@ -2443,6 +2507,160 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     return undefined;
+  });
+
+  let taskAutoDispatchTimer: NodeJS.Timeout | null = null;
+  let taskAutoDispatchInFlight = false;
+  let taskAutoDispatchStopped = false;
+
+  const runTaskAutoDispatchTick = async (): Promise<void> => {
+    if (!config.taskAutoDispatchEnabled || taskAutoDispatchStopped || taskAutoDispatchInFlight) {
+      return;
+    }
+
+    taskAutoDispatchInFlight = true;
+    try {
+      const tasks = await persistence.listTasks();
+      const nextTask =
+        tasks
+          .filter((task) => TASK_AUTODISPATCH_PICKUP_STATUSES.has(task.status))
+          .sort((left, right) => {
+            if (left.priority === right.priority) {
+              return left.id.localeCompare(right.id);
+            }
+            return left.priority - right.priority;
+          })[0] ?? null;
+      if (!nextTask) {
+        return;
+      }
+
+      const currentTask = await persistence.getTaskById(nextTask.id);
+      if (!currentTask || !TASK_AUTODISPATCH_PICKUP_STATUSES.has(currentTask.status)) {
+        return;
+      }
+
+      const activeAuthProfile = await persistence.getActiveAuthProfile();
+      if (!activeAuthProfile) {
+        await persistence.updateTaskStatus(currentTask.id, "WAITING_LIMIT");
+        app.log.info(
+          { task_id: currentTask.id },
+          "Task moved to WAITING_LIMIT because no active auth profile is selected"
+        );
+        return;
+      }
+
+      const enabledTemplates = (await persistence.listAgentTemplates()).filter(
+        (template) => template.is_enabled
+      );
+      const targetTemplate = selectTaskAutoDispatchTemplate(
+        enabledTemplates,
+        config.taskAutoDispatchCapability
+      );
+      if (!targetTemplate) {
+        await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
+        app.log.warn(
+          { task_id: currentTask.id },
+          "Task moved to BLOCKED because no enabled agent template exists"
+        );
+        return;
+      }
+
+      const assignedTask = await persistence.updateTaskStatus(currentTask.id, "ASSIGNED");
+      if (!assignedTask) {
+        return;
+      }
+
+      const traceId = `task-auto:${assignedTask.id}:${Date.now()}`;
+      const dispatchResponse = await app.inject({
+        method: "POST",
+        url: "/api/delegation/dispatch",
+        headers: {
+          "x-admin-token": config.adminToken,
+          "x-trace-id": traceId
+        },
+        payload: {
+          requester_task_id: assignedTask.id,
+          capability: targetTemplate.role,
+          target_selector: {
+            agent_template_id: targetTemplate.id
+          },
+          payload: {
+            source: TASK_AUTODISPATCH_SOURCE,
+            task_id: assignedTask.id,
+            prompt: buildTaskAutoDispatchPrompt(assignedTask)
+          }
+        }
+      });
+
+      const dispatchBody = parseJsonObject(dispatchResponse.body);
+      if (dispatchResponse.statusCode !== 202 || !dispatchBody) {
+        await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
+        app.log.error(
+          {
+            task_id: assignedTask.id,
+            status_code: dispatchResponse.statusCode,
+            response_body: dispatchResponse.body
+          },
+          "Task auto-dispatch failed"
+        );
+        return;
+      }
+
+      const delegationStatus = asNonEmptyString(dispatchBody["status"]);
+      if (delegationStatus === "completed") {
+        await persistence.updateTaskStatus(assignedTask.id, "DONE");
+        return;
+      }
+
+      if (delegationStatus === "failed") {
+        const failedTaskStatus = resolveTaskStatusAfterAutoDispatchFailure(dispatchBody);
+        await persistence.updateTaskStatus(assignedTask.id, failedTaskStatus);
+        return;
+      }
+
+      if (delegationStatus && TASK_AUTODISPATCH_RUNNING_STATUSES.has(delegationStatus)) {
+        await persistence.updateTaskStatus(assignedTask.id, "RUNNING");
+        return;
+      }
+
+      await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
+      app.log.error(
+        { task_id: assignedTask.id, delegation_status: delegationStatus ?? null },
+        "Task auto-dispatch returned unsupported delegation status"
+      );
+    } catch (error) {
+      app.log.error({ err: error }, "Task auto-dispatch tick failed");
+    } finally {
+      taskAutoDispatchInFlight = false;
+    }
+  };
+
+  app.addHook("onReady", async () => {
+    if (!config.taskAutoDispatchEnabled) {
+      app.log.info("Task auto-dispatch runner disabled");
+      return;
+    }
+
+    taskAutoDispatchTimer = setInterval(() => {
+      void runTaskAutoDispatchTick();
+    }, config.taskAutoDispatchIntervalMs);
+    taskAutoDispatchTimer.unref?.();
+
+    app.log.info(
+      {
+        interval_ms: config.taskAutoDispatchIntervalMs,
+        capability: config.taskAutoDispatchCapability
+      },
+      "Task auto-dispatch runner started"
+    );
+  });
+
+  app.addHook("onClose", async () => {
+    taskAutoDispatchStopped = true;
+    if (taskAutoDispatchTimer) {
+      clearInterval(taskAutoDispatchTimer);
+      taskAutoDispatchTimer = null;
+    }
   });
 
   app.get("/health/live", async (_request, reply) => {

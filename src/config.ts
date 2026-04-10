@@ -24,6 +24,9 @@ export interface AppConfig {
   codexCommand: string;
   workerRuntimeDir: string;
   delegationExecutionTimeoutMs: number;
+  taskAutoDispatchEnabled: boolean;
+  taskAutoDispatchIntervalMs: number;
+  taskAutoDispatchCapability: string;
   telegramEnabled: boolean;
   telegramBotToken: string | null;
   telegramProxyUrl: string | null;
@@ -129,6 +132,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     codexCommand: env["CODEX_COMMAND"]?.trim() || "codex",
     workerRuntimeDir,
     delegationExecutionTimeoutMs: readInt(env["DELEGATION_EXECUTION_TIMEOUT_MS"], 180000),
+    taskAutoDispatchEnabled: readBool(env["TASK_AUTODISPATCH_ENABLED"], true),
+    taskAutoDispatchIntervalMs: Math.max(250, readInt(env["TASK_AUTODISPATCH_INTERVAL_MS"], 5000)),
+    taskAutoDispatchCapability: env["TASK_AUTODISPATCH_CAPABILITY"]?.trim() || "reviewer",
     telegramEnabled: readBool(env["TG_ENABLED"], Boolean(telegramBotToken)),
     telegramBotToken,
     telegramProxyUrl: readOptionalUrl(env["TG_PROXY_URL"]),
