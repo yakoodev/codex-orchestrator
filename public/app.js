@@ -730,6 +730,47 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, Math.round(num)))
 }
 
+function toObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null
+}
+
+function normalizeAuthProfileBase(label) {
+  const normalized = String(label ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+  return normalized || "profile"
+}
+
+function deriveAuthProfileDisplayId(profile) {
+  const explicit = String(profile?.display_id ?? "").trim()
+  if (explicit) return explicit
+
+  const rawId = String(profile?.id ?? "")
+  const compactId = rawId.toLowerCase().replace(/[^a-z0-9]/g, "")
+  if (!compactId) return rawId || t("task_field_na")
+
+  const suffix = compactId.slice(-5).padStart(5, "0")
+  return `${normalizeAuthProfileBase(profile?.label).slice(0, 40)}-${suffix}`
+}
+
+function normalizeLimitsSnapshot(payload) {
+  const root = toObject(payload)
+  const snapshot = toObject(root?.rate_limits)
+  const primary = toObject(snapshot?.primary)
+  const secondary = toObject(snapshot?.secondary)
+  return {
+    primary_remaining_percent: primary?.remaining_percent ?? null,
+    secondary_remaining_percent: secondary?.remaining_percent ?? null,
+    primary_resets_at_utc: primary?.resets_at_utc ?? null,
+    secondary_resets_at_utc: secondary?.resets_at_utc ?? null,
+    limits_source: typeof snapshot?.source === "string" ? snapshot.source : "live"
+  }
+}
+
 function toNullableString(value) {
   const trimmed = String(value ?? "").trim()
   return trimmed ? trimmed : null
@@ -1610,7 +1651,7 @@ function renderProfiles(items) {
   if (state.page !== "console") return
 
   ui.activeProfile.textContent = state.activeProfile
-    ? t("active_profile_value", { label: state.activeProfile.label, id: state.activeProfile.id })
+    ? t("active_profile_value", { label: state.activeProfile.label, id: deriveAuthProfileDisplayId(state.activeProfile) })
     : t("active_profile_none")
 
   if (!state.profiles.length) {
@@ -1622,12 +1663,13 @@ function renderProfiles(items) {
   ui.profilesBody.innerHTML = state.profiles.map((item) => {
     const active = item.status === "active"
     const current = state.activeProfile?.id === item.id
+    const displayId = deriveAuthProfileDisplayId(item)
     return `<article>
       <div class="task-card-head">
         <div class="profile-title">${escapeHtml(item.label)}</div>
         <div class="action-bar">${current ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>` : ""}<span class="pill ${active ? "pill-active" : ""}">${escapeHtml(active ? t("profile_state_active") : t("profile_state_inactive"))}</span></div>
       </div>
-      <div class="account-meta"><code>${escapeHtml(item.id)}</code></div>
+      <div class="account-meta"><code>${escapeHtml(displayId)}</code></div>
       <div class="action-bar"><button type="button" data-profile-action="activate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_activate"))}</button><button type="button" class="button-ghost" data-profile-action="deactivate" data-profile-id="${escapeHtml(item.id)}">${escapeHtml(t("action_deactivate"))}</button></div>
     </article>`
   }).join("")
@@ -1651,12 +1693,13 @@ function renderFleet(items) {
     const l2 = p2 == null ? t("account_limit_na") : String(p2)
     const r1 = item.primary_resets_at_utc ?? t("task_field_na")
     const r2 = item.secondary_resets_at_utc ?? t("task_field_na")
-    const src = item.limits_error ? `error=${item.limits_error}` : "live"
+    const src = item.limits_error ? `error=${item.limits_error}` : String(item.limits_source ?? "live")
     const current = state.activeProfile?.id === item.id
+    const displayId = deriveAuthProfileDisplayId(item)
 
     return `<article>
       <div class="task-card-head"><div class="account-title">${escapeHtml(item.label)}</div><div class="action-bar">${current ? `<span class="pill pill-active">${escapeHtml(t("active_now"))}</span>` : ""}<span class="pill">${escapeHtml(item.status)}</span></div></div>
-      <div class="account-meta"><code>${escapeHtml(item.id)}</code></div>
+      <div class="account-meta"><code>${escapeHtml(displayId)}</code></div>
       <div class="limit-bars">
         <div class="limit-row"><span class="tiny-label">5H</span><div class="limit-track"><div class="limit-fill" style="width:${p1 ?? 0}%"></div></div><strong>${escapeHtml(l1)}%</strong></div>
         <div class="limit-row"><span class="tiny-label">WEEK</span><div class="limit-track"><div class="limit-fill" style="width:${p2 ?? 0}%"></div></div><strong>${escapeHtml(l2)}%</strong></div>
@@ -2040,9 +2083,17 @@ async function refreshFleet() {
     const fleet = await Promise.all(profiles.map(async (profile) => {
       try {
         const limits = await requestJson(`/api/auth-profiles/chatgpt/${profile.id}/limits`)
-        return { ...profile, ...limits, limits_error: null }
+        return { ...profile, ...normalizeLimitsSnapshot(limits), limits_error: null }
       } catch (error) {
-        return { ...profile, primary_remaining_percent: null, secondary_remaining_percent: null, primary_resets_at_utc: null, secondary_resets_at_utc: null, limits_error: error.message }
+        return {
+          ...profile,
+          primary_remaining_percent: null,
+          secondary_remaining_percent: null,
+          primary_resets_at_utc: null,
+          secondary_resets_at_utc: null,
+          limits_source: null,
+          limits_error: error.message
+        }
       }
     }))
     renderFleet(fleet)

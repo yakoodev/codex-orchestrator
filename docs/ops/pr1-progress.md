@@ -169,6 +169,11 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Завершен unified partial-panel retry/backoff: для `dashboard`, `tasks`, `system`, `full refresh` и `tasks auto-refresh` добавлена повторная подгрузка только упавших панелей без ручного refresh.
 - [x] `Accounts -> Limits` усилен inline-действиями: прямо в карточках лимитов добавлены `activate/deactivate` и быстрый переход в `History` с авто-prefilter по выбранному `profile_id`.
 - [x] `Switch History` переведен на server-side drill-down: `GET /api/auth-profiles/chatgpt/switch-events` поддерживает фильтры `profile_id/status/reason/limit`, UI применяет их при смене фильтров и дает быстрый profile drill-down прямо из карточек history.
+- [x] Исправлен рендер live-лимитов в `Accounts -> Limits`: UI переведен на чтение вложенного `rate_limits.primary/secondary` из `GET /api/auth-profiles/chatgpt/{id}/limits` (вместо legacy flat-полей), проценты 5h/week снова отображаются без `n/a`.
+- [x] Добавлены человекочитаемые ID auth-профилей:
+  - новые профили создаются с ID формата `label-xxxxx` (пример: `smoke-profile-v2-82cqs`);
+  - в API ответы профилей добавлен `display_id` для всех записей (включая legacy cuid-id);
+  - в UI `Accounts` отображается `display_id`, при этом backend-операции продолжают использовать внутренний `id`.
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
 - [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
@@ -290,7 +295,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 ## Planned After PR1 (зафиксировано в roadmap)
 - [~] Карточки запущенных/готовящихся агентов с prompt, активным аккаунтом и логом рассуждения/выполнения (базовые карточки, API и run-level drill-down готовы; остается streaming runtime-логов).
 - [~] Система памяти по проекту и ролям агентов (designer/tester/etc) с использованием в workflow и UI (baseline API/UI + memory-aware dispatch + Telegram integration готовы; остается versioning/history).
-- [~] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (базовые карточки и live limits готовы; остаются inline-экшены и history drill-down).
+- [x] Карточки аккаунтов с fleet-обзором лимитов, статусов и быстрых действий (включая inline activate/deactivate, history drill-down и `display_id`).
 - [x] MCP bridge для агентской работы с оркестратором: доступные агенты, задачи, запуск агентов/делегаций, лимиты (`docs/ops/mcp-agent-bridge.md`) — MVP реализован.
 - [x] Отдельный доменный объект `Project` (registry + API + UI + runtime integration), спецификация: `docs/ops/project-object.md` (Phase A/B/C закрыты).
 - [x] UI Hotfix Pass после Redesign v2 завершен; далее только точечные UI bugfix задачи по фидбеку.

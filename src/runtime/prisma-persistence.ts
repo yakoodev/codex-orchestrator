@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   AgentProfileScriptOs as PrismaAgentProfileScriptOs,
   AgentProfileScriptType as PrismaAgentProfileScriptType,
@@ -95,6 +96,39 @@ import type {
   WorkerEntity
 } from "./contracts";
 import type { TaskStatus } from "../types";
+
+const AUTH_PROFILE_ID_SUFFIX_LENGTH = 5;
+const AUTH_PROFILE_ID_MAX_BASE_LENGTH = 48;
+const AUTH_PROFILE_ID_CREATE_ATTEMPTS = 8;
+
+function normalizeAuthProfileIdBase(label: string): string {
+  const normalized = label
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  const trimmed = normalized
+    .slice(0, AUTH_PROFILE_ID_MAX_BASE_LENGTH)
+    .replace(/-+$/g, "");
+  return trimmed || "profile";
+}
+
+function randomAlphaNumeric(length: number): string {
+  let value = "";
+  while (value.length < length) {
+    value += randomBytes(length)
+      .toString("base64url")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  }
+  return value.slice(0, length);
+}
+
+function buildAuthProfileIdCandidate(label: string): string {
+  return `${normalizeAuthProfileIdBase(label)}-${randomAlphaNumeric(AUTH_PROFILE_ID_SUFFIX_LENGTH)}`;
+}
 
 function toTaskEntity(task: {
   id: string;
@@ -2750,18 +2784,30 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async createAuthProfile(input: CreateAuthProfileInput): Promise<AuthProfileEntity> {
-    const created = await this.prisma.chatGptAuthProfile.create({
-      data: {
-        label: input.label,
-        status: input.status,
-        checksum: input.checksum,
-        storage_path: input.storage_path,
-        meta_json: input.meta_json as Prisma.InputJsonValue,
-        uploaded_by: input.uploaded_by
+    for (let attempt = 0; attempt < AUTH_PROFILE_ID_CREATE_ATTEMPTS; attempt += 1) {
+      const candidateId = buildAuthProfileIdCandidate(input.label);
+      try {
+        const created = await this.prisma.chatGptAuthProfile.create({
+          data: {
+            id: candidateId,
+            label: input.label,
+            status: input.status,
+            checksum: input.checksum,
+            storage_path: input.storage_path,
+            meta_json: input.meta_json as Prisma.InputJsonValue,
+            uploaded_by: input.uploaded_by
+          }
+        });
+        return toAuthProfileEntity(created);
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          continue;
+        }
+        throw error;
       }
-    });
+    }
 
-    return toAuthProfileEntity(created);
+    throw new Error("Failed to allocate unique auth profile id");
   }
 
   public async listAuthProfiles(): Promise<AuthProfileEntity[]> {

@@ -2303,9 +2303,24 @@ function moduleExecutionToResponse(execution: ModuleExecutionEntity): Record<str
   };
 }
 
+function toAuthProfileDisplayId(label: string, id: string): string {
+  const normalizedLabel = label
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  const base = (normalizedLabel || "profile").slice(0, 40);
+  const compactId = id.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const suffix = compactId.slice(-5).padStart(5, "0");
+  return `${base}-${suffix}`;
+}
+
 function authProfileToResponse(profile: AuthProfileEntity): Record<string, unknown> {
   return {
     id: profile.id,
+    display_id: toAuthProfileDisplayId(profile.label, profile.id),
     label: profile.label,
     status: profile.status,
     checksum: profile.checksum,
@@ -4298,7 +4313,13 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return sendError(reply, 404, "Profile not found", "NOT_FOUND");
       }
 
-      return reply.send(limits);
+      return reply.send({
+        ...limits,
+        profile: {
+          ...limits.profile,
+          display_id: toAuthProfileDisplayId(limits.profile.label, limits.profile.id)
+        }
+      });
     } catch (error) {
       if (error instanceof AuthProfileRateLimitsError && error.code === "PROFILE_PAYLOAD_INVALID") {
         request.log.error({ err: error, profile_id: id }, "Stored auth profile payload is invalid");
