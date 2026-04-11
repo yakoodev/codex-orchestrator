@@ -3198,6 +3198,27 @@ describe("smoke-core API", () => {
     expect(response.json().code).toBe("VALIDATION_ERROR");
   });
 
+  it("rejects dispatch when payload prompt/task is missing", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/delegation/dispatch",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-missing-dispatch-prompt" },
+      payload: {
+        requester_task_id: "task-missing-dispatch-prompt",
+        capability: "reviewer",
+        target_selector: { role: "reviewer" },
+        payload: {
+          instructions: "run review",
+          input_file: "C:/tmp/news.txt"
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("VALIDATION_ERROR");
+    expect(response.json().error).toContain("payload.prompt or payload.task");
+  });
+
   it("handles task lifecycle endpoints", async () => {
     const task = await persistence.createTask({
       title: "Lifecycle task",

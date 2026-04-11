@@ -7607,6 +7607,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       );
     }
     const inputPrompt = extractDelegationPrompt(payload);
+    if (!inputPrompt) {
+      return sendError(
+        reply,
+        400,
+        "payload.prompt or payload.task is required and must be non-empty",
+        "VALIDATION_ERROR"
+      );
+    }
 
     const delegation = await persistence.createDelegationRequest({
       requester_task_id: requesterTaskId,

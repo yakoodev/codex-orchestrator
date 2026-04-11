@@ -308,6 +308,13 @@ npm run mcp:serve
 - MCP возвращает `REQUEST_VALIDATION_FAILED`;
 - делегация в backend не создается.
 
+6.3. Негативный REST-кейс: вызови `POST /api/delegation/dispatch` напрямую с payload без `prompt/task` (например только `instructions`).
+
+Ожидаемо:
+- API возвращает `400 VALIDATION_ERROR`;
+- сообщение ошибки содержит `payload.prompt or payload.task is required`;
+- делегация в backend не создается (закрыт обход MCP-guard через прямой REST).
+
 7. Вызови MCP tool `orchestrator.get_limits`:
    - вариант 1: `{ "profile_id": "<profile-id>" }`;
    - вариант 2: `{ "include_inactive": true, "limit_profiles": 10 }`.
