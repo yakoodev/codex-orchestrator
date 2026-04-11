@@ -1,6 +1,6 @@
 # Product Roadmap (Post-PR1)
 
-Обновлено: 2026-04-10  
+Обновлено: 2026-04-11  
 Статус PR1: в активной реализации (API-first).
 
 Этот roadmap фиксирует ближайшие продуктовые улучшения после закрытия PR1.
@@ -40,6 +40,24 @@
     - `TASK_AUTODISPATCH_CAPABILITY`.
 - Что остается:
   - расширить strategy-политику выбора capability/template на основе project/task intent (сейчас baseline: preferred capability + fallback на первый enabled template).
+
+## Orchestrator Setup v1: Autostart + Auto-switch + Schedules
+- Статус: `in_progress` (код реализован, идет manual acceptance на живом контуре).
+- Цель: полностью автоматический операционный контур:
+  - task auto-start после создания;
+  - auto-switch auth-профиля при лимитном давлении;
+  - создание и запуск задач по расписанию (project-scope).
+- Что реализовано:
+  - backend `auth-switch runner` с mutex и таймером;
+  - расширенный switch config (`eligible_profile_ids`, пороги, `probe_interval_sec`, `switch_cooldown_sec`);
+  - правило выбора кандидата: `max 5h -> max week`;
+  - fallback в `WAITING_LIMIT` при отсутствии валидного профиля;
+  - `POST /api/schedules/{id}/trigger` теперь реально создает task при `matched=true`;
+  - в `ScheduledRule` добавлен task-шаблон (`task_title`, `task_description`, `task_repo_id`, `task_branch`, `task_priority`);
+  - UI: маршрут `#/schedules` + policy-блок в `Accounts -> Limits`.
+- Что остается:
+  - операционная обкатка на реальном стенде (`docker compose up -d` + manual сценарии);
+  - точечные багфиксы по обратной связи после первой приемки.
 
 ## Planned: MCP AuthZ ACL v2
 - Статус: `in_progress` (Phase 1+2 backend/runtime реализованы).
@@ -256,6 +274,7 @@
   - `#/dashboard`
   - `#/projects`
   - `#/tasks`
+  - `#/schedules`
   - `#/agents`
   - `#/agent-profiles`
   - `#/accounts`

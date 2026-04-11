@@ -19,6 +19,8 @@ export interface AppConfig {
   switchWeeklyRemainingPercentLt: number;
   switchFiveHourRemainingPercentLt: number;
   switchResetGuardHours: number;
+  switchProbeIntervalSec: number;
+  switchCooldownSec: number;
   openApiPath: string;
   delegationExecutorMode: "mock" | "auto" | "codex_exec";
   codexCommand: string;
@@ -28,6 +30,8 @@ export interface AppConfig {
   taskAutoDispatchIntervalMs: number;
   taskAutoDispatchCapability: string;
   taskAutoDispatchExecutionMode: "mock" | "auto" | "codex_exec";
+  scheduleRunnerEnabled: boolean;
+  scheduleRunnerIntervalMs: number;
   telegramEnabled: boolean;
   telegramBotToken: string | null;
   telegramProxyUrl: string | null;
@@ -137,6 +141,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     switchWeeklyRemainingPercentLt: readInt(env["SWITCH_WEEKLY_REMAINING_PERCENT_LT"], 5),
     switchFiveHourRemainingPercentLt: readInt(env["SWITCH_FIVE_HOUR_REMAINING_PERCENT_LT"], 10),
     switchResetGuardHours: readInt(env["SWITCH_RESET_GUARD_HOURS"], 3),
+    switchProbeIntervalSec: Math.max(5, readInt(env["SWITCH_PROBE_INTERVAL_SEC"], 60)),
+    switchCooldownSec: Math.max(0, readInt(env["SWITCH_COOLDOWN_SEC"], 120)),
     openApiPath:
       env["OPENAPI_CONTRACT_PATH"] ??
       path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml"),
@@ -150,6 +156,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     taskAutoDispatchExecutionMode: readTaskAutoDispatchExecutionMode(
       env["TASK_AUTODISPATCH_EXECUTION_MODE"]
     ),
+    scheduleRunnerEnabled: readBool(env["SCHEDULE_RUNNER_ENABLED"], true),
+    scheduleRunnerIntervalMs: Math.max(1_000, readInt(env["SCHEDULE_RUNNER_INTERVAL_MS"], 30_000)),
     telegramEnabled: readBool(env["TG_ENABLED"], Boolean(telegramBotToken)),
     telegramBotToken,
     telegramProxyUrl: readOptionalUrl(env["TG_PROXY_URL"]),

@@ -741,6 +741,11 @@ function toScheduledRuleEntity(entity: {
   rule_ast: Prisma.JsonValue;
   target_agent_template_id: string | null;
   fallback_role: string | null;
+  task_title: string | null;
+  task_description: string | null;
+  task_repo_id: string | null;
+  task_branch: string | null;
+  task_priority: number;
   overlap_policy: PrismaScheduleOverlapPolicy;
   misfire_policy: PrismaScheduleMisfirePolicy;
   created_by: string;
@@ -756,6 +761,11 @@ function toScheduledRuleEntity(entity: {
     rule_ast: entity.rule_ast as Record<string, unknown>,
     target_agent_template_id: entity.target_agent_template_id,
     fallback_role: entity.fallback_role,
+    task_title: entity.task_title,
+    task_description: entity.task_description,
+    task_repo_id: entity.task_repo_id,
+    task_branch: entity.task_branch,
+    task_priority: entity.task_priority,
     overlap_policy: entity.overlap_policy as ScheduleOverlapPolicy,
     misfire_policy: entity.misfire_policy as ScheduleMisfirePolicy,
     created_by: entity.created_by,
@@ -2524,6 +2534,11 @@ export class PrismaPersistence implements Persistence {
         rule_ast: input.rule_ast as Prisma.InputJsonValue,
         target_agent_template_id: input.target_agent_template_id ?? null,
         fallback_role: input.fallback_role ?? null,
+        task_title: input.task_title ?? null,
+        task_description: input.task_description ?? null,
+        task_repo_id: input.task_repo_id ?? null,
+        task_branch: input.task_branch ?? null,
+        task_priority: input.task_priority ?? 100,
         overlap_policy: input.overlap_policy as PrismaScheduleOverlapPolicy,
         misfire_policy: input.misfire_policy as PrismaScheduleMisfirePolicy,
         created_by: input.created_by
@@ -2560,6 +2575,11 @@ export class PrismaPersistence implements Persistence {
       rule_ast?: Record<string, unknown>;
       target_agent_template_id?: string | null;
       fallback_role?: string | null;
+      task_title?: string | null;
+      task_description?: string | null;
+      task_repo_id?: string | null;
+      task_branch?: string | null;
+      task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
     }
@@ -2579,6 +2599,11 @@ export class PrismaPersistence implements Persistence {
         rule_ast: patch.rule_ast as Prisma.InputJsonValue | undefined,
         target_agent_template_id: patch.target_agent_template_id,
         fallback_role: patch.fallback_role,
+        task_title: patch.task_title,
+        task_description: patch.task_description,
+        task_repo_id: patch.task_repo_id,
+        task_branch: patch.task_branch,
+        task_priority: patch.task_priority,
         overlap_policy: patch.overlap_policy as PrismaScheduleOverlapPolicy | undefined,
         misfire_policy: patch.misfire_policy as PrismaScheduleMisfirePolicy | undefined
       }
@@ -2654,6 +2679,42 @@ export class PrismaPersistence implements Persistence {
     }
 
     return toScheduledRunEntity(run);
+  }
+
+  public async updateScheduledRun(
+    id: string,
+    patch: {
+      created_task_id?: string | null;
+      status?: ScheduledRunStatus;
+      ended_at?: Date | null;
+      skip_reason?: string | null;
+      result_json?: Record<string, unknown> | null;
+    }
+  ): Promise<ScheduledRunEntity | null> {
+    const existing = await this.prisma.scheduledRun.findUnique({
+      where: { id }
+    });
+    if (!existing) {
+      return null;
+    }
+
+    const updated = await this.prisma.scheduledRun.update({
+      where: { id },
+      data: {
+        created_task_id: patch.created_task_id,
+        status: patch.status as PrismaScheduledRunStatus | undefined,
+        ended_at: patch.ended_at,
+        skip_reason: patch.skip_reason,
+        result_json:
+          patch.result_json === undefined
+            ? undefined
+            : ((patch.result_json ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput)
+      }
+    });
+
+    return toScheduledRunEntity(updated);
   }
 
   public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {

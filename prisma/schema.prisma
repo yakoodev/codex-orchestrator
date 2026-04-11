@@ -569,6 +569,11 @@ model ScheduledRule {
   rule_ast                 Json
   target_agent_template_id String?
   fallback_role            String?
+  task_title               String?
+  task_description         String?
+  task_repo_id             String?
+  task_branch              String?
+  task_priority            Int                  @default(100)
   overlap_policy           ScheduleOverlapPolicy
   misfire_policy           ScheduleMisfirePolicy
   created_by               String

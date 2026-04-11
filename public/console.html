@@ -20,6 +20,7 @@
           <a href="#/dashboard" class="route-link" data-route-link="dashboard" data-i18n="route_dashboard">Обзор</a>
           <a href="#/projects" class="route-link" data-route-link="projects" data-i18n="route_projects">Проекты</a>
           <a href="#/tasks" class="route-link" data-route-link="tasks" data-i18n="route_tasks">Задачи</a>
+          <a href="#/schedules" class="route-link" data-route-link="schedules" data-i18n="route_schedules">Расписания</a>
           <a href="#/agents" class="route-link" data-route-link="agents" data-i18n="route_agents">Агенты</a>
           <a href="#/agent-profiles" class="route-link" data-route-link="agent-profiles" data-i18n="route_agent_profiles">Профили агентов</a>
           <a href="#/accounts" class="route-link" data-route-link="accounts" data-i18n="route_accounts">Аккаунты</a>
@@ -364,6 +365,79 @@
                     Выбери карточку задачи, чтобы посмотреть детали.
                   </div>
                 </section>
+              </article>
+            </div>
+          </section>
+
+          <section class="screen-panel" data-screen="schedules" hidden>
+            <div class="panel-head">
+              <h3 data-i18n="schedules_title">Расписания</h3>
+              <div class="action-bar">
+                <span id="schedules-panel-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                <button id="refresh-schedules" class="button-ghost" data-i18n="refresh">Обновить</button>
+              </div>
+            </div>
+
+            <div class="schedules-layout">
+              <article class="surface-card">
+                <details id="schedule-create-shell" class="compact-collapse" open>
+                  <summary data-i18n="schedules_create_toggle">Создать правило</summary>
+                  <form id="schedule-create-form" class="form-grid">
+                    <div class="split-2">
+                      <div>
+                        <label for="schedule-name" data-i18n="schedule_name_label">Название правила</label>
+                        <input id="schedule-name" name="name" required />
+                      </div>
+                      <div>
+                        <label for="schedule-project" data-i18n="schedule_project_label">Проект</label>
+                        <select id="schedule-project" name="project_id" required></select>
+                      </div>
+                    </div>
+
+                    <label for="schedule-cron" data-i18n="schedule_cron_label">CRON (UTC)</label>
+                    <input id="schedule-cron" name="cron" placeholder="0 * * * *" required />
+
+                    <div class="split-2">
+                      <div>
+                        <label for="schedule-task-title" data-i18n="schedule_task_title_label">Заголовок задачи</label>
+                        <input id="schedule-task-title" name="task_title" required />
+                      </div>
+                      <div>
+                        <label for="schedule-task-repo" data-i18n="schedule_task_repo_label">Repo ID</label>
+                        <input id="schedule-task-repo" name="task_repo_id" required />
+                      </div>
+                    </div>
+
+                    <label for="schedule-task-description" data-i18n="schedule_task_description_label">Описание задачи</label>
+                    <textarea id="schedule-task-description" name="task_description" rows="3" required></textarea>
+
+                    <div class="split-2">
+                      <div>
+                        <label for="schedule-task-branch" data-i18n="schedule_task_branch_label">Ветка (опционально)</label>
+                        <input id="schedule-task-branch" name="task_branch" />
+                      </div>
+                      <div>
+                        <label for="schedule-task-priority" data-i18n="schedule_task_priority_label">Приоритет</label>
+                        <input id="schedule-task-priority" name="task_priority" type="number" min="1" value="100" required />
+                      </div>
+                    </div>
+
+                    <button type="submit" data-i18n="schedule_create_action">Создать правило</button>
+                  </form>
+                </details>
+              </article>
+
+              <article class="surface-card">
+                <p class="tiny-label" data-i18n="schedule_rules_title">Активные правила</p>
+                <ul id="schedules-list" class="compact-list fixed-list"></ul>
+              </article>
+
+              <article class="surface-card">
+                <div class="panel-head compact">
+                  <h4 data-i18n="schedule_runs_title">История запусков</h4>
+                  <button id="refresh-schedule-runs" class="button-ghost" data-i18n="refresh">Обновить</button>
+                </div>
+                <ul id="schedule-runs-list" class="compact-list fixed-list"></ul>
               </article>
             </div>
           </section>
@@ -716,6 +790,57 @@
                   <button id="refresh-account-fleet" class="button-ghost" data-i18n="refresh">Обновить</button>
                 </div>
               </div>
+              <section class="inset-panel switch-policy-panel">
+                <div class="panel-head compact">
+                  <h4 data-i18n="accounts_policy_title">Политика auto-switch</h4>
+                  <span id="switch-policy-state" class="panel-state panel-state-idle" data-i18n="panel_state_idle">idle</span>
+                </div>
+
+                <form id="switch-policy-form" class="form-grid">
+                  <label class="toggle">
+                    <input id="switch-policy-enabled" type="checkbox" />
+                    <span data-i18n="switch_policy_enabled">Авто-переключение включено</span>
+                  </label>
+
+                  <div>
+                    <p class="tiny-label" data-i18n="switch_policy_eligible">Валидные профили для авто-switch</p>
+                    <div id="switch-policy-eligible" class="checkbox-grid"></div>
+                  </div>
+
+                  <div class="split-2">
+                    <div>
+                      <label for="switch-policy-five" data-i18n="switch_policy_five_label">Порог 5ч (%)</label>
+                      <input id="switch-policy-five" type="number" min="0" max="100" value="10" required />
+                    </div>
+                    <div>
+                      <label for="switch-policy-week" data-i18n="switch_policy_week_label">Порог недели (%)</label>
+                      <input id="switch-policy-week" type="number" min="0" max="100" value="5" required />
+                    </div>
+                  </div>
+
+                  <div class="split-2">
+                    <div>
+                      <label for="switch-policy-guard" data-i18n="switch_policy_guard_label">Reset guard (ч)</label>
+                      <input id="switch-policy-guard" type="number" min="0" max="720" value="3" required />
+                    </div>
+                    <div>
+                      <label for="switch-policy-probe" data-i18n="switch_policy_probe_label">Probe interval (сек)</label>
+                      <input id="switch-policy-probe" type="number" min="5" max="3600" value="60" required />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label for="switch-policy-cooldown" data-i18n="switch_policy_cooldown_label">Cooldown (сек)</label>
+                    <input id="switch-policy-cooldown" type="number" min="0" max="3600" value="120" required />
+                  </div>
+
+                  <button id="switch-policy-save" type="submit" data-i18n="switch_policy_save">Сохранить политику</button>
+                </form>
+
+                <p id="switch-policy-last" class="meta-note" data-i18n="switch_policy_last_empty">
+                  Решений auto-switch пока нет.
+                </p>
+              </section>
               <div id="account-fleet" class="cards-grid"></div>
             </article>
 

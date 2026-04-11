@@ -15,9 +15,17 @@
       "type": "string",
       "enum": ["global"]
     },
-    "thresholds": {
+    "config_json": {
       "type": "object",
       "properties": {
+        "eligible_profile_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
         "weekly_remaining_percent_lt": {
           "type": "number",
           "minimum": 0,
@@ -34,25 +42,29 @@
           "type": "number",
           "minimum": 0,
           "default": 3
+        },
+        "probe_interval_sec": {
+          "type": "number",
+          "minimum": 5,
+          "default": 60
+        },
+        "switch_cooldown_sec": {
+          "type": "number",
+          "minimum": 0,
+          "default": 120
         }
       },
       "required": [
+        "eligible_profile_ids",
         "weekly_remaining_percent_lt",
         "five_hour_remaining_percent_lt",
-        "reset_guard_hours"
+        "reset_guard_hours",
+        "probe_interval_sec",
+        "switch_cooldown_sec"
       ],
-      "additionalProperties": false
-    },
-    "notifications": {
-      "type": "object",
-      "properties": {
-        "web_enabled": { "type": "boolean", "default": true },
-        "telegram_enabled": { "type": "boolean", "default": true }
-      },
-      "required": ["web_enabled", "telegram_enabled"],
       "additionalProperties": false
     }
   },
-  "required": ["module_key", "is_enabled", "scope", "thresholds", "notifications"],
+  "required": ["module_key", "is_enabled", "scope", "config_json"],
   "additionalProperties": false
 }

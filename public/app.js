@@ -1,6 +1,6 @@
 
 const SWITCH_MODULE_KEY = "switch_chatgpt_auth_on_limit"
-const ROUTES = ["dashboard", "projects", "tasks", "agents", "agent-profiles", "accounts", "secrets", "memory", "system", "logs"]
+const ROUTES = ["dashboard", "projects", "tasks", "schedules", "agents", "agent-profiles", "accounts", "secrets", "memory", "system", "logs"]
 const ACCOUNT_SECTIONS = ["profiles", "limits", "history"]
 const AUTOREFRESH_INTERVAL_MS = 15000
 const MAX_LOGS = 500
@@ -35,6 +35,7 @@ const I18N = {
     route_dashboard: "Обзор",
     route_projects: "Проекты",
     route_tasks: "Задачи",
+    route_schedules: "Расписания",
     route_agents: "Агенты",
     route_agent_profiles: "Профили агентов",
     route_accounts: "Аккаунты",
@@ -45,6 +46,7 @@ const I18N = {
     route_desc_dashboard: "Состояние сервиса и последние сигналы системы.",
     route_desc_projects: "Реестр проектов, summary и проектные настройки.",
     route_desc_tasks: "Создание, фильтрация и управление очередью задач.",
+    route_desc_schedules: "Правила расписаний: создание задач по cron и история запусков.",
     route_desc_agents: "Мониторинг групп агентов и инспектор запуска.",
     route_desc_agent_profiles: "Глобальные профили агентов, MCP server sets и OS-скрипты.",
     route_desc_accounts: "Профили auth.json, лимиты и история переключений.",
@@ -110,6 +112,43 @@ const I18N = {
     task_project_label: "ID проекта",
     task_repo_label: "ID репозитория",
     create_task: "Создать задачу",
+    schedules_title: "Расписания",
+    schedules_create_toggle: "Создать правило",
+    schedule_name_label: "Название правила",
+    schedule_project_label: "Проект",
+    schedule_cron_label: "CRON (UTC)",
+    schedule_task_title_label: "Заголовок задачи",
+    schedule_task_description_label: "Описание задачи",
+    schedule_task_repo_label: "ID репозитория",
+    schedule_task_branch_label: "Ветка (опционально)",
+    schedule_task_priority_label: "Приоритет",
+    schedule_create_action: "Создать правило",
+    schedule_rules_title: "Активные правила",
+    schedule_runs_title: "История запусков",
+    schedule_runs_empty: "Выбери правило, чтобы посмотреть историю запусков.",
+    schedule_list_empty: "Правил пока нет.",
+    schedule_action_trigger: "Запустить",
+    schedule_action_evaluate: "Проверить",
+    schedule_action_enable: "Включить",
+    schedule_action_disable: "Выключить",
+    schedule_action_delete: "Удалить",
+    schedule_field_scope: "Область",
+    schedule_field_cron: "CRON",
+    schedule_field_project: "Проект",
+    schedule_trigger_matched: "matched: {value}",
+    accounts_policy_title: "Политика auto-switch",
+    switch_policy_enabled: "Авто-переключение включено",
+    switch_policy_eligible: "Валидные профили для авто-switch",
+    switch_policy_five_label: "Порог 5ч (%)",
+    switch_policy_week_label: "Порог недели (%)",
+    switch_policy_guard_label: "Reset guard (ч)",
+    switch_policy_probe_label: "Probe interval (сек)",
+    switch_policy_cooldown_label: "Cooldown (сек)",
+    switch_policy_save: "Сохранить политику",
+    switch_policy_last: "Последнее решение: {status} / {reason} ({time})",
+    switch_policy_last_empty: "Решений auto-switch пока нет.",
+    switch_policy_no_profiles: "Нет доступных профилей.",
+    switch_policy_error_eligible_required: "При включенном auto-switch нужно выбрать хотя бы один валидный профиль.",
     task_filter_search_label: "Поиск",
     task_filter_search_placeholder: "id/заголовок/описание",
     task_filter_project_label: "Проект",
@@ -332,6 +371,8 @@ const I18N = {
     log_project_updated: "Проект обновлен",
     log_project_selected: "Проект выбран",
     log_task_created: "Задача создана",
+    log_schedule_created: "Правило расписания создано",
+    log_schedule_action: "Операция с расписанием выполнена",
     log_held_released: "Удержанная очередь освобождена",
     log_profile_uploaded: "Профиль загружен",
     log_profile_action: "Операция с профилем выполнена",
@@ -344,6 +385,7 @@ const I18N = {
     log_memory_created: "Запись памяти создана",
     log_memory_toggled: "Статус записи памяти обновлен",
     log_module_updated: "Конфигурация модуля обновлена",
+    log_switch_policy_saved: "Политика auto-switch сохранена",
     log_logs_cleared: "Логи очищены",
     log_api_response: "Ответ API",
     log_api_compact: "{method} {route} -> {status} ({duration} мс)"
@@ -364,6 +406,7 @@ I18N.en = {
   route_dashboard: "Dashboard",
   route_projects: "Projects",
   route_tasks: "Tasks",
+  route_schedules: "Schedules",
   route_agents: "Agents",
   route_agent_profiles: "Agent Profiles",
   route_accounts: "Accounts",
@@ -374,6 +417,7 @@ I18N.en = {
   route_desc_dashboard: "Service health and latest system signals.",
   route_desc_projects: "Project registry, summary, and project settings.",
   route_desc_tasks: "Create, filter, and operate task queue.",
+  route_desc_schedules: "Schedule rules: create tasks by cron and inspect run history.",
   route_desc_agents: "Monitor preparing/running/recent agents and inspector.",
   route_desc_agent_profiles: "Global agent profiles, MCP server sets, and OS scripts.",
   route_desc_accounts: "auth.json profiles, limits, and switch history.",
@@ -439,6 +483,43 @@ I18N.en = {
   task_project_label: "Project ID",
   task_repo_label: "Repo ID",
   create_task: "Create task",
+  schedules_title: "Schedules",
+  schedules_create_toggle: "Create rule",
+  schedule_name_label: "Rule name",
+  schedule_project_label: "Project",
+  schedule_cron_label: "CRON (UTC)",
+  schedule_task_title_label: "Task title",
+  schedule_task_description_label: "Task description",
+  schedule_task_repo_label: "Repo ID",
+  schedule_task_branch_label: "Branch (optional)",
+  schedule_task_priority_label: "Priority",
+  schedule_create_action: "Create rule",
+  schedule_rules_title: "Active rules",
+  schedule_runs_title: "Run history",
+  schedule_runs_empty: "Select a rule to inspect run history.",
+  schedule_list_empty: "No rules yet.",
+  schedule_action_trigger: "Trigger",
+  schedule_action_evaluate: "Evaluate",
+  schedule_action_enable: "Enable",
+  schedule_action_disable: "Disable",
+  schedule_action_delete: "Delete",
+  schedule_field_scope: "Scope",
+  schedule_field_cron: "CRON",
+  schedule_field_project: "Project",
+  schedule_trigger_matched: "matched: {value}",
+  accounts_policy_title: "Auto-switch policy",
+  switch_policy_enabled: "Auto-switch enabled",
+  switch_policy_eligible: "Eligible profiles for auto-switch",
+  switch_policy_five_label: "5h threshold (%)",
+  switch_policy_week_label: "Week threshold (%)",
+  switch_policy_guard_label: "Reset guard (hours)",
+  switch_policy_probe_label: "Probe interval (sec)",
+  switch_policy_cooldown_label: "Cooldown (sec)",
+  switch_policy_save: "Save policy",
+  switch_policy_last: "Last decision: {status} / {reason} ({time})",
+  switch_policy_last_empty: "No auto-switch decisions yet.",
+  switch_policy_no_profiles: "No profiles available.",
+  switch_policy_error_eligible_required: "When auto-switch is enabled, select at least one eligible profile.",
   task_filter_search_label: "Search",
   task_filter_search_placeholder: "id/title/description",
   task_filter_project_label: "Project",
@@ -644,6 +725,8 @@ I18N.en = {
   log_project_updated: "Project updated",
   log_project_selected: "Project selected",
   log_task_created: "Task created",
+  log_schedule_created: "Schedule rule created",
+  log_schedule_action: "Schedule action completed",
   log_held_released: "Held queue released",
   log_profile_uploaded: "Profile uploaded",
   log_profile_action: "Profile action completed",
@@ -656,6 +739,7 @@ I18N.en = {
   log_memory_created: "Memory entry created",
   log_memory_toggled: "Memory entry state updated",
   log_module_updated: "Module config updated",
+  log_switch_policy_saved: "Auto-switch policy saved",
   log_logs_cleared: "Logs cleared",
   log_api_response: "API response",
   log_api_compact: "{method} {route} -> {status} ({duration} ms)"
@@ -676,11 +760,26 @@ const state = {
   logFilters: { level: "all", scope: "all", search: "" },
   tasks: [],
   held: [],
+  schedules: [],
+  scheduleRuns: [],
+  selectedScheduleId: null,
   agents: { preparing: [], running: [], recent: [] },
   profiles: [],
   activeProfile: null,
   fleet: [],
   switches: [],
+  switchPolicy: {
+    enabled: false,
+    config: {
+      eligible_profile_ids: [],
+      weekly_remaining_percent_lt: 5,
+      five_hour_remaining_percent_lt: 10,
+      reset_guard_hours: 3,
+      probe_interval_sec: 60,
+      switch_cooldown_sec: 120
+    },
+    lastDecision: null
+  },
   secrets: [],
   agentProfiles: [],
   mcpServers: [],
@@ -870,6 +969,28 @@ function parseJsonObjectInput(rawValue, { allowNull = true } = {}) {
   return parsed
 }
 
+function toIntegerInRange(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(min, Math.min(max, parsed))
+}
+
+function normalizeSwitchPolicyConfig(rawValue) {
+  const raw = toObject(rawValue) ?? {}
+  const eligible = Array.isArray(raw.eligible_profile_ids)
+    ? Array.from(new Set(raw.eligible_profile_ids.map((id) => String(id ?? "").trim()).filter(Boolean)))
+    : []
+
+  return {
+    eligible_profile_ids: eligible,
+    weekly_remaining_percent_lt: toIntegerInRange(raw.weekly_remaining_percent_lt, 5, 0, 100),
+    five_hour_remaining_percent_lt: toIntegerInRange(raw.five_hour_remaining_percent_lt, 10, 0, 100),
+    reset_guard_hours: toIntegerInRange(raw.reset_guard_hours, 3, 0, 720),
+    probe_interval_sec: toIntegerInRange(raw.probe_interval_sec, 60, 5, 3600),
+    switch_cooldown_sec: toIntegerInRange(raw.switch_cooldown_sec, 120, 0, 3600)
+  }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -943,10 +1064,13 @@ function applyI18n() {
   renderProjects(state.projects)
   renderTasks(state.tasks)
   renderHeld(state.held)
+  renderSchedules(state.schedules)
+  renderScheduleRuns(state.scheduleRuns)
   renderAgents(state.agents)
   renderAgentProfiles(state.agentProfiles)
   renderProfiles(state.profiles)
   renderFleet(state.fleet)
+  renderSwitchPolicy()
   renderSwitches(state.switches)
   renderSecrets(state.secrets)
   renderMemory(state.memory)
@@ -1037,7 +1161,21 @@ function syncPanelStateLabels() {
 }
 
 function requireTokenPanels() {
-  ;[ui.projectsPanelState, ui.tasksPanelState, ui.heldPanelState, ui.agentsPanelState, ui.agentProfilesPanelState, ui.profilesPanelState, ui.limitsPanelState, ui.eventsPanelState, ui.secretsPanelState, ui.memoryPanelState, ui.modulePanelState].forEach((node) => setPanelState(node, "error", "panel_state_token"))
+  ;[
+    ui.projectsPanelState,
+    ui.tasksPanelState,
+    ui.heldPanelState,
+    ui.schedulesPanelState,
+    ui.agentsPanelState,
+    ui.agentProfilesPanelState,
+    ui.profilesPanelState,
+    ui.limitsPanelState,
+    ui.switchPolicyState,
+    ui.eventsPanelState,
+    ui.secretsPanelState,
+    ui.memoryPanelState,
+    ui.modulePanelState
+  ].forEach((node) => setPanelState(node, "error", "panel_state_token"))
 }
 
 async function withPanel(node, scope, fn) {
@@ -1210,13 +1348,16 @@ function syncProjectBindings() {
 
   const taskProject = applyProjectSelect(ui.taskProject, activeKeys, ui.taskProject?.value ?? "", t("project_option_none"))
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
+  const scheduleProject = applyProjectSelect(ui.scheduleProject, activeKeys, ui.scheduleProject?.value ?? "", t("project_option_none"))
   const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
+  const scheduleSubmit = ui.scheduleCreateForm?.querySelector('button[type="submit"]')
   const secretSubmit = ui.secretCreateForm?.querySelector('button[type="submit"]')
   if (taskSubmit) taskSubmit.disabled = !taskProject
   if (memorySubmit) memorySubmit.disabled = !memoryProject
+  if (scheduleSubmit) scheduleSubmit.disabled = !scheduleProject
   if (secretSubmit) secretSubmit.disabled = !secretsProject
   state.secretsFilters.project = secretsProject
 
@@ -1409,6 +1550,103 @@ function renderHeld(items) {
   ui.heldSummary.textContent = t("held_summary_count", { count: state.held.length })
   ui.heldList.innerHTML = state.held.map((task) => `<li><div class="task-card-head"><span class="pill">${escapeHtml(task.status)}</span><code>${escapeHtml(task.id)}</code></div><div>${escapeHtml(task.title)}</div></li>`).join("")
   updateStats()
+}
+
+function extractScheduleCron(ruleAst) {
+  if (!ruleAst || typeof ruleAst !== "object") return null
+  if (ruleAst.predicate === "time.cron" && typeof ruleAst.value === "string") return ruleAst.value
+  if (Array.isArray(ruleAst.conditions)) {
+    const cronNode = ruleAst.conditions.find((item) => item?.predicate === "time.cron" && typeof item?.value === "string")
+    if (cronNode) return cronNode.value
+  }
+  if (Array.isArray(ruleAst.all)) {
+    for (const child of ruleAst.all) {
+      const cron = extractScheduleCron(child)
+      if (cron) return cron
+    }
+  }
+  if (Array.isArray(ruleAst.any)) {
+    for (const child of ruleAst.any) {
+      const cron = extractScheduleCron(child)
+      if (cron) return cron
+    }
+  }
+  if (ruleAst.not && typeof ruleAst.not === "object") {
+    return extractScheduleCron(ruleAst.not)
+  }
+  return null
+}
+
+function renderSchedules(items) {
+  state.schedules = Array.isArray(items) ? [...items] : []
+  if (state.page !== "console") return
+  if (!ui.schedulesList || !ui.scheduleRunsList) return
+
+  syncProjectBindings()
+
+  if (!state.schedules.length) {
+    state.selectedScheduleId = null
+    state.scheduleRuns = []
+    ui.schedulesList.innerHTML = `<li class="meta-note">${escapeHtml(t("schedule_list_empty"))}</li>`
+    ui.scheduleRunsList.innerHTML = `<li class="meta-note">${escapeHtml(t("schedule_runs_empty"))}</li>`
+    return
+  }
+
+  if (!state.schedules.some((item) => item.id === state.selectedScheduleId)) {
+    state.selectedScheduleId = state.schedules[0].id
+  }
+
+  const sorted = [...state.schedules].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
+  ui.schedulesList.innerHTML = sorted.map((rule) => {
+    const selected = rule.id === state.selectedScheduleId
+    const enabled = rule.is_enabled === true
+    const cron = extractScheduleCron(rule.rule_ast) ?? t("task_field_na")
+    return `<li class="schedule-item ${selected ? "task-card-selected" : ""}" data-schedule-id="${escapeHtml(rule.id)}">
+      <div class="task-card-head">
+        <div class="task-card-title">${escapeHtml(rule.name ?? rule.id)}</div>
+        <div class="action-bar">
+          <span class="pill ${enabled ? "pill-active" : ""}">${escapeHtml(enabled ? t("profile_state_active") : t("profile_state_inactive"))}</span>
+          <span class="pill">${escapeHtml(rule.scope ?? t("task_field_na"))}</span>
+        </div>
+      </div>
+      <div class="meta-note">${escapeHtml(t("schedule_field_project"))}: <code>${escapeHtml(rule.project_id ?? t("task_field_na"))}</code></div>
+      <div class="meta-note">${escapeHtml(t("schedule_field_cron"))}: <code>${escapeHtml(cron)}</code></div>
+      <div class="action-bar">
+        <button type="button" class="button-ghost" data-schedule-action="trigger" data-schedule-id="${escapeHtml(rule.id)}">${escapeHtml(t("schedule_action_trigger"))}</button>
+        <button type="button" class="button-ghost" data-schedule-action="evaluate" data-schedule-id="${escapeHtml(rule.id)}">${escapeHtml(t("schedule_action_evaluate"))}</button>
+        <button type="button" class="button-ghost" data-schedule-action="${enabled ? "disable" : "enable"}" data-schedule-id="${escapeHtml(rule.id)}">${escapeHtml(t(enabled ? "schedule_action_disable" : "schedule_action_enable"))}</button>
+        <button type="button" class="button-danger" data-schedule-action="delete" data-schedule-id="${escapeHtml(rule.id)}">${escapeHtml(t("schedule_action_delete"))}</button>
+      </div>
+    </li>`
+  }).join("")
+}
+
+function renderScheduleRuns(items) {
+  state.scheduleRuns = Array.isArray(items) ? items : []
+  if (state.page !== "console") return
+  if (!ui.scheduleRunsList) return
+
+  if (!state.selectedScheduleId) {
+    ui.scheduleRunsList.innerHTML = `<li class="meta-note">${escapeHtml(t("schedule_runs_empty"))}</li>`
+    return
+  }
+
+  if (!state.scheduleRuns.length) {
+    ui.scheduleRunsList.innerHTML = `<li class="meta-note">${escapeHtml(t("schedule_runs_empty"))}</li>`
+    return
+  }
+
+  ui.scheduleRunsList.innerHTML = state.scheduleRuns.slice(0, 80).map((run) => {
+    const result = run?.result_json && typeof run.result_json === "object" ? run.result_json : null
+    const matched = typeof result?.matched === "boolean" ? String(result.matched) : t("task_field_na")
+    return `<li>
+      <div class="task-card-head"><span class="pill">${escapeHtml(run.status ?? t("task_field_na"))}</span><span class="meta-note">${escapeHtml(fmtDate(run.started_at))}</span></div>
+      <div class="meta-note"><code>${escapeHtml(run.id ?? t("task_field_na"))}</code></div>
+      <div class="meta-note">${escapeHtml(t("schedule_trigger_matched", { value: matched }))}</div>
+      <div class="meta-note">task_id=${escapeHtml(run.created_task_id ?? t("task_field_na"))}</div>
+      <div class="meta-note">${escapeHtml(run.skip_reason ?? t("task_field_na"))}</div>
+    </li>`
+  }).join("")
 }
 
 function renderAgents(payload) {
@@ -1738,6 +1976,7 @@ function renderProfiles(items) {
   }).join("")
 
   updateStats()
+  renderSwitchPolicy()
 }
 
 function renderFleet(items) {
@@ -1778,6 +2017,55 @@ function renderFleet(items) {
       </div>
     </article>`
   }).join("")
+  renderSwitchPolicy()
+}
+
+function renderSwitchPolicy() {
+  if (state.page !== "console") return
+  if (!ui.switchPolicyForm || !ui.switchPolicyEligible) return
+
+  const config = normalizeSwitchPolicyConfig(state.switchPolicy?.config)
+  state.switchPolicy.config = config
+
+  ui.switchPolicyEnabled.checked = state.switchPolicy.enabled === true
+  ui.switchPolicyFive.value = String(config.five_hour_remaining_percent_lt)
+  ui.switchPolicyWeek.value = String(config.weekly_remaining_percent_lt)
+  ui.switchPolicyGuard.value = String(config.reset_guard_hours)
+  ui.switchPolicyProbe.value = String(config.probe_interval_sec)
+  ui.switchPolicyCooldown.value = String(config.switch_cooldown_sec)
+
+  const profileItems = Array.from(
+    new Map(
+      state.profiles
+        .filter((item) => item?.id)
+        .map((item) => [item.id, item])
+    ).values()
+  )
+
+  if (!profileItems.length) {
+    ui.switchPolicyEligible.innerHTML = `<p class="meta-note">${escapeHtml(t("switch_policy_no_profiles"))}</p>`
+  } else {
+    ui.switchPolicyEligible.innerHTML = profileItems.map((profile) => {
+      const checked = config.eligible_profile_ids.includes(profile.id)
+      const displayId = deriveAuthProfileDisplayId(profile)
+      return `<label class="checkbox-option">
+        <input type="checkbox" data-switch-policy-profile="${escapeHtml(profile.id)}" ${checked ? "checked" : ""} />
+        <span>${escapeHtml(profile.label ?? profile.id)}</span>
+        <code>${escapeHtml(displayId)}</code>
+      </label>`
+    }).join("")
+  }
+
+  const decision = state.switchPolicy.lastDecision
+  if (!decision) {
+    ui.switchPolicyLast.textContent = t("switch_policy_last_empty")
+  } else {
+    ui.switchPolicyLast.textContent = t("switch_policy_last", {
+      status: decision.status ?? t("task_field_na"),
+      reason: decision.reason ?? t("task_field_na"),
+      time: fmtDate(decision.time)
+    })
+  }
 }
 
 function syncSwitchFilters(items) {
@@ -2041,6 +2329,34 @@ async function refreshHeld() {
   return withPanel(ui.heldPanelState, "system", async () => renderHeld((await requestJson("/api/queue/held")).items))
 }
 
+async function refreshScheduleRuns() {
+  if (!state.selectedScheduleId) {
+    renderScheduleRuns([])
+    return []
+  }
+
+  const response = await requestJson(`/api/schedules/${encodeURIComponent(state.selectedScheduleId)}/runs`)
+  const items = Array.isArray(response?.items) ? response.items : []
+  renderScheduleRuns(items)
+  return items
+}
+
+async function refreshSchedulesRoute() {
+  if (state.token) {
+    try {
+      await fetchProjectRegistry({ includeInactive: false })
+    } catch {
+      // best-effort sync for project selector in schedules form
+    }
+  }
+
+  return withPanel(ui.schedulesPanelState, "system", async () => {
+    const response = await requestJson("/api/schedules")
+    renderSchedules(response?.items ?? [])
+    await refreshScheduleRuns()
+  })
+}
+
 async function refreshAgents() {
   return withPanel(ui.agentsPanelState, "system", async () => {
     renderAgents(await requestJson("/api/delegation/cards"))
@@ -2153,6 +2469,45 @@ async function refreshFleet() {
       }
     }))
     renderFleet(fleet)
+  })
+}
+
+async function refreshSwitchPolicy() {
+  return withPanel(ui.switchPolicyState, "system", async () => {
+    let profiles = state.profiles
+    if (!profiles.length) {
+      profiles = (await requestJson("/api/auth-profiles/chatgpt")).items ?? []
+      state.profiles = profiles
+    }
+
+    const module = await requestJson(`/api/custom-modules/${SWITCH_MODULE_KEY}`)
+    const config = normalizeSwitchPolicyConfig(module?.config_json)
+    state.switchPolicy.enabled = module?.is_enabled === true || module?.enabled === true
+    state.switchPolicy.config = config
+    state.switchPolicy.lastDecision = null
+
+    try {
+      const switchesResponse = await requestJson("/api/auth-profiles/chatgpt/switch-events?limit=30")
+      const items = Array.isArray(switchesResponse?.items) ? switchesResponse.items : []
+      const autoDecision = items.find((item) => {
+        const reason = String(item?.reason ?? "")
+        if (reason.startsWith("auto_switch")) return true
+        const details = toObject(item?.details_json)
+        return details?.source === "runner"
+      }) ?? null
+
+      if (autoDecision) {
+        state.switchPolicy.lastDecision = {
+          status: autoDecision.status ?? null,
+          reason: autoDecision.reason ?? null,
+          time: autoDecision.ended_at ?? autoDecision.started_at ?? null
+        }
+      }
+    } catch {
+      // optional call for last decision; keep form interactive even if history API fails
+    }
+
+    renderSwitchPolicy()
   })
 }
 
@@ -2289,11 +2644,17 @@ async function refreshCurrentRoute() {
       { name: "held", run: () => refreshHeld() }
     ])
   }
+  if (state.route === "schedules") return refreshSchedulesRoute()
   if (state.route === "agents") return refreshAgents()
   if (state.route === "agent-profiles") return refreshAgentProfilesRoute()
   if (state.route === "accounts") {
     if (state.section === "profiles") return refreshProfiles()
-    if (state.section === "limits") return refreshFleet()
+    if (state.section === "limits") {
+      return runRefreshGroupWithRetry("accounts_limits", [
+        { name: "fleet", run: () => refreshFleet() },
+        { name: "switch_policy", run: () => refreshSwitchPolicy() }
+      ])
+    }
     return refreshSwitches()
   }
   if (state.route === "secrets") return refreshSecretsRoute()
@@ -2317,10 +2678,12 @@ async function refreshAll() {
     { name: "projects", run: () => refreshProjects() },
     { name: "tasks", run: () => refreshTasks() },
     { name: "held", run: () => refreshHeld() },
+    { name: "schedules", run: () => refreshSchedulesRoute() },
     { name: "agents", run: () => refreshAgents() },
     { name: "agent_profiles", run: () => refreshAgentProfilesRoute() },
     { name: "profiles", run: () => refreshProfiles() },
     { name: "fleet", run: () => refreshFleet() },
+    { name: "switch_policy", run: () => refreshSwitchPolicy() },
     { name: "switches", run: () => refreshSwitches() },
     { name: "secrets", run: () => refreshSecretsRoute() },
     { name: "memory", run: () => refreshMemoryEntries() },
@@ -2424,10 +2787,10 @@ function wireConsoleRefs() {
     statTasks: document.getElementById("stat-tasks"), statHeld: document.getElementById("stat-held"), statProfiles: document.getElementById("stat-profiles"), statEvents: document.getElementById("stat-events"),
     refreshHealth: document.getElementById("refresh-health"), liveStatus: document.getElementById("live-status"), readyStatus: document.getElementById("ready-status"), dashboardSignals: document.getElementById("dashboard-signals"), dashboardSignalsState: document.getElementById("dashboard-signals-state"),
     projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
-    toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"),
+    toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"), schedulesPanelState: document.getElementById("schedules-panel-state"), refreshSchedules: document.getElementById("refresh-schedules"), refreshScheduleRuns: document.getElementById("refresh-schedule-runs"), scheduleCreateShell: document.getElementById("schedule-create-shell"), scheduleCreateForm: document.getElementById("schedule-create-form"), scheduleName: document.getElementById("schedule-name"), scheduleProject: document.getElementById("schedule-project"), scheduleCron: document.getElementById("schedule-cron"), scheduleTaskTitle: document.getElementById("schedule-task-title"), scheduleTaskDescription: document.getElementById("schedule-task-description"), scheduleTaskRepo: document.getElementById("schedule-task-repo"), scheduleTaskBranch: document.getElementById("schedule-task-branch"), scheduleTaskPriority: document.getElementById("schedule-task-priority"), schedulesList: document.getElementById("schedules-list"), scheduleRunsList: document.getElementById("schedule-runs-list"),
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
     agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
-    accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
+    accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), switchPolicyState: document.getElementById("switch-policy-state"), switchPolicyForm: document.getElementById("switch-policy-form"), switchPolicyEnabled: document.getElementById("switch-policy-enabled"), switchPolicyEligible: document.getElementById("switch-policy-eligible"), switchPolicyFive: document.getElementById("switch-policy-five"), switchPolicyWeek: document.getElementById("switch-policy-week"), switchPolicyGuard: document.getElementById("switch-policy-guard"), switchPolicyProbe: document.getElementById("switch-policy-probe"), switchPolicyCooldown: document.getElementById("switch-policy-cooldown"), switchPolicyLast: document.getElementById("switch-policy-last"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
     secretsPanelState: document.getElementById("secrets-panel-state"), refreshSecrets: document.getElementById("refresh-secrets"), secretCreateForm: document.getElementById("secret-create-form"), secretProject: document.getElementById("secret-project"), secretKey: document.getElementById("secret-key"), secretValue: document.getElementById("secret-value"), secretDescription: document.getElementById("secret-description"), secretBindRoles: document.getElementById("secret-bind-roles"), secretBindTemplates: document.getElementById("secret-bind-templates"), secretFilterSearch: document.getElementById("secret-filter-search"), secretsList: document.getElementById("secrets-list"),
     memoryPanelState: document.getElementById("memory-panel-state"), refreshMemory: document.getElementById("refresh-memory"), memoryForm: document.getElementById("memory-form"), memoryProject: document.getElementById("memory-project"), memoryRole: document.getElementById("memory-role"), memoryTitle: document.getElementById("memory-title"), memoryContent: document.getElementById("memory-content"), memoryList: document.getElementById("memory-list"),
     modulePanelState: document.getElementById("module-panel-state"), refreshModule: document.getElementById("refresh-module"), refreshExecutions: document.getElementById("refresh-executions"), moduleForm: document.getElementById("module-form"), moduleEnabled: document.getElementById("module-enabled"), moduleConfig: document.getElementById("module-config"), executionsList: document.getElementById("executions-list"),
@@ -2648,6 +3011,109 @@ function wireConsoleHandlers() {
     await requestJson("/api/queue/held/release", { method: "POST" })
     pushLog("success", "ui", t("log_held_released"))
     await Promise.allSettled([refreshHeld(), refreshTasks()])
+  })
+
+  ui.refreshSchedules.addEventListener("click", async () => state.token ? refreshSchedulesRoute() : requireTokenPanels())
+  ui.refreshScheduleRuns.addEventListener("click", async () => {
+    if (!state.token) return requireTokenPanels()
+    await withPanel(ui.schedulesPanelState, "system", async () => {
+      await refreshScheduleRuns()
+    })
+  })
+
+  ui.scheduleCreateForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    const payload = {
+      name: ui.scheduleName.value.trim(),
+      scope: "project",
+      project_id: ui.scheduleProject.value.trim(),
+      rule_ast: {
+        predicate: "time.cron",
+        value: ui.scheduleCron.value.trim()
+      },
+      overlap_policy: "one_active_skip",
+      misfire_policy: "recompute_due_on_restart",
+      task_title: ui.scheduleTaskTitle.value.trim(),
+      task_description: ui.scheduleTaskDescription.value.trim(),
+      task_repo_id: ui.scheduleTaskRepo.value.trim(),
+      task_branch: toNullableString(ui.scheduleTaskBranch.value),
+      task_priority: toIntegerInRange(ui.scheduleTaskPriority.value, 100, 1, 100000)
+    }
+
+    const created = await requestJson("/api/schedules", { method: "POST", json: payload })
+    state.selectedScheduleId = created?.id ?? state.selectedScheduleId
+    pushLog("success", "ui", t("log_schedule_created"), { id: created?.id ?? "n/a", name: payload.name })
+    if (ui.scheduleCreateShell.open) ui.scheduleCreateShell.open = false
+    await refreshSchedulesRoute()
+  })
+
+  ui.schedulesList.addEventListener("click", async (event) => {
+    const card = event.target.closest("[data-schedule-id]")
+    if (!card) return
+
+    const scheduleId = card.dataset.scheduleId
+    if (!scheduleId) return
+
+    const actionButton = event.target.closest("button[data-schedule-action]")
+    state.selectedScheduleId = scheduleId
+
+    if (!actionButton) {
+      renderSchedules(state.schedules)
+      if (state.token) {
+        await withPanel(ui.schedulesPanelState, "system", async () => {
+          await refreshScheduleRuns()
+        })
+      }
+      return
+    }
+
+    if (!state.token) return requireTokenPanels()
+    const action = actionButton.dataset.scheduleAction
+
+    if (action === "trigger") {
+      const run = await requestJson(`/api/schedules/${encodeURIComponent(scheduleId)}/trigger`, {
+        method: "POST",
+        json: { dry_run_context: {} }
+      })
+      pushLog("success", "ui", t("log_schedule_action"), {
+        action,
+        schedule_id: scheduleId,
+        run_id: run?.id ?? "n/a",
+        created_task_id: run?.created_task_id ?? null
+      })
+      await Promise.allSettled([refreshSchedulesRoute(), refreshTasks()])
+      return
+    }
+
+    if (action === "evaluate") {
+      const result = await requestJson(`/api/schedules/${encodeURIComponent(scheduleId)}/evaluate`, {
+        method: "POST",
+        json: { dry_run_context: {} }
+      })
+      pushLog("info", "ui", t("log_schedule_action"), {
+        action,
+        schedule_id: scheduleId,
+        matched: result?.matched === true
+      })
+      await refreshScheduleRuns()
+      return
+    }
+
+    if (action === "enable" || action === "disable") {
+      await requestJson(`/api/schedules/${encodeURIComponent(scheduleId)}/${action}`, { method: "POST" })
+      pushLog("success", "ui", t("log_schedule_action"), { action, schedule_id: scheduleId })
+      await refreshSchedulesRoute()
+      return
+    }
+
+    if (action === "delete") {
+      await requestRaw(`/api/schedules/${encodeURIComponent(scheduleId)}`, { method: "DELETE" })
+      pushLog("success", "ui", t("log_schedule_action"), { action, schedule_id: scheduleId })
+      if (state.selectedScheduleId === scheduleId) state.selectedScheduleId = null
+      await refreshSchedulesRoute()
+    }
   })
 
   ui.refreshAgentCards.addEventListener("click", async () => state.token ? refreshAgents() : requireTokenPanels())
@@ -2912,7 +3378,61 @@ function wireConsoleHandlers() {
     await Promise.allSettled([refreshProfiles(), refreshFleet(), refreshSwitches()])
   })
 
-  ui.refreshAccountFleet.addEventListener("click", async () => state.token ? refreshFleet() : requireTokenPanels())
+  ui.refreshAccountFleet.addEventListener("click", async () => {
+    if (!state.token) return requireTokenPanels()
+    await runRefreshGroupWithRetry("accounts_limits_manual", [
+      { name: "fleet", run: () => refreshFleet() },
+      { name: "switch_policy", run: () => refreshSwitchPolicy() }
+    ])
+  })
+
+  ui.switchPolicyEligible.addEventListener("change", () => {
+    const selectedIds = Array.from(ui.switchPolicyEligible.querySelectorAll("input[data-switch-policy-profile]:checked"))
+      .map((node) => node.getAttribute("data-switch-policy-profile") || "")
+      .filter(Boolean)
+    state.switchPolicy.config.eligible_profile_ids = selectedIds
+  })
+
+  ui.switchPolicyForm.addEventListener("submit", async (event) => {
+    event.preventDefault()
+    if (!state.token) return requireTokenPanels()
+
+    const eligibleIds = Array.from(ui.switchPolicyEligible.querySelectorAll("input[data-switch-policy-profile]:checked"))
+      .map((node) => node.getAttribute("data-switch-policy-profile") || "")
+      .filter(Boolean)
+    const enabled = ui.switchPolicyEnabled.checked
+    if (enabled && eligibleIds.length === 0) {
+      pushLog("warn", "ui", t("switch_policy_error_eligible_required"))
+      return
+    }
+
+    const configJson = {
+      eligible_profile_ids: eligibleIds,
+      five_hour_remaining_percent_lt: toIntegerInRange(ui.switchPolicyFive.value, 10, 0, 100),
+      weekly_remaining_percent_lt: toIntegerInRange(ui.switchPolicyWeek.value, 5, 0, 100),
+      reset_guard_hours: toIntegerInRange(ui.switchPolicyGuard.value, 3, 0, 720),
+      probe_interval_sec: toIntegerInRange(ui.switchPolicyProbe.value, 60, 5, 3600),
+      switch_cooldown_sec: toIntegerInRange(ui.switchPolicyCooldown.value, 120, 0, 3600)
+    }
+
+    await requestJson(`/api/custom-modules/${SWITCH_MODULE_KEY}`, {
+      method: "PATCH",
+      json: {
+        is_enabled: enabled,
+        config_json: configJson
+      }
+    })
+    pushLog("success", "ui", t("log_switch_policy_saved"), {
+      enabled,
+      eligible_count: eligibleIds.length
+    })
+
+    await runRefreshGroupWithRetry("accounts_limits_policy_save", [
+      { name: "switch_policy", run: () => refreshSwitchPolicy() },
+      { name: "fleet", run: () => refreshFleet() }
+    ])
+  })
+
   ui.accountFleet.addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-fleet-action]")
     if (!button) return

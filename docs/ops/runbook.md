@@ -21,6 +21,27 @@ docker compose up -d
   - `payload.execution_mode = "mock"` forces mock executor.
   - `payload.execution_mode = "codex_exec"` forces real executor for this call.
 
+## Auto-runners (tasks / schedules / auth-switch)
+- Task auto-dispatch:
+  - `TASK_AUTODISPATCH_ENABLED` (default `true`)
+  - `TASK_AUTODISPATCH_INTERVAL_MS` (default `5000`)
+  - `TASK_AUTODISPATCH_CAPABILITY` (default `reviewer`)
+  - `TASK_AUTODISPATCH_EXECUTION_MODE` (default `codex_exec`)
+- Schedule runner:
+  - `SCHEDULE_RUNNER_ENABLED` (default `true`)
+  - `SCHEDULE_RUNNER_INTERVAL_MS` (default `30000`)
+- Auth switch runner:
+  - `MODULE_SWITCH_ENABLED` (default `true`)
+  - `SWITCH_WEEKLY_REMAINING_PERCENT_LT` (default `5`)
+  - `SWITCH_FIVE_HOUR_REMAINING_PERCENT_LT` (default `10`)
+  - `SWITCH_RESET_GUARD_HOURS` (default `3`)
+  - `SWITCH_PROBE_INTERVAL_SEC` (default `60`)
+  - `SWITCH_COOLDOWN_SEC` (default `120`)
+
+Runtime notes:
+- `switch_chatgpt_auth_on_limit` в `enabled=true` требует непустой `eligible_profile_ids` в `config_json`.
+- При отсутствии валидного кандидата для switch задачи переводятся в `WAITING_LIMIT` до ручного release/появления валидного профиля.
+
 ## Port conflicts (Windows/common local stacks)
 - Default MinIO host ports in this repo are `19000` (API) and `19001` (console) to reduce conflicts.
 - If these ports are also occupied on your host, update `MINIO_API_PORT` and `MINIO_CONSOLE_PORT` in root `.env`, then restart compose:
@@ -141,8 +162,10 @@ Service integration (uploaded auth profiles):
 - Optional: switch UI locale (`RU/EN`) in panel header.
 - Validate primary workflow from UI:
   - create task;
+  - create schedule rule and trigger it;
   - upload ChatGPT `auth.json` profile;
   - activate/deactivate profile (triggers hold -> switch -> release flow);
+  - configure `Auto-switch policy` in `Accounts -> Limits`;
   - inspect switch-events and held queue.
 - Use operator visibility panels:
   - `Agent Runtime Cards`: watch `preparing/running/recent` delegations with prompt, target template/model, selected account, and log preview.

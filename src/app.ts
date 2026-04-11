@@ -420,6 +420,11 @@ interface ScheduleCreateRequest {
   rule_ast?: unknown;
   target_agent_template_id?: unknown;
   fallback_role?: unknown;
+  task_title?: unknown;
+  task_description?: unknown;
+  task_repo_id?: unknown;
+  task_branch?: unknown;
+  task_priority?: unknown;
   overlap_policy?: unknown;
   misfire_policy?: unknown;
 }
@@ -430,8 +435,17 @@ interface SchedulePatchRequest {
   rule_ast?: unknown;
   target_agent_template_id?: unknown;
   fallback_role?: unknown;
+  task_title?: unknown;
+  task_description?: unknown;
+  task_repo_id?: unknown;
+  task_branch?: unknown;
+  task_priority?: unknown;
   overlap_policy?: unknown;
   misfire_policy?: unknown;
+}
+
+interface ScheduleTriggerRequest {
+  dry_run_context?: unknown;
 }
 
 const AUTH_CONTEXT_TYPES = new Set<AuthContextType>(["apikey", "chatgpt", "chatgptAuthTokens"]);
@@ -2373,6 +2387,11 @@ function scheduledRuleToResponse(rule: ScheduledRuleEntity): Record<string, unkn
     rule_ast: rule.rule_ast,
     target_agent_template_id: rule.target_agent_template_id,
     fallback_role: rule.fallback_role,
+    task_title: rule.task_title,
+    task_description: rule.task_description,
+    task_repo_id: rule.task_repo_id,
+    task_branch: rule.task_branch,
+    task_priority: rule.task_priority,
     overlap_policy: rule.overlap_policy,
     misfire_policy: rule.misfire_policy,
     created_by: rule.created_by,
@@ -2451,9 +2470,116 @@ function extractMultipartFieldValue(value: unknown): string | null {
 
 function buildSwitchModuleDefaultConfig(config: AppConfig): Record<string, unknown> {
   return {
+    eligible_profile_ids: [],
     weekly_remaining_percent_lt: config.switchWeeklyRemainingPercentLt,
     five_hour_remaining_percent_lt: config.switchFiveHourRemainingPercentLt,
-    reset_guard_hours: config.switchResetGuardHours
+    reset_guard_hours: config.switchResetGuardHours,
+    probe_interval_sec: config.switchProbeIntervalSec,
+    switch_cooldown_sec: config.switchCooldownSec
+  };
+}
+
+interface SwitchModuleRuntimeConfig {
+  eligible_profile_ids: string[];
+  weekly_remaining_percent_lt: number;
+  five_hour_remaining_percent_lt: number;
+  reset_guard_hours: number;
+  probe_interval_sec: number;
+  switch_cooldown_sec: number;
+}
+
+interface SwitchModuleValidationResult {
+  mergedConfig: SwitchModuleRuntimeConfig;
+  isEnabled: boolean;
+  error: string | null;
+}
+
+function normalizeSwitchModuleRuntimeConfig(
+  defaults: AppConfig,
+  rawConfig: unknown
+): SwitchModuleRuntimeConfig {
+  const raw = isPlainObject(rawConfig) ? rawConfig : {};
+  const parsePercent = (value: unknown, fallback: number): number => {
+    const parsed = asFiniteNumber(value);
+    if (parsed === null) {
+      return fallback;
+    }
+    return Math.max(0, Math.min(100, parsed));
+  };
+  const parseNonNegative = (value: unknown, fallback: number): number => {
+    const parsed = asFiniteNumber(value);
+    if (parsed === null || parsed < 0) {
+      return fallback;
+    }
+    return parsed;
+  };
+  const parseIntWithMin = (value: unknown, fallback: number, min: number): number => {
+    const parsed = asFiniteNumber(value);
+    if (parsed === null) {
+      return fallback;
+    }
+    return Math.max(min, Math.round(parsed));
+  };
+
+  const eligibleIds = Array.isArray(raw["eligible_profile_ids"])
+    ? Array.from(
+        new Set(
+          raw["eligible_profile_ids"]
+            .map((item) => asNonEmptyString(item))
+            .filter((item): item is string => Boolean(item))
+        )
+      )
+    : [];
+
+  return {
+    eligible_profile_ids: eligibleIds,
+    weekly_remaining_percent_lt: parsePercent(
+      raw["weekly_remaining_percent_lt"],
+      defaults.switchWeeklyRemainingPercentLt
+    ),
+    five_hour_remaining_percent_lt: parsePercent(
+      raw["five_hour_remaining_percent_lt"],
+      defaults.switchFiveHourRemainingPercentLt
+    ),
+    reset_guard_hours: parseNonNegative(raw["reset_guard_hours"], defaults.switchResetGuardHours),
+    probe_interval_sec: parseIntWithMin(
+      raw["probe_interval_sec"],
+      defaults.switchProbeIntervalSec,
+      5
+    ),
+    switch_cooldown_sec: parseIntWithMin(
+      raw["switch_cooldown_sec"],
+      defaults.switchCooldownSec,
+      0
+    )
+  };
+}
+
+function validateSwitchModulePatch(options: {
+  appConfig: AppConfig;
+  currentConfig: Record<string, unknown>;
+  currentEnabled: boolean;
+  patchConfig?: Record<string, unknown>;
+  patchEnabled?: boolean;
+}): SwitchModuleValidationResult {
+  const mergedRawConfig =
+    options.patchConfig != null ? options.patchConfig : options.currentConfig;
+  const mergedConfig = normalizeSwitchModuleRuntimeConfig(options.appConfig, mergedRawConfig);
+  const isEnabled =
+    typeof options.patchEnabled === "boolean" ? options.patchEnabled : options.currentEnabled;
+
+  if (isEnabled && mergedConfig.eligible_profile_ids.length === 0) {
+    return {
+      mergedConfig,
+      isEnabled,
+      error: "enabled switch module requires non-empty eligible_profile_ids"
+    };
+  }
+
+  return {
+    mergedConfig,
+    isEnabled,
+    error: null
   };
 }
 
@@ -2471,12 +2597,18 @@ async function ensureCustomModuleConfig(
     return null;
   }
 
+  const defaultConfig = buildSwitchModuleDefaultConfig(config);
+  const defaultEligible = Array.isArray(defaultConfig["eligible_profile_ids"])
+    ? defaultConfig["eligible_profile_ids"]
+    : [];
+  const defaultEnabled = config.switchModuleDefaultEnabled && defaultEligible.length > 0;
+
   try {
     return await persistence.createCustomModuleConfig({
       module_key: SWITCH_MODULE_KEY,
-      is_enabled: config.switchModuleDefaultEnabled,
+      is_enabled: defaultEnabled,
       scope: "global",
-      config_json: buildSwitchModuleDefaultConfig(config),
+      config_json: defaultConfig,
       updated_by: "system"
     });
   } catch (error) {
@@ -2559,6 +2691,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   let taskAutoDispatchTimer: NodeJS.Timeout | null = null;
   let taskAutoDispatchInFlight = false;
   let taskAutoDispatchStopped = false;
+  let scheduleRunnerTimer: NodeJS.Timeout | null = null;
+  let scheduleRunnerInFlight = false;
+  let scheduleRunnerStopped = false;
+  let authSwitchRunnerTimer: NodeJS.Timeout | null = null;
+  let authSwitchRunnerInFlight = false;
+  let authSwitchRunnerStopped = false;
+  let authSwitchLastProbeAt = 0;
+  let authSwitchLastDecisionAt = 0;
 
   const runTaskAutoDispatchTick = async (): Promise<void> => {
     if (!config.taskAutoDispatchEnabled || taskAutoDispatchStopped || taskAutoDispatchInFlight) {
@@ -2697,31 +2837,891 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
   };
 
-  app.addHook("onReady", async () => {
-    if (!config.taskAutoDispatchEnabled) {
-      app.log.info("Task auto-dispatch runner disabled");
+  interface ProfileLimitProbe {
+    profile: AuthProfileEntity;
+    fiveHourRemainingPct: number | null;
+    weeklyRemainingPct: number | null;
+    resetEtaHours: number | null;
+    source: string;
+    error: string | null;
+  }
+
+  const holdQueueForSwitch = async (traceId: string, reason: string): Promise<TaskStatusTransition[]> => {
+    const holdTransitions = await holdNewAndQueuedTasksForAuthSwitch(persistence);
+    if (holdTransitions.length === 0) {
+      return holdTransitions;
+    }
+
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "queue.hold_started",
+        traceId,
+        idempotencyKey: `queue_hold_start:${traceId}`,
+        payload: {
+          reason,
+          held_count: holdTransitions.length
+        }
+      },
+      logMessage: "Failed to publish queue.hold_started"
+    });
+    await publishTaskAuthSwitchingEvents({
+      app,
+      publisher,
+      traceId,
+      transitions: holdTransitions,
+      reason
+    });
+    return holdTransitions;
+  };
+
+  const releaseQueueAfterSwitch = async (
+    traceId: string,
+    reason: string
+  ): Promise<TaskStatusTransition[]> => {
+    const releaseTransitions = await releaseHeldTasksForAuthSwitch(persistence);
+    if (releaseTransitions.length === 0) {
+      return releaseTransitions;
+    }
+
+    await publishEventBestEffort({
+      app,
+      publisher,
+      event: {
+        eventType: "queue.hold_released",
+        traceId,
+        idempotencyKey: `queue_hold_release:${traceId}`,
+        payload: {
+          reason,
+          held_count: releaseTransitions.length
+        }
+      },
+      logMessage: "Failed to publish queue.hold_released"
+    });
+    await publishTaskAuthSwitchingEvents({
+      app,
+      publisher,
+      traceId,
+      transitions: releaseTransitions,
+      reason
+    });
+    return releaseTransitions;
+  };
+
+  const readProfileLimitProbe = async (profile: AuthProfileEntity): Promise<ProfileLimitProbe> => {
+    try {
+      const limits = await authProfileRateLimitsReader.readByProfileId(profile.id);
+      if (!limits) {
+        return {
+          profile,
+          fiveHourRemainingPct: null,
+          weeklyRemainingPct: null,
+          resetEtaHours: null,
+          source: "missing",
+          error: "limits_not_found"
+        };
+      }
+
+      const fiveHourRemainingPct =
+        asFiniteNumber(limits.rate_limits.primary?.remaining_percent ?? null) ?? null;
+      const weeklyRemainingPct =
+        asFiniteNumber(limits.rate_limits.secondary?.remaining_percent ?? null) ?? null;
+      const resetAfterSecondsCandidates = [
+        asFiniteNumber(limits.rate_limits.primary?.reset_after_seconds ?? null),
+        asFiniteNumber(limits.rate_limits.secondary?.reset_after_seconds ?? null)
+      ].filter((value): value is number => value != null && value >= 0);
+      const resetEtaHours =
+        resetAfterSecondsCandidates.length > 0
+          ? Math.min(...resetAfterSecondsCandidates) / 3600
+          : null;
+
+      return {
+        profile,
+        fiveHourRemainingPct,
+        weeklyRemainingPct,
+        resetEtaHours,
+        source: limits.rate_limits.source,
+        error: null
+      };
+    } catch (error) {
+      return {
+        profile,
+        fiveHourRemainingPct: null,
+        weeklyRemainingPct: null,
+        resetEtaHours: null,
+        source: "error",
+        error: getErrorMessage(error)
+      };
+    }
+  };
+
+  const selectBestSwitchCandidate = (
+    probes: ProfileLimitProbe[],
+    currentActiveProfileId: string | null
+  ): ProfileLimitProbe | null => {
+    const candidates = probes
+      .filter((probe) => probe.error == null)
+      .filter((probe) => probe.fiveHourRemainingPct != null && probe.weeklyRemainingPct != null)
+      .filter((probe) => probe.profile.id !== currentActiveProfileId)
+      .sort((left, right) => {
+        const fiveHourDelta = (right.fiveHourRemainingPct ?? -1) - (left.fiveHourRemainingPct ?? -1);
+        if (fiveHourDelta !== 0) {
+          return fiveHourDelta;
+        }
+
+        const weekDelta = (right.weeklyRemainingPct ?? -1) - (left.weeklyRemainingPct ?? -1);
+        if (weekDelta !== 0) {
+          return weekDelta;
+        }
+
+        return left.profile.id.localeCompare(right.profile.id);
+      });
+
+    return candidates[0] ?? null;
+  };
+
+  const runAuthSwitchTick = async (): Promise<void> => {
+    if (authSwitchRunnerStopped || authSwitchRunnerInFlight) {
       return;
     }
 
-    taskAutoDispatchTimer = setInterval(() => {
-      void runTaskAutoDispatchTick();
-    }, config.taskAutoDispatchIntervalMs);
-    taskAutoDispatchTimer.unref?.();
+    authSwitchRunnerInFlight = true;
+    try {
+      const moduleConfig = await ensureCustomModuleConfig(persistence, config, SWITCH_MODULE_KEY);
+      if (!moduleConfig) {
+        return;
+      }
 
-    app.log.info(
-      {
-        interval_ms: config.taskAutoDispatchIntervalMs,
-        capability: config.taskAutoDispatchCapability
-      },
-      "Task auto-dispatch runner started"
+      const runtimeConfig = normalizeSwitchModuleRuntimeConfig(config, moduleConfig.config_json);
+      const nowMs = Date.now();
+      if (nowMs - authSwitchLastProbeAt < runtimeConfig.probe_interval_sec * 1000) {
+        return;
+      }
+      authSwitchLastProbeAt = nowMs;
+
+      if (!moduleConfig.is_enabled) {
+        return;
+      }
+
+      const activeProfile = await persistence.getActiveAuthProfile();
+      const allProfiles = await persistence.listAuthProfiles();
+      const eligibleProfiles = allProfiles.filter(
+        (profile) =>
+          runtimeConfig.eligible_profile_ids.includes(profile.id) && profile.status !== "blocked"
+      );
+      const traceId = `auth-switch-runner:${Date.now()}`;
+      const cooldownMs = runtimeConfig.switch_cooldown_sec * 1000;
+      const withinCooldown =
+        cooldownMs > 0 && nowMs - authSwitchLastDecisionAt < cooldownMs;
+
+      const noEligibleConfigured =
+        runtimeConfig.eligible_profile_ids.length === 0 || eligibleProfiles.length === 0;
+      if (noEligibleConfigured) {
+        if (withinCooldown) {
+          return;
+        }
+        authSwitchLastDecisionAt = nowMs;
+
+        await holdQueueForSwitch(traceId, "auto_switch_no_valid_profile");
+        const skippedEvent = await persistence.createAuthSwitchEvent({
+          module_key: SWITCH_MODULE_KEY,
+          from_auth_profile_id: activeProfile?.id ?? null,
+          to_auth_profile_id: null,
+          reason: "auto_switch_no_valid_profile",
+          status: "skipped",
+          switch_scope: "global",
+          details_json: {
+            source: "runner",
+            reason: "no_valid_profile",
+            eligible_profile_ids: runtimeConfig.eligible_profile_ids
+          },
+          started_at: new Date(),
+          ended_at: new Date()
+        });
+
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "auth_profile.switch.skipped",
+            traceId,
+            idempotencyKey: `${skippedEvent.id}:${traceId}`,
+            payload: {
+              profile_id: activeProfile?.id ?? null,
+              from_profile_id: activeProfile?.id ?? null,
+              to_profile_id: null,
+              reason: "auto_switch_no_valid_profile"
+            }
+          },
+          logMessage: "Failed to publish auth_profile.switch.skipped",
+          logContext: {
+            module_key: SWITCH_MODULE_KEY
+          }
+        });
+        return;
+      }
+
+      const probes = await Promise.all(eligibleProfiles.map((profile) => readProfileLimitProbe(profile)));
+      const activeProbe =
+        activeProfile == null
+          ? null
+          : probes.find((probe) => probe.profile.id === activeProfile.id) ?? null;
+
+      let switchReason: string | null = null;
+      if (!activeProfile) {
+        switchReason = "auto_switch_no_active_profile";
+      } else if (!runtimeConfig.eligible_profile_ids.includes(activeProfile.id)) {
+        switchReason = "auto_switch_active_not_eligible";
+      } else if (!activeProbe || activeProbe.error) {
+        switchReason = "auto_switch_active_limits_unavailable";
+      } else {
+        const fiveHourBreached =
+          activeProbe.fiveHourRemainingPct != null &&
+          activeProbe.fiveHourRemainingPct < runtimeConfig.five_hour_remaining_percent_lt;
+        const weeklyBreached =
+          activeProbe.weeklyRemainingPct != null &&
+          activeProbe.weeklyRemainingPct < runtimeConfig.weekly_remaining_percent_lt;
+        if (fiveHourBreached || weeklyBreached) {
+          const resetGuardTriggered =
+            activeProbe.resetEtaHours != null &&
+            activeProbe.resetEtaHours <= runtimeConfig.reset_guard_hours;
+          if (!resetGuardTriggered) {
+            switchReason = "auto_switch_limit_threshold";
+          }
+        }
+      }
+
+      if (!switchReason) {
+        if (activeProfile) {
+          await releaseQueueAfterSwitch(traceId, "auto_switch_active_profile_ok");
+        }
+        return;
+      }
+
+      if (withinCooldown) {
+        return;
+      }
+
+      const candidate = selectBestSwitchCandidate(probes, activeProfile?.id ?? null);
+      if (!candidate) {
+        authSwitchLastDecisionAt = nowMs;
+        await holdQueueForSwitch(traceId, "auto_switch_no_valid_profile");
+        const skippedEvent = await persistence.createAuthSwitchEvent({
+          module_key: SWITCH_MODULE_KEY,
+          from_auth_profile_id: activeProfile?.id ?? null,
+          to_auth_profile_id: null,
+          reason: "auto_switch_no_valid_profile",
+          status: "skipped",
+          switch_scope: "global",
+          details_json: {
+            source: "runner",
+            reason: "no_valid_profile",
+            switch_reason: switchReason,
+            eligible_profile_ids: runtimeConfig.eligible_profile_ids
+          },
+          started_at: new Date(),
+          ended_at: new Date()
+        });
+
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "auth_profile.switch.skipped",
+            traceId,
+            idempotencyKey: `${skippedEvent.id}:${traceId}`,
+            payload: {
+              profile_id: activeProfile?.id ?? null,
+              from_profile_id: activeProfile?.id ?? null,
+              to_profile_id: null,
+              reason: "auto_switch_no_valid_profile"
+            }
+          },
+          logMessage: "Failed to publish auth_profile.switch.skipped",
+          logContext: {
+            module_key: SWITCH_MODULE_KEY
+          }
+        });
+        return;
+      }
+
+      authSwitchLastDecisionAt = nowMs;
+      await holdQueueForSwitch(traceId, "auto_switch_hold_started");
+
+      const startedAt = new Date();
+      const startedSwitchEvent = await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: activeProfile?.id ?? null,
+        to_auth_profile_id: candidate.profile.id,
+        reason: switchReason,
+        status: "started",
+        switch_scope: "global",
+        details_json: {
+          source: "runner",
+          selected_profile_id: candidate.profile.id,
+          selected_five_hour_remaining_pct: candidate.fiveHourRemainingPct,
+          selected_weekly_remaining_pct: candidate.weeklyRemainingPct
+        },
+        started_at: startedAt,
+        ended_at: null
+      });
+
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.started",
+          traceId,
+          idempotencyKey: `${startedSwitchEvent.id}:${traceId}`,
+          payload: {
+            profile_id: candidate.profile.id,
+            from_profile_id: activeProfile?.id ?? null,
+            to_profile_id: candidate.profile.id,
+            reason: switchReason
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.started",
+        logContext: {
+          profile_id: candidate.profile.id
+        }
+      });
+
+      let activated: AuthProfileEntity | null = null;
+      try {
+        activated = await withRetry({
+          operationName: "auto_auth_profile_activate",
+          maxAttempts: DEFAULT_AUTH_SWITCH_RETRY_LIMIT,
+          initialDelayMs: 50,
+          fn: async () => persistence.activateAuthProfile(candidate.profile.id, "system"),
+          onRetry: async ({ attempt, error, nextDelayMs }) => {
+            app.log.warn(
+              {
+                err: error,
+                operation: "auto_auth_profile_activate",
+                attempt,
+                nextDelayMs,
+                profile_id: candidate.profile.id
+              },
+              "Retrying automatic auth profile activate"
+            );
+          }
+        });
+      } catch (error) {
+        await persistence.createAuthSwitchEvent({
+          module_key: SWITCH_MODULE_KEY,
+          from_auth_profile_id: activeProfile?.id ?? null,
+          to_auth_profile_id: candidate.profile.id,
+          reason: switchReason,
+          status: "failed",
+          switch_scope: "global",
+          details_json: {
+            source: "runner",
+            reason: "activate_failed",
+            error: getErrorMessage(error)
+          },
+          started_at: startedAt,
+          ended_at: new Date()
+        });
+
+        await publishEventBestEffort({
+          app,
+          publisher,
+          event: {
+            eventType: "auth_profile.switch.failed",
+            traceId,
+            idempotencyKey: `${candidate.profile.id}:auto_failed:${traceId}`,
+            payload: {
+              profile_id: candidate.profile.id,
+              from_profile_id: activeProfile?.id ?? null,
+              to_profile_id: candidate.profile.id,
+              reason: switchReason
+            }
+          },
+          logMessage: "Failed to publish auth_profile.switch.failed",
+          logContext: {
+            profile_id: candidate.profile.id
+          }
+        });
+        return;
+      }
+
+      if (!activated) {
+        return;
+      }
+
+      await persistence.createAuthSwitchEvent({
+        module_key: SWITCH_MODULE_KEY,
+        from_auth_profile_id: activeProfile?.id ?? null,
+        to_auth_profile_id: activated.id,
+        reason: switchReason,
+        status: "completed",
+        switch_scope: "global",
+        details_json: {
+          source: "runner"
+        },
+        started_at: startedAt,
+        ended_at: new Date()
+      });
+
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.switch.completed",
+          traceId,
+          idempotencyKey: `${activated.id}:auto_completed:${traceId}`,
+          payload: {
+            profile_id: activated.id,
+            from_profile_id: activeProfile?.id ?? null,
+            to_profile_id: activated.id,
+            reason: switchReason
+          }
+        },
+        logMessage: "Failed to publish auth_profile.switch.completed",
+        logContext: {
+          profile_id: activated.id
+        }
+      });
+
+      await releaseQueueAfterSwitch(traceId, "auto_switch_release_completed");
+      await publishEventBestEffort({
+        app,
+        publisher,
+        event: {
+          eventType: "auth_profile.activated",
+          traceId,
+          idempotencyKey: `${activated.id}:auto_activate:${traceId}`,
+          payload: {
+            profile_id: activated.id,
+            status: activated.status,
+            label: activated.label
+          }
+        },
+        logMessage: "Failed to publish auth_profile.activated",
+        logContext: {
+          profile_id: activated.id
+        }
+      });
+    } catch (error) {
+      app.log.error({ err: error }, "Auth switch runner tick failed");
+    } finally {
+      authSwitchRunnerInFlight = false;
+    }
+  };
+
+  const toScheduleBucketMinute = (value: Date): string => {
+    const yyyy = value.getUTCFullYear();
+    const mm = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(value.getUTCDate()).padStart(2, "0");
+    const hh = String(value.getUTCHours()).padStart(2, "0");
+    const min = String(value.getUTCMinutes()).padStart(2, "0");
+    return `${yyyy}${mm}${dd}${hh}${min}`;
+  };
+
+  const runScheduleTrigger = async (options: {
+    rule: ScheduledRuleEntity;
+    traceId: string;
+    dryRunContext?: Record<string, unknown>;
+    triggerSource: "api" | "runner" | "startup_recovery";
+  }): Promise<ScheduledRunEntity> => {
+    const now = new Date();
+    const idempotencyKey = `${options.rule.id}:${options.traceId}`;
+    const existingRun = await persistence.getScheduledRunByIdempotency(
+      options.rule.id,
+      idempotencyKey
     );
+    if (existingRun) {
+      return existingRun;
+    }
+
+    if (!options.rule.is_enabled) {
+      const failedRun = await persistence.createScheduledRun({
+        rule_id: options.rule.id,
+        status: "failed",
+        started_at: now,
+        ended_at: now,
+        skip_reason: "rule_disabled",
+        trace_id: options.traceId,
+        idempotency_key: idempotencyKey,
+        result_json: { reason: "rule_disabled", trigger_source: options.triggerSource }
+      });
+
+      await publisher.publish({
+        eventType: "schedule.run.failed",
+        traceId: options.traceId,
+        idempotencyKey: `${failedRun.id}:${options.traceId}`,
+        payload: {
+          rule_id: options.rule.id,
+          run_id: failedRun.id,
+          scope: options.rule.scope,
+          status: failedRun.status,
+          reason: failedRun.skip_reason
+        }
+      });
+      return failedRun;
+    }
+
+    const activeRun = await persistence.getActiveScheduledRun(options.rule.id);
+    if (activeRun) {
+      const skippedRun = await persistence.createScheduledRun({
+        rule_id: options.rule.id,
+        status: "skipped_due_to_overlap",
+        started_at: now,
+        ended_at: now,
+        skip_reason: "active_run_exists",
+        trace_id: options.traceId,
+        idempotency_key: idempotencyKey,
+        result_json: {
+          active_run_id: activeRun.id,
+          trigger_source: options.triggerSource
+        }
+      });
+
+      await publisher.publish({
+        eventType: "schedule.run.skipped_due_to_overlap",
+        traceId: options.traceId,
+        idempotencyKey: `${skippedRun.id}:${options.traceId}`,
+        payload: {
+          rule_id: options.rule.id,
+          run_id: skippedRun.id,
+          scope: options.rule.scope,
+          status: skippedRun.status,
+          reason: skippedRun.skip_reason
+        }
+      });
+      return skippedRun;
+    }
+
+    const startedRun = await persistence.createScheduledRun({
+      rule_id: options.rule.id,
+      status: "started",
+      started_at: now,
+      ended_at: null,
+      skip_reason: null,
+      trace_id: options.traceId,
+      idempotency_key: idempotencyKey,
+      result_json: {
+        trigger_source: options.triggerSource
+      }
+    });
+
+    await publisher.publish({
+      eventType: "schedule.run.started",
+      traceId: options.traceId,
+      idempotencyKey: `${startedRun.id}:${options.traceId}`,
+      payload: {
+        rule_id: options.rule.id,
+        run_id: startedRun.id,
+        scope: options.rule.scope,
+        status: startedRun.status,
+        reason: null
+      }
+    });
+
+    try {
+      const dryRunContext = options.dryRunContext ?? {};
+      const { context, warnings } = parseScheduleEvaluationContext(dryRunContext);
+      const evaluation = evaluateScheduleRuleAst(options.rule.rule_ast, context);
+      const reasons = [...warnings, ...evaluation.reasons];
+      let matched = evaluation.matched;
+      if (dryRunContext["force_match"] === true) {
+        matched = true;
+        reasons.push("forced_by_dry_run_context");
+      }
+
+      if (!matched) {
+        const completedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "completed",
+            ended_at: new Date(),
+            skip_reason: "rule_not_matched",
+            result_json: {
+              matched: false,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.completed",
+          traceId: options.traceId,
+          idempotencyKey: `${completedRun.id}:not_matched:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: completedRun.id,
+            scope: options.rule.scope,
+            status: completedRun.status,
+            reason: "not_matched"
+          }
+        });
+        return completedRun;
+      }
+
+      if (options.rule.scope !== "project" || !options.rule.project_id) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "project_scope_required",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:scope_failed:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "project_scope_required"
+          }
+        });
+        return failedRun;
+      }
+
+      if (
+        !options.rule.task_title ||
+        !options.rule.task_description ||
+        !options.rule.task_repo_id
+      ) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "task_template_incomplete",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:task_template_incomplete:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "task_template_incomplete"
+          }
+        });
+        return failedRun;
+      }
+
+      const project = await persistence.getProjectByKey(options.rule.project_id);
+      if (!project) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "project_not_found",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:project_not_found:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "project_not_found"
+          }
+        });
+        return failedRun;
+      }
+      if (!project.is_active) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "project_inactive",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:project_inactive:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "project_inactive"
+          }
+        });
+        return failedRun;
+      }
+
+      const createdTask = await persistence.createTask({
+        title: options.rule.task_title,
+        description: options.rule.task_description,
+        project_id: options.rule.project_id,
+        repo_id: options.rule.task_repo_id,
+        branch: options.rule.task_branch ?? null,
+        priority: options.rule.task_priority,
+        status: "NEW",
+        source: "schedule",
+        created_by: "scheduler"
+      });
+
+      const completedRun =
+        (await persistence.updateScheduledRun(startedRun.id, {
+          status: "completed",
+          ended_at: new Date(),
+          skip_reason: null,
+          created_task_id: createdTask.id,
+          result_json: {
+            matched: true,
+            reasons,
+            task_id: createdTask.id,
+            trigger_source: options.triggerSource
+          }
+        })) ?? startedRun;
+
+      await publisher.publish({
+        eventType: "schedule.run.completed",
+        traceId: options.traceId,
+        idempotencyKey: `${completedRun.id}:completed:${options.traceId}`,
+        payload: {
+          rule_id: options.rule.id,
+          run_id: completedRun.id,
+          scope: options.rule.scope,
+          status: completedRun.status,
+          reason: "task_created"
+        }
+      });
+      return completedRun;
+    } catch (error) {
+      const failedRun =
+        (await persistence.updateScheduledRun(startedRun.id, {
+          status: "failed",
+          ended_at: new Date(),
+          skip_reason: "trigger_execution_failed",
+          result_json: {
+            trigger_source: options.triggerSource,
+            error: getErrorMessage(error)
+          }
+        })) ?? startedRun;
+
+      await publisher.publish({
+        eventType: "schedule.run.failed",
+        traceId: options.traceId,
+        idempotencyKey: `${failedRun.id}:failed:${options.traceId}`,
+        payload: {
+          rule_id: options.rule.id,
+          run_id: failedRun.id,
+          scope: options.rule.scope,
+          status: failedRun.status,
+          reason: "trigger_execution_failed"
+        }
+      });
+      return failedRun;
+    }
+  };
+
+  const runScheduleRunnerTick = async (): Promise<void> => {
+    if (!config.scheduleRunnerEnabled || scheduleRunnerStopped || scheduleRunnerInFlight) {
+      return;
+    }
+
+    scheduleRunnerInFlight = true;
+    try {
+      const rules = await persistence.listScheduledRules();
+      const now = new Date();
+      const bucket = toScheduleBucketMinute(now);
+      for (const rule of rules) {
+        if (!rule.is_enabled || rule.scope !== "project") {
+          continue;
+        }
+
+        const traceId = `schedule-runner:${rule.id}:${bucket}`;
+        await runScheduleTrigger({
+          rule,
+          traceId,
+          triggerSource: "runner",
+          dryRunContext: {
+            now_utc: now.toISOString(),
+            event_type: "schedule.runner"
+          }
+        });
+      }
+    } catch (error) {
+      app.log.error({ err: error }, "Schedule runner tick failed");
+    } finally {
+      scheduleRunnerInFlight = false;
+    }
+  };
+
+  app.addHook("onReady", async () => {
+    if (config.taskAutoDispatchEnabled) {
+      taskAutoDispatchTimer = setInterval(() => {
+        void runTaskAutoDispatchTick();
+      }, config.taskAutoDispatchIntervalMs);
+      taskAutoDispatchTimer.unref?.();
+      app.log.info(
+        {
+          interval_ms: config.taskAutoDispatchIntervalMs,
+          capability: config.taskAutoDispatchCapability
+        },
+        "Task auto-dispatch runner started"
+      );
+    } else {
+      app.log.info("Task auto-dispatch runner disabled");
+    }
+
+    if (config.scheduleRunnerEnabled) {
+      scheduleRunnerTimer = setInterval(() => {
+        void runScheduleRunnerTick();
+      }, config.scheduleRunnerIntervalMs);
+      scheduleRunnerTimer.unref?.();
+      app.log.info(
+        { interval_ms: config.scheduleRunnerIntervalMs },
+        "Schedule runner started"
+      );
+    } else {
+      app.log.info("Schedule runner disabled");
+    }
+
+    authSwitchRunnerTimer = setInterval(() => {
+      void runAuthSwitchTick();
+    }, 5_000);
+    authSwitchRunnerTimer.unref?.();
+    app.log.info("Auth switch runner started");
   });
 
   app.addHook("onClose", async () => {
     taskAutoDispatchStopped = true;
+    scheduleRunnerStopped = true;
+    authSwitchRunnerStopped = true;
+
     if (taskAutoDispatchTimer) {
       clearInterval(taskAutoDispatchTimer);
       taskAutoDispatchTimer = null;
+    }
+    if (scheduleRunnerTimer) {
+      clearInterval(scheduleRunnerTimer);
+      scheduleRunnerTimer = null;
+    }
+    if (authSwitchRunnerTimer) {
+      clearInterval(authSwitchRunnerTimer);
+      authSwitchRunnerTimer = null;
     }
   });
 
@@ -7118,8 +8118,20 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const scopeValue = asNonEmptyString(body.scope);
     const overlapPolicyValue = asNonEmptyString(body.overlap_policy);
     const misfirePolicyValue = asNonEmptyString(body.misfire_policy);
+    const projectId = asNonEmptyString(body.project_id);
+    const taskTitle = asNonEmptyString(body.task_title);
+    const taskDescription = asNonEmptyString(body.task_description);
+    const taskRepoId = asNonEmptyString(body.task_repo_id);
+    const parsedTaskPriority = asNonNegativeInteger(body.task_priority);
+    const taskPriority = parsedTaskPriority == null ? 100 : parsedTaskPriority;
 
-    if (!name || !scopeValue || !overlapPolicyValue || !misfirePolicyValue || !isPlainObject(body.rule_ast)) {
+    if (
+      !name ||
+      !scopeValue ||
+      !overlapPolicyValue ||
+      !misfirePolicyValue ||
+      !isPlainObject(body.rule_ast)
+    ) {
       return sendError(
         reply,
         400,
@@ -7128,8 +8140,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       );
     }
 
-    if (!isScheduleScope(scopeValue)) {
-      return sendError(reply, 400, "Invalid scope", "VALIDATION_ERROR");
+    if (scopeValue !== "project" || !isScheduleScope(scopeValue)) {
+      return sendError(reply, 400, "Only scope=project is supported in schedules v1", "VALIDATION_ERROR");
     }
 
     if (!isScheduleOverlapPolicy(overlapPolicyValue)) {
@@ -7140,20 +8152,37 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "Invalid misfire_policy", "VALIDATION_ERROR");
     }
 
-    let projectId: string | null = null;
-    if (body.project_id !== undefined && body.project_id !== null) {
-      projectId = asNonEmptyString(body.project_id);
-      if (!projectId) {
-        return sendError(reply, 400, "project_id must be a non-empty string or null", "VALIDATION_ERROR");
-      }
-    }
-
-    if (scopeValue === "project" && !projectId) {
+    if (!projectId) {
       return sendError(reply, 400, "project_id is required when scope=project", "VALIDATION_ERROR");
     }
 
-    if (scopeValue === "global" && projectId) {
-      return sendError(reply, 400, "project_id must be null when scope=global", "VALIDATION_ERROR");
+    if (!taskTitle || !taskDescription || !taskRepoId) {
+      return sendError(
+        reply,
+        400,
+        "task_title, task_description and task_repo_id are required",
+        "VALIDATION_ERROR"
+      );
+    }
+
+    if (body.task_priority !== undefined && (parsedTaskPriority == null || parsedTaskPriority < 1)) {
+      return sendError(reply, 400, "task_priority must be a positive integer", "VALIDATION_ERROR");
+    }
+
+    const taskBranch =
+      body.task_branch == null
+        ? null
+        : asNonEmptyString(body.task_branch);
+    if (body.task_branch != null && !taskBranch) {
+      return sendError(reply, 400, "task_branch must be a non-empty string or null", "VALIDATION_ERROR");
+    }
+
+    const project = await persistence.getProjectByKey(projectId);
+    if (!project) {
+      return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
+    }
+    if (!project.is_active) {
+      return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
     }
 
     let targetAgentTemplateId: string | null = null;
@@ -7184,6 +8213,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       rule_ast: body.rule_ast,
       target_agent_template_id: targetAgentTemplateId,
       fallback_role: fallbackRole,
+      task_title: taskTitle,
+      task_description: taskDescription,
+      task_repo_id: taskRepoId,
+      task_branch: taskBranch,
+      task_priority: taskPriority,
       overlap_policy: overlapPolicyValue,
       misfire_policy: misfirePolicyValue,
       created_by: "admin"
@@ -7275,6 +8309,67 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         }
         patch.fallback_role = value;
       }
+    }
+
+    if (body.task_title !== undefined) {
+      if (body.task_title === null) {
+        patch.task_title = null;
+      } else {
+        const value = asNonEmptyString(body.task_title);
+        if (!value) {
+          return sendError(reply, 400, "task_title must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.task_title = value;
+      }
+    }
+
+    if (body.task_description !== undefined) {
+      if (body.task_description === null) {
+        patch.task_description = null;
+      } else {
+        const value = asNonEmptyString(body.task_description);
+        if (!value) {
+          return sendError(
+            reply,
+            400,
+            "task_description must be a non-empty string or null",
+            "VALIDATION_ERROR"
+          );
+        }
+        patch.task_description = value;
+      }
+    }
+
+    if (body.task_repo_id !== undefined) {
+      if (body.task_repo_id === null) {
+        patch.task_repo_id = null;
+      } else {
+        const value = asNonEmptyString(body.task_repo_id);
+        if (!value) {
+          return sendError(reply, 400, "task_repo_id must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.task_repo_id = value;
+      }
+    }
+
+    if (body.task_branch !== undefined) {
+      if (body.task_branch === null) {
+        patch.task_branch = null;
+      } else {
+        const value = asNonEmptyString(body.task_branch);
+        if (!value) {
+          return sendError(reply, 400, "task_branch must be a non-empty string or null", "VALIDATION_ERROR");
+        }
+        patch.task_branch = value;
+      }
+    }
+
+    if (body.task_priority !== undefined) {
+      const value = asNonNegativeInteger(body.task_priority);
+      if (value == null || value < 1) {
+        return sendError(reply, 400, "task_priority must be a positive integer", "VALIDATION_ERROR");
+      }
+      patch.task_priority = value;
     }
 
     if (body.overlap_policy != null) {
@@ -7416,100 +8511,26 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   app.post("/api/schedules/:id/trigger", async (request, reply) => {
     const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
+    const body = request.body as ScheduleTriggerRequest | undefined;
     const rule = await persistence.getScheduledRuleById(id);
     if (!rule) {
       return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
     }
-
-    const now = new Date();
-    const idempotencyKey = `${id}:${traceId}`;
-    const existingRun = await persistence.getScheduledRunByIdempotency(id, idempotencyKey);
-    if (existingRun) {
-      return reply.code(202).send(scheduledRunToResponse(existingRun));
+    if (body?.dry_run_context != null && !isPlainObject(body.dry_run_context)) {
+      return sendError(reply, 400, "dry_run_context must be an object", "VALIDATION_ERROR");
     }
 
-    if (!rule.is_enabled) {
-      const failedRun = await persistence.createScheduledRun({
-        rule_id: id,
-        status: "failed",
-        started_at: now,
-        ended_at: now,
-        skip_reason: "rule_disabled",
-        trace_id: traceId,
-        idempotency_key: idempotencyKey,
-        result_json: { reason: "rule_disabled" }
-      });
-
-      await publisher.publish({
-        eventType: "schedule.run.failed",
-        traceId,
-        idempotencyKey: `${failedRun.id}:${traceId}`,
-        payload: {
-          rule_id: id,
-          run_id: failedRun.id,
-          scope: rule.scope,
-          status: failedRun.status,
-          reason: failedRun.skip_reason
-        }
-      });
-
-      return reply.code(202).send(scheduledRunToResponse(failedRun));
-    }
-
-    const activeRun = await persistence.getActiveScheduledRun(id);
-    if (activeRun) {
-      const skippedRun = await persistence.createScheduledRun({
-        rule_id: id,
-        status: "skipped_due_to_overlap",
-        started_at: now,
-        ended_at: now,
-        skip_reason: "active_run_exists",
-        trace_id: traceId,
-        idempotency_key: idempotencyKey,
-        result_json: { active_run_id: activeRun.id }
-      });
-
-      await publisher.publish({
-        eventType: "schedule.run.skipped_due_to_overlap",
-        traceId,
-        idempotencyKey: `${skippedRun.id}:${traceId}`,
-        payload: {
-          rule_id: id,
-          run_id: skippedRun.id,
-          scope: rule.scope,
-          status: skippedRun.status,
-          reason: skippedRun.skip_reason
-        }
-      });
-
-      return reply.code(202).send(scheduledRunToResponse(skippedRun));
-    }
-
-    const startedRun = await persistence.createScheduledRun({
-      rule_id: id,
-      status: "started",
-      started_at: now,
-      ended_at: null,
-      skip_reason: null,
-      trace_id: traceId,
-      idempotency_key: idempotencyKey,
-      result_json: null
-    });
-
-    await publisher.publish({
-      eventType: "schedule.run.started",
+    const dryRunContext = isPlainObject(body?.dry_run_context)
+      ? body.dry_run_context
+      : {};
+    const run = await runScheduleTrigger({
+      rule,
       traceId,
-      idempotencyKey: `${startedRun.id}:${traceId}`,
-      payload: {
-        rule_id: id,
-        run_id: startedRun.id,
-        scope: rule.scope,
-        status: startedRun.status,
-        reason: null
-      }
+      dryRunContext,
+      triggerSource: "api"
     });
 
-    return reply.code(202).send(scheduledRunToResponse(startedRun));
+    return reply.code(202).send(scheduledRunToResponse(run));
   });
 
   app.get("/api/schedules/:id/runs", async (request, reply) => {
@@ -7528,13 +8549,19 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   app.get("/api/custom-modules", async (_request, reply) => {
     const moduleConfigs = await persistence.listCustomModuleConfigs();
     return reply.send({
-      items: moduleConfigs.map((moduleConfig) => ({
-        id: moduleConfig.id,
-        module_key: moduleConfig.module_key,
-        is_enabled: moduleConfig.is_enabled,
-        scope: moduleConfig.scope,
-        config_json: moduleConfig.config_json
-      }))
+      items: moduleConfigs.map((moduleConfig) => {
+        const normalizedConfigJson =
+          moduleConfig.module_key === SWITCH_MODULE_KEY
+            ? normalizeSwitchModuleRuntimeConfig(config, moduleConfig.config_json)
+            : moduleConfig.config_json;
+        return {
+          id: moduleConfig.id,
+          module_key: moduleConfig.module_key,
+          is_enabled: moduleConfig.is_enabled,
+          scope: moduleConfig.scope,
+          config_json: normalizedConfigJson
+        };
+      })
     });
   });
 
@@ -7590,7 +8617,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 404, "Module config not found", "NOT_FOUND");
     }
 
-    return reply.send(moduleConfig);
+    const normalizedConfigJson =
+      key === SWITCH_MODULE_KEY
+        ? normalizeSwitchModuleRuntimeConfig(config, moduleConfig.config_json)
+        : moduleConfig.config_json;
+    return reply.send({
+      ...moduleConfig,
+      config_json: normalizedConfigJson
+    });
   });
 
   app.get("/api/custom-modules/:key/executions", async (request, reply) => {
@@ -7626,6 +8660,31 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     if (body.is_enabled != null && typeof body.is_enabled !== "boolean") {
       return sendError(reply, 400, "is_enabled must be a boolean", "VALIDATION_ERROR");
+    }
+
+    let normalizedSwitchConfigPatch: Record<string, unknown> | undefined;
+    if (key === SWITCH_MODULE_KEY) {
+      const currentConfig = isPlainObject(moduleConfig.config_json) ? moduleConfig.config_json : {};
+      const patchConfig = isPlainObject(body.config_json) ? body.config_json : undefined;
+      const validation = validateSwitchModulePatch({
+        appConfig: config,
+        currentConfig,
+        currentEnabled: moduleConfig.is_enabled,
+        patchConfig,
+        patchEnabled: typeof body.is_enabled === "boolean" ? body.is_enabled : undefined
+      });
+      if (validation.error) {
+        return sendError(reply, 400, validation.error, "VALIDATION_ERROR");
+      }
+
+      normalizedSwitchConfigPatch = {
+        eligible_profile_ids: validation.mergedConfig.eligible_profile_ids,
+        weekly_remaining_percent_lt: validation.mergedConfig.weekly_remaining_percent_lt,
+        five_hour_remaining_percent_lt: validation.mergedConfig.five_hour_remaining_percent_lt,
+        reset_guard_hours: validation.mergedConfig.reset_guard_hours,
+        probe_interval_sec: validation.mergedConfig.probe_interval_sec,
+        switch_cooldown_sec: validation.mergedConfig.switch_cooldown_sec
+      };
     }
 
     const existingCompletedExecution = await persistence.getModuleExecutionByIdempotency(
@@ -7687,7 +8746,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         fn: async () =>
           persistence.updateCustomModuleConfig(key, {
             is_enabled: typeof body.is_enabled === "boolean" ? body.is_enabled : undefined,
-            config_json: isPlainObject(body.config_json) ? body.config_json : undefined,
+            config_json:
+              normalizedSwitchConfigPatch ??
+              (isPlainObject(body.config_json) ? body.config_json : undefined),
             updated_by: "admin"
           })
       });

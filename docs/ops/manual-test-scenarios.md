@@ -1,6 +1,6 @@
 # Manual Test Scenarios (UI + API)
 
-Обновлено: 2026-04-10
+Обновлено: 2026-04-11
 
 Этот документ даёт точные ручные сценарии, которые можно прогонять после каждого `git pull`.
 
@@ -43,9 +43,11 @@ if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
    - `dashboard`
    - `projects`
    - `tasks`
+   - `schedules`
    - `agents`
    - `agent-profiles`
    - `accounts`
+   - `secrets`
    - `memory`
    - `system`
    - `logs`
@@ -213,6 +215,51 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 5. В форме редактирования поменяй `name` и `default_branch`, нажми `Сохранить изменения`, проверь, что список/детали обновились.
 6. Открой `#/tasks` и проверь, что в форме создания и фильтре проектов есть созданный `project key`.
 7. Открой `#/memory` и проверь, что `project_id` выбирается из того же project registry (селект, без свободного ввода).
+
+## 3.7A Сценарий A7A: Schedules + Auto-switch policy v1
+
+1. Открой `http://localhost:8080/ui/console.html#/accounts`, секцию `Лимиты`.
+2. В блоке `Политика auto-switch`:
+   - включи/выключи `Авто-переключение`;
+   - отметь 2+ профиля как `валидные`;
+   - задай пороги `5ч/неделя`, `probe interval`, `cooldown`;
+   - нажми `Сохранить политику`.
+3. Обнови экран и проверь, что значения сохранились.
+4. API-проверка policy:
+
+```powershell
+Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- в `config_json` есть `eligible_profile_ids`, пороги и тайминги;
+- при `is_enabled=true` список `eligible_profile_ids` не пустой.
+
+5. Открой `http://localhost:8080/ui/console.html#/schedules`.
+6. Создай правило:
+   - `name`: `manual-schedule-<HHmmss>`;
+   - `project_id`: существующий активный проект;
+   - `cron`: `*/5 * * * *`;
+   - `task_title/task_description/task_repo_id`, опционально `task_branch`, `task_priority`.
+7. Нажми `Запустить` у правила.
+8. Проверь, что в `История запусков` появился новый run.
+9. Перейди на `#/tasks` и проверь, что появилась новая задача от расписания.
+10. Нажми `Проверить` у правила (`evaluate`) и проверь, что операция логируется в `#/logs`.
+
+API-проверка trigger:
+
+```powershell
+$scheduleId = "<SCHEDULE_ID>"
+Invoke-RestMethod -Uri "$BASE/api/schedules/$scheduleId/trigger" `
+  -Method POST -Headers $HEADERS -Body '{"dry_run_context":{"force_match":true}}' | ConvertTo-Json -Depth 8
+Invoke-RestMethod -Uri "$BASE/api/schedules/$scheduleId/runs" `
+  -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN } | ConvertTo-Json -Depth 8
+```
+
+Ожидаемо:
+- run имеет `status=completed`;
+- при `matched=true` в run заполняется `created_task_id`.
 
 ## 3.8 Сценарий A8: MCP bridge MVP
 
@@ -959,8 +1006,12 @@ Invoke-RestMethod -Uri "$BASE/api/queue/held/release" -Method POST -Headers @{ "
 $moduleBody = @{
   is_enabled = $true
   config_json = @{
-    threshold = 33
-    note = "manual-check"
+    eligible_profile_ids = @($profileId)
+    weekly_remaining_percent_lt = 5
+    five_hour_remaining_percent_lt = 10
+    reset_guard_hours = 3
+    probe_interval_sec = 60
+    switch_cooldown_sec = 120
   }
 } | ConvertTo-Json -Depth 6
 

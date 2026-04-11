@@ -585,6 +585,7 @@ summary:focus-visible {
 
 .projects-layout,
 .tasks-layout,
+.schedules-layout,
 .agents-layout,
 .agent-profiles-layout,
 .secrets-layout,
@@ -598,6 +599,14 @@ summary:focus-visible {
 
 .secrets-layout {
   grid-template-columns: minmax(300px, 1fr) minmax(0, 1.35fr);
+}
+
+.schedules-layout {
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
+}
+
+.schedules-layout > .surface-card:last-child {
+  grid-column: 1 / -1;
 }
 
 .agent-profile-subgrid {
@@ -794,9 +803,51 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.checkbox-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.checkbox-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 9px;
+}
+
+.checkbox-option input {
+  width: 16px;
+  height: 16px;
+  min-height: auto;
+  margin: 0;
+}
+
+.checkbox-option span {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.checkbox-option code {
+  grid-column: 2;
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.switch-policy-panel {
+  margin-bottom: 10px;
+}
+
 .task-card,
 .agent-card,
-.memory-item {
+.memory-item,
+.schedule-item {
   display: grid;
   gap: 6px;
 }
@@ -1003,6 +1054,7 @@ summary:focus-visible {
 @media (max-width: 1360px) {
   .projects-layout,
   .tasks-layout,
+  .schedules-layout,
   .agents-layout,
   .agent-profiles-layout,
   .secrets-layout,
@@ -1012,6 +1064,10 @@ summary:focus-visible {
   }
 
   .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checkbox-grid {
     grid-template-columns: 1fr;
   }
 

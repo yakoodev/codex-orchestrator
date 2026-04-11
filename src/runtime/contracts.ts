@@ -467,6 +467,11 @@ export interface ScheduledRuleEntity {
   rule_ast: Record<string, unknown>;
   target_agent_template_id: string | null;
   fallback_role: string | null;
+  task_title: string | null;
+  task_description: string | null;
+  task_repo_id: string | null;
+  task_branch: string | null;
+  task_priority: number;
   overlap_policy: ScheduleOverlapPolicy;
   misfire_policy: ScheduleMisfirePolicy;
   created_by: string;
@@ -579,6 +584,11 @@ export interface CreateScheduledRuleInput {
   rule_ast: Record<string, unknown>;
   target_agent_template_id?: string | null;
   fallback_role?: string | null;
+  task_title?: string | null;
+  task_description?: string | null;
+  task_repo_id?: string | null;
+  task_branch?: string | null;
+  task_priority?: number;
   overlap_policy: ScheduleOverlapPolicy;
   misfire_policy: ScheduleMisfirePolicy;
   created_by: string;
@@ -1030,10 +1040,25 @@ export interface Persistence {
       rule_ast?: Record<string, unknown>;
       target_agent_template_id?: string | null;
       fallback_role?: string | null;
+      task_title?: string | null;
+      task_description?: string | null;
+      task_repo_id?: string | null;
+      task_branch?: string | null;
+      task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
     }
   ): Promise<ScheduledRuleEntity | null>;
+  updateScheduledRun(
+    id: string,
+    patch: {
+      created_task_id?: string | null;
+      status?: ScheduledRunStatus;
+      ended_at?: Date | null;
+      skip_reason?: string | null;
+      result_json?: Record<string, unknown> | null;
+    }
+  ): Promise<ScheduledRunEntity | null>;
   deleteScheduledRule(id: string): Promise<boolean>;
   setScheduledRuleEnabled(id: string, isEnabled: boolean): Promise<boolean>;
   createScheduledRun(input: CreateScheduledRunInput): Promise<ScheduledRunEntity>;

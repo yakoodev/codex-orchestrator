@@ -2133,7 +2133,7 @@ paths:
   /api/schedules:
     post:
       tags: [Schedules]
-      summary: Create schedule rule
+      summary: Create project-scope schedule rule
       requestBody:
         required: true
         content:
@@ -2255,9 +2255,15 @@ paths:
   /api/schedules/{id}/trigger:
     post:
       tags: [Schedules]
-      summary: Trigger schedule run now
+      summary: Trigger schedule run now and create task when matched
       parameters:
         - $ref: "#/components/parameters/GenericId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledRuleTriggerRequest"
       responses:
         "202":
           description: Accepted
@@ -3994,7 +4000,7 @@ components:
           type: string
         scope:
           type: string
-          enum: [global, project]
+          enum: [project]
         project_id:
           type: [string, "null"]
         is_enabled:
@@ -4006,6 +4012,17 @@ components:
           type: [string, "null"]
         fallback_role:
           type: [string, "null"]
+        task_title:
+          type: [string, "null"]
+        task_description:
+          type: [string, "null"]
+        task_repo_id:
+          type: [string, "null"]
+        task_branch:
+          type: [string, "null"]
+        task_priority:
+          type: integer
+          minimum: 1
         overlap_policy:
           type: string
           enum: [one_active_skip]
@@ -4026,6 +4043,11 @@ components:
         - scope
         - is_enabled
         - rule_ast
+        - task_title
+        - task_description
+        - task_repo_id
+        - task_branch
+        - task_priority
         - overlap_policy
         - misfire_policy
         - created_by
@@ -4039,9 +4061,9 @@ components:
           type: string
         scope:
           type: string
-          enum: [global, project]
+          enum: [project]
         project_id:
-          type: [string, "null"]
+          type: string
         rule_ast:
           $ref: "#/components/schemas/RuleAst"
           description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
@@ -4049,13 +4071,34 @@ components:
           type: [string, "null"]
         fallback_role:
           type: [string, "null"]
+        task_title:
+          type: string
+        task_description:
+          type: string
+        task_repo_id:
+          type: string
+        task_branch:
+          type: [string, "null"]
+        task_priority:
+          type: integer
+          minimum: 1
+          default: 100
         overlap_policy:
           type: string
           enum: [one_active_skip]
         misfire_policy:
           type: string
           enum: [recompute_due_on_restart]
-      required: [name, scope, rule_ast, overlap_policy, misfire_policy]
+      required:
+        - name
+        - scope
+        - project_id
+        - rule_ast
+        - task_title
+        - task_description
+        - task_repo_id
+        - overlap_policy
+        - misfire_policy
 
     ScheduledRulePatchRequest:
       type: object
@@ -4071,6 +4114,17 @@ components:
           type: [string, "null"]
         fallback_role:
           type: [string, "null"]
+        task_title:
+          type: [string, "null"]
+        task_description:
+          type: [string, "null"]
+        task_repo_id:
+          type: [string, "null"]
+        task_branch:
+          type: [string, "null"]
+        task_priority:
+          type: integer
+          minimum: 1
         overlap_policy:
           type: string
           enum: [one_active_skip]
@@ -4080,6 +4134,14 @@ components:
       additionalProperties: false
 
     ScheduledRuleEvaluateRequest:
+      type: object
+      properties:
+        dry_run_context:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+
+    ScheduledRuleTriggerRequest:
       type: object
       properties:
         dry_run_context:

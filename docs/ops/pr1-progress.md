@@ -1,10 +1,45 @@
 # PR1 Progress Tracker (API-only Bootstrap)
 
-Обновлено: 2026-04-10  
+Обновлено: 2026-04-11  
 Ветка: `codex/pr1-bootstrap-api-only`
 
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
+
+## Итерация 2026-04-11: Настройка оркестратора v1 (autostart + auto-switch + schedules)
+
+### Реализовано
+- [x] Backend `auth-switch runner`:
+  - запускается фоном в `bus`;
+  - работает по `switch_chatgpt_auth_on_limit` c расширенным конфигом;
+  - выбирает кандидат из `eligible_profile_ids` по правилу `max 5h -> max week`;
+  - выполняет `hold -> switch -> release` и пишет lifecycle события;
+  - при отсутствии валидного кандидата переводит очередь в `WAITING_LIMIT` и пишет `skipped/no_valid_profile`.
+- [x] Расширен контракт и валидация switch-модуля:
+  - `eligible_profile_ids`
+  - `five_hour_remaining_percent_lt`
+  - `weekly_remaining_percent_lt`
+  - `reset_guard_hours`
+  - `probe_interval_sec`
+  - `switch_cooldown_sec`
+  - `enabled=true` теперь требует непустой `eligible_profile_ids`.
+- [x] Schedule trigger доведен до реального create-task flow:
+  - `POST /api/schedules/{id}/trigger` теперь создает задачу при `matched=true`;
+  - `ScheduledRule` хранит task-шаблон (`task_title/description/repo/branch/priority`);
+  - v1 ограничение: только `scope=project` и обязательный `project_id`.
+- [x] UI:
+  - добавлен отдельный экран `#/schedules` (CRUD/trigger/evaluate/enable/disable/delete + run history);
+  - в `Accounts -> Limits` добавлен блок `Auto-switch policy` (eligible pool + thresholds + probe/cooldown + last decision).
+- [x] Синхронизированы контракты:
+  - `docs/contracts/openapi.yaml` (schedules + trigger request body + task fields);
+  - `docs/contracts/module-config.schema.json` (новый switch config);
+  - `.env.example` (новые env для switch runner и schedule runner).
+
+### В работе
+- [~] Полный manual acceptance этого пакета на живом окружении (`docker compose up -d` + проверка UI/API сценариев).
+
+### Остается
+- [~] Telegram parity для новых `Schedules/Auto-switch` операций (вне scope текущего шага, отдельным инкрементом).
 
 ## Статус по плану PR1
 
@@ -338,4 +373,4 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] `npm run typecheck`
 - [x] `npm run test`
 - [x] `npm run contracts:check`
-- [x] `npm run smoke:local`
+- [~] `npm run smoke:local` (в этой итерации не пройден: локальный API не был запущен на `127.0.0.1:8080`)

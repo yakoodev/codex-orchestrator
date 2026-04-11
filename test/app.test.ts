@@ -1683,6 +1683,11 @@ class FakePersistence implements Persistence {
       rule_ast: input.rule_ast,
       target_agent_template_id: input.target_agent_template_id ?? null,
       fallback_role: input.fallback_role ?? null,
+      task_title: input.task_title ?? null,
+      task_description: input.task_description ?? null,
+      task_repo_id: input.task_repo_id ?? null,
+      task_branch: input.task_branch ?? null,
+      task_priority: input.task_priority ?? 100,
       overlap_policy: input.overlap_policy,
       misfire_policy: input.misfire_policy,
       created_by: input.created_by,
@@ -1713,6 +1718,11 @@ class FakePersistence implements Persistence {
       rule_ast?: Record<string, unknown>;
       target_agent_template_id?: string | null;
       fallback_role?: string | null;
+      task_title?: string | null;
+      task_description?: string | null;
+      task_repo_id?: string | null;
+      task_branch?: string | null;
+      task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
     }
@@ -1736,6 +1746,21 @@ class FakePersistence implements Persistence {
     }
     if (patch.fallback_role !== undefined) {
       rule.fallback_role = patch.fallback_role;
+    }
+    if (patch.task_title !== undefined) {
+      rule.task_title = patch.task_title;
+    }
+    if (patch.task_description !== undefined) {
+      rule.task_description = patch.task_description;
+    }
+    if (patch.task_repo_id !== undefined) {
+      rule.task_repo_id = patch.task_repo_id;
+    }
+    if (patch.task_branch !== undefined) {
+      rule.task_branch = patch.task_branch;
+    }
+    if (patch.task_priority !== undefined) {
+      rule.task_priority = patch.task_priority;
     }
     if (patch.overlap_policy) {
       rule.overlap_policy = patch.overlap_policy;
@@ -1804,6 +1829,40 @@ class FakePersistence implements Persistence {
         (run) => run.rule_id === ruleId && run.status === "started" && run.ended_at === null
       ) ?? null
     );
+  }
+
+  public async updateScheduledRun(
+    id: string,
+    patch: {
+      created_task_id?: string | null;
+      status?: "started" | "completed" | "failed" | "skipped_due_to_overlap";
+      ended_at?: Date | null;
+      skip_reason?: string | null;
+      result_json?: Record<string, unknown> | null;
+    }
+  ): Promise<ScheduledRunEntity | null> {
+    const run = this.scheduledRuns.find((item) => item.id === id);
+    if (!run) {
+      return null;
+    }
+
+    if (patch.created_task_id !== undefined) {
+      run.created_task_id = patch.created_task_id;
+    }
+    if (patch.status !== undefined) {
+      run.status = patch.status;
+    }
+    if (patch.ended_at !== undefined) {
+      run.ended_at = patch.ended_at;
+    }
+    if (patch.skip_reason !== undefined) {
+      run.skip_reason = patch.skip_reason;
+    }
+    if (patch.result_json !== undefined) {
+      run.result_json = patch.result_json;
+    }
+
+    return run;
   }
 
   public async listScheduledRuns(ruleId: string): Promise<ScheduledRunEntity[]> {
@@ -2314,6 +2373,8 @@ describe("smoke-core API", () => {
     switchWeeklyRemainingPercentLt: 5,
     switchFiveHourRemainingPercentLt: 10,
     switchResetGuardHours: 3,
+    switchProbeIntervalSec: 60,
+    switchCooldownSec: 120,
     openApiPath: path.resolve(process.cwd(), "docs", "contracts", "openapi.yaml"),
     delegationExecutorMode: "mock",
     codexCommand: "codex",
@@ -2323,6 +2384,8 @@ describe("smoke-core API", () => {
     taskAutoDispatchIntervalMs: 50,
     taskAutoDispatchCapability: "reviewer",
     taskAutoDispatchExecutionMode: "codex_exec",
+    scheduleRunnerEnabled: true,
+    scheduleRunnerIntervalMs: 30_000,
     telegramEnabled: false,
     telegramBotToken: null,
     telegramProxyUrl: null,
@@ -5985,11 +6048,15 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-1" },
       payload: {
         name: "Nightly check",
-        scope: "global",
-        project_id: null,
+        scope: "project",
+        project_id: "project",
         rule_ast: {
           conditions: [{ predicate: "time.cron", operator: "eq", value: "0 3 * * *" }]
         },
+        task_title: "nightly-task",
+        task_description: "run nightly task",
+        task_repo_id: "repo",
+        task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
       }
@@ -6068,10 +6135,27 @@ describe("smoke-core API", () => {
     const secondTriggerResponse = await app.inject({
       method: "POST",
       url: `/api/schedules/${ruleId}/trigger`,
-      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-4" }
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-4" },
+      payload: {
+        dry_run_context: {
+          force_match: true
+        }
+      }
     });
     expect(secondTriggerResponse.statusCode).toBe(202);
-    expect(secondTriggerResponse.json().status).toBe("started");
+    expect(secondTriggerResponse.json().status).toBe("completed");
+    expect(secondTriggerResponse.json().created_task_id).toBeTruthy();
+
+    await persistence.createScheduledRun({
+      rule_id: ruleId,
+      status: "started",
+      started_at: new Date(),
+      ended_at: null,
+      skip_reason: null,
+      trace_id: "manual-overlap",
+      idempotency_key: "manual-overlap",
+      result_json: { source: "seed" }
+    });
 
     const overlapTriggerResponse = await app.inject({
       method: "POST",
@@ -6124,8 +6208,8 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken },
       payload: {
         name: "limit-aware rule",
-        scope: "global",
-        project_id: null,
+        scope: "project",
+        project_id: "project",
         rule_ast: {
           all: [
             { predicate: "event.type", value: "limit.snapshot.captured" },
@@ -6138,6 +6222,10 @@ describe("smoke-core API", () => {
             { not: { predicate: "state.module_enabled", value: false } }
           ]
         },
+        task_title: "limit-task",
+        task_description: "limit task desc",
+        task_repo_id: "repo",
+        task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
       }
@@ -6185,12 +6273,16 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken },
       payload: {
         name: "utc cron rule",
-        scope: "global",
-        project_id: null,
+        scope: "project",
+        project_id: "project",
         rule_ast: {
           predicate: "time.cron",
           value: "30 12 * * *"
         },
+        task_title: "utc-task",
+        task_description: "utc task desc",
+        task_repo_id: "repo",
+        task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
       }
@@ -6232,11 +6324,15 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken },
       payload: {
         name: "legacy conditions rule",
-        scope: "global",
-        project_id: null,
+        scope: "project",
+        project_id: "project",
         rule_ast: {
           conditions: [{ predicate: "state.module_enabled", value: true }]
         },
+        task_title: "legacy-task",
+        task_description: "legacy task desc",
+        task_repo_id: "repo",
+        task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
       }
@@ -6266,12 +6362,16 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken },
       payload: {
         name: "idempotent trigger",
-        scope: "global",
-        project_id: null,
+        scope: "project",
+        project_id: "project",
         rule_ast: {
           predicate: "event.type",
           value: "manual.trigger"
         },
+        task_title: "idem-task",
+        task_description: "idem task desc",
+        task_repo_id: "repo",
+        task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
       }
@@ -6285,7 +6385,7 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-idem-1" }
     });
     expect(firstTrigger.statusCode).toBe(202);
-    expect(firstTrigger.json().status).toBe("started");
+    expect(firstTrigger.json().status).toBe("completed");
     const firstRunId = firstTrigger.json().id as string;
 
     const secondTrigger = await app.inject({
@@ -6295,7 +6395,7 @@ describe("smoke-core API", () => {
     });
     expect(secondTrigger.statusCode).toBe(202);
     expect(secondTrigger.json().id).toBe(firstRunId);
-    expect(secondTrigger.json().status).toBe("started");
+    expect(secondTrigger.json().status).toBe("completed");
 
     const runsResponse = await app.inject({
       method: "GET",
@@ -6570,13 +6670,27 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-1" },
       payload: {
         is_enabled: false,
-        config_json: { threshold: 42 }
+        config_json: {
+          eligible_profile_ids: [],
+          weekly_remaining_percent_lt: 42,
+          five_hour_remaining_percent_lt: 21,
+          reset_guard_hours: 3,
+          probe_interval_sec: 60,
+          switch_cooldown_sec: 120
+        }
       }
     });
 
     expect(patchResponse.statusCode).toBe(200);
     expect(patchResponse.json().is_enabled).toBe(false);
-    expect(patchResponse.json().config_json).toEqual({ threshold: 42 });
+    expect(patchResponse.json().config_json).toEqual({
+      eligible_profile_ids: [],
+      weekly_remaining_percent_lt: 42,
+      five_hour_remaining_percent_lt: 21,
+      reset_guard_hours: 3,
+      probe_interval_sec: 60,
+      switch_cooldown_sec: 120
+    });
     expect(
       publisher.events.some((event) => event.eventType === "module.execution.completed")
     ).toBe(true);
@@ -6587,7 +6701,14 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-1" },
       payload: {
         is_enabled: false,
-        config_json: { threshold: 42 }
+        config_json: {
+          eligible_profile_ids: [],
+          weekly_remaining_percent_lt: 42,
+          five_hour_remaining_percent_lt: 21,
+          reset_guard_hours: 3,
+          probe_interval_sec: 60,
+          switch_cooldown_sec: 120
+        }
       }
     });
     expect(secondPatchSameTraceResponse.statusCode).toBe(200);
@@ -6621,12 +6742,26 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-retry-1" },
       payload: {
         is_enabled: false,
-        config_json: { threshold: 55 }
+        config_json: {
+          eligible_profile_ids: [],
+          weekly_remaining_percent_lt: 55,
+          five_hour_remaining_percent_lt: 22,
+          reset_guard_hours: 3,
+          probe_interval_sec: 60,
+          switch_cooldown_sec: 120
+        }
       }
     });
 
     expect(patchResponse.statusCode).toBe(200);
-    expect(patchResponse.json().config_json).toEqual({ threshold: 55 });
+    expect(patchResponse.json().config_json).toEqual({
+      eligible_profile_ids: [],
+      weekly_remaining_percent_lt: 55,
+      five_hour_remaining_percent_lt: 22,
+      reset_guard_hours: 3,
+      probe_interval_sec: 60,
+      switch_cooldown_sec: 120
+    });
     expect(persistence.moduleUpdateAttempts).toBe(2);
     expect(
       publisher.events.filter((event) => event.eventType === "module.execution.completed")
@@ -6648,7 +6783,14 @@ describe("smoke-core API", () => {
       headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-module-fail-1" },
       payload: {
         is_enabled: false,
-        config_json: { threshold: 99 }
+        config_json: {
+          eligible_profile_ids: [],
+          weekly_remaining_percent_lt: 99,
+          five_hour_remaining_percent_lt: 33,
+          reset_guard_hours: 3,
+          probe_interval_sec: 60,
+          switch_cooldown_sec: 120
+        }
       }
     });
 
