@@ -230,11 +230,16 @@ async function main() {
     headers: { "Content-Type": "application/json", "X-Trace-Id": "smoke-trace-schedule" },
     body: JSON.stringify({
       name: "smoke-schedule",
-      scope: "global",
-      project_id: null,
+      scope: "project",
+      project_id: projectKey,
       rule_ast: {
         conditions: [{ predicate: "time.cron", operator: "eq", value: "0 3 * * *" }]
       },
+      task_title: "smoke-schedule-task",
+      task_description: "Created from smoke schedule trigger",
+      task_repo_id: "smoke-repo",
+      task_branch: null,
+      task_priority: 100,
       overlap_policy: "one_active_skip",
       misfire_policy: "recompute_due_on_restart"
     })

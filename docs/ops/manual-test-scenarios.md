@@ -1032,6 +1032,8 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit/ex
 # 8.1 Включи strict real runtime и перезапусти bus
 (Get-Content .env) `
   -replace "^DELEGATION_EXECUTOR_MODE=.*$", "DELEGATION_EXECUTOR_MODE=codex_exec" `
+  -replace "^TASK_AUTODISPATCH_SANDBOX_POLICY=.*$", "TASK_AUTODISPATCH_SANDBOX_POLICY=danger-full-access" `
+  -replace "^TASK_AUTODISPATCH_APPROVAL_POLICY=.*$", "TASK_AUTODISPATCH_APPROVAL_POLICY=never" `
   | Set-Content .env
 
 docker compose up -d --build bus

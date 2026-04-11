@@ -347,6 +347,11 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - `orchestrator.dispatch_agent` в MCP bridge теперь отклоняет вызовы без явного `payload.prompt|payload.task`;
   - `orchestrator.dispatch_agent` требует явный `target_selector.agent_profile_id`;
   - добавлен MCP tool `orchestrator.list_agent_profiles` для выбора профиля агентом по `role + description`.
+- [x] Добавлен execution policy override для auto-dispatch и REST dispatch:
+  - в конфиг добавлены `TASK_AUTODISPATCH_SANDBOX_POLICY` и `TASK_AUTODISPATCH_APPROVAL_POLICY` (дефолт `danger-full-access` + `never` для стабильного Windows-path execution);
+  - task auto-dispatch теперь передает policy override в `payload` при вызове `/api/delegation/dispatch`;
+  - `/api/delegation/dispatch` валидирует `payload.sandbox_policy`/`payload.approval_policy` и передает эффективные политики в executor;
+  - это убирает класс фейлов, где auto-агент не мог писать в `project.workspace_path` вне репозитория из-за `workspace-write` границ.
 
 ## Что намеренно вне PR1
 - [~] Полный Next.js кабинет (после PR1). Временный встроенный Web panel (`/ui/`) уже доступен для операционного тестирования.

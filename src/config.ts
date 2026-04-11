@@ -30,6 +30,8 @@ export interface AppConfig {
   taskAutoDispatchIntervalMs: number;
   taskAutoDispatchCapability: string;
   taskAutoDispatchExecutionMode: "mock" | "auto" | "codex_exec";
+  taskAutoDispatchSandboxPolicy: "read-only" | "workspace-write" | "danger-full-access";
+  taskAutoDispatchApprovalPolicy: "never" | "on-request" | "on-failure" | "untrusted";
   scheduleRunnerEnabled: boolean;
   scheduleRunnerIntervalMs: number;
   telegramEnabled: boolean;
@@ -116,6 +118,37 @@ function readTaskAutoDispatchExecutionMode(
   return "codex_exec";
 }
 
+function readSandboxPolicy(
+  value: string | undefined,
+  fallback: "read-only" | "workspace-write" | "danger-full-access"
+): "read-only" | "workspace-write" | "danger-full-access" {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "read-only" ||
+    normalized === "workspace-write" ||
+    normalized === "danger-full-access"
+  ) {
+    return normalized;
+  }
+  return fallback;
+}
+
+function readApprovalPolicy(
+  value: string | undefined,
+  fallback: "never" | "on-request" | "on-failure" | "untrusted"
+): "never" | "on-request" | "on-failure" | "untrusted" {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "never" ||
+    normalized === "on-request" ||
+    normalized === "on-failure" ||
+    normalized === "untrusted"
+  ) {
+    return normalized;
+  }
+  return fallback;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const workerRuntimeDir =
     env["WORKER_RUNTIME_DIR"]?.trim() ||
@@ -155,6 +188,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     taskAutoDispatchCapability: env["TASK_AUTODISPATCH_CAPABILITY"]?.trim() || "reviewer",
     taskAutoDispatchExecutionMode: readTaskAutoDispatchExecutionMode(
       env["TASK_AUTODISPATCH_EXECUTION_MODE"]
+    ),
+    taskAutoDispatchSandboxPolicy: readSandboxPolicy(
+      env["TASK_AUTODISPATCH_SANDBOX_POLICY"],
+      "danger-full-access"
+    ),
+    taskAutoDispatchApprovalPolicy: readApprovalPolicy(
+      env["TASK_AUTODISPATCH_APPROVAL_POLICY"],
+      "never"
     ),
     scheduleRunnerEnabled: readBool(env["SCHEDULE_RUNNER_ENABLED"], true),
     scheduleRunnerIntervalMs: Math.max(1_000, readInt(env["SCHEDULE_RUNNER_INTERVAL_MS"], 30_000)),

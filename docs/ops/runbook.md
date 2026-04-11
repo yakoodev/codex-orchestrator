@@ -27,6 +27,8 @@ docker compose up -d
   - `TASK_AUTODISPATCH_INTERVAL_MS` (default `5000`)
   - `TASK_AUTODISPATCH_CAPABILITY` (default `reviewer`)
   - `TASK_AUTODISPATCH_EXECUTION_MODE` (default `codex_exec`)
+  - `TASK_AUTODISPATCH_SANDBOX_POLICY` (default `danger-full-access`, overrides template sandbox for auto-launch)
+  - `TASK_AUTODISPATCH_APPROVAL_POLICY` (default `never`, overrides template approval for auto-launch)
 - Schedule runner:
   - `SCHEDULE_RUNNER_ENABLED` (default `true`)
   - `SCHEDULE_RUNNER_INTERVAL_MS` (default `30000`)

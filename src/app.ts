@@ -510,6 +510,8 @@ const MAX_PROJECT_SECRET_BINDINGS = 128;
 const MAX_RUNTIME_SECRET_ENV_VARS = 64;
 const PROJECT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PROJECT_SECRET_KEY_PATTERN = /^[A-Z][A-Z0-9_]{1,127}$/;
+const DELEGATION_SANDBOX_POLICIES = new Set(["read-only", "workspace-write", "danger-full-access"]);
+const DELEGATION_APPROVAL_POLICIES = new Set(["never", "on-request", "on-failure", "untrusted"]);
 const TASK_AUTODISPATCH_SOURCE = "task_auto_dispatcher";
 const TASK_AUTODISPATCH_PICKUP_STATUSES = new Set<TaskStatus>(["NEW", "QUEUED"]);
 const TASK_AUTODISPATCH_RUNNING_STATUSES = new Set(["requested", "accepted", "running"]);
@@ -1186,6 +1188,18 @@ function isScheduleOverlapPolicy(value: string): value is ScheduleOverlapPolicy 
 
 function isScheduleMisfirePolicy(value: string): value is ScheduleMisfirePolicy {
   return SCHEDULE_MISFIRE_POLICIES.has(value as ScheduleMisfirePolicy);
+}
+
+function isDelegationSandboxPolicy(
+  value: string
+): value is "read-only" | "workspace-write" | "danger-full-access" {
+  return DELEGATION_SANDBOX_POLICIES.has(value);
+}
+
+function isDelegationApprovalPolicy(
+  value: string
+): value is "never" | "on-request" | "on-failure" | "untrusted" {
+  return DELEGATION_APPROVAL_POLICIES.has(value);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -2775,6 +2789,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             source: TASK_AUTODISPATCH_SOURCE,
             task_id: assignedTask.id,
             execution_mode: config.taskAutoDispatchExecutionMode,
+            sandbox_policy: config.taskAutoDispatchSandboxPolicy,
+            approval_policy: config.taskAutoDispatchApprovalPolicy,
             prompt: buildTaskAutoDispatchPrompt(assignedTask)
           }
         }
@@ -7570,6 +7586,26 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const priority = typeof body.priority === "number" ? body.priority : 100;
     const targetSelector = body.target_selector;
     const payload = body.payload;
+    const payloadSandboxPolicyRaw = asNonEmptyString(payload["sandbox_policy"]);
+    const payloadApprovalPolicyRaw = asNonEmptyString(payload["approval_policy"]);
+    const payloadSandboxPolicy = payloadSandboxPolicyRaw?.toLowerCase();
+    const payloadApprovalPolicy = payloadApprovalPolicyRaw?.toLowerCase();
+    if (payloadSandboxPolicy && !isDelegationSandboxPolicy(payloadSandboxPolicy)) {
+      return sendError(
+        reply,
+        400,
+        "payload.sandbox_policy must be one of read-only|workspace-write|danger-full-access",
+        "VALIDATION_ERROR"
+      );
+    }
+    if (payloadApprovalPolicy && !isDelegationApprovalPolicy(payloadApprovalPolicy)) {
+      return sendError(
+        reply,
+        400,
+        "payload.approval_policy must be one of never|on-request|on-failure|untrusted",
+        "VALIDATION_ERROR"
+      );
+    }
     const inputPrompt = extractDelegationPrompt(payload);
 
     const delegation = await persistence.createDelegationRequest({
@@ -7921,8 +7957,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
               id: targetTemplate.id,
               role: targetTemplate.role,
               model: targetTemplate.model,
-              sandbox_policy: targetTemplate.sandbox_policy,
-              approval_policy: targetTemplate.approval_policy
+              sandbox_policy: payloadSandboxPolicy ?? targetTemplate.sandbox_policy,
+              approval_policy: payloadApprovalPolicy ?? targetTemplate.approval_policy
             }
           });
         } catch (error) {
