@@ -1,45 +1,48 @@
 # Product Roadmap (Post-PR1)
 
-Обновлено: 2026-04-11  
+Обновлено: 2026-04-12  
 Статус PR1: в активной реализации (API-first).
 
 Этот roadmap фиксирует ближайшие продуктовые улучшения после закрытия PR1.
 
 ## MCP Bridge for Agent Operations
-- Статус: `completed` (MVP).
+- Статус: `completed` (Task-first MCP v1).
 - Цель: дать агентам и внешним ассистентам стандартный MCP-интерфейс для работы с оркестратором.
 - Базовый scope MCP (MVP):
   - `orchestrator.list_agents`: получить доступных агентов/шаблоны;
   - `orchestrator.list_agent_profiles`: получить глобальные Agent Profile для явного выбора целевого профиля;
   - `orchestrator.list_tasks`: получить список задач и статусы;
-  - `orchestrator.dispatch_agent`: запустить делегацию/агента на задачу;
+  - `orchestrator.create_task`: создать задачу с явным исполнителем;
+  - `orchestrator.cancel_task`: отменить задачу;
   - `orchestrator.get_limits`: получить актуальные лимиты профилей.
 - Что реализовано:
   - MCP stdio bridge (`npm run mcp:serve`) как proxy-adapter поверх текущего REST API;
   - единый security boundary через `MCP_ADMIN_TOKEN`/`ADMIN_TOKEN` -> `X-Admin-Token`;
-  - trace/idempotency на уровне bridge для `orchestrator.dispatch_agent`;
-  - в MCP-ветке `orchestrator.dispatch_agent` введен guard на явный `payload.prompt|payload.task` и явный `target_selector.agent_profile_id`;
+  - trace/idempotency на уровне bridge для `orchestrator.create_task` и `orchestrator.cancel_task`;
+  - удален прямой MCP-dispatch делегаций (`orchestrator.dispatch_agent`) в пользу task-first контура;
   - единый error mapping (`error`, `code`, `status_code`) для upstream ошибок.
 - Что дальше:
   - streamable HTTP transport и расширение набора MCP tools вынесены в follow-up scope.
 - Документ интерфейса: `docs/ops/mcp-agent-bridge.md`.
 
 ## Task Workflow Auto-Dispatch
-- Статус: `completed` (MVP baseline).
-- Цель: убрать ручной шаг запуска делегации после создания задачи.
+- Статус: `completed` (Task-first baseline).
+- Цель: запуск агента всегда идет из task-очереди, без внешнего прямого dispatch.
 - Что реализовано:
   - встроенный фоновый runner подхватывает задачи в `NEW/QUEUED`;
   - runner переводит задачу в `ASSIGNED` и вызывает `/api/delegation/dispatch`;
+  - runner использует явную связку исполнителя из задачи (`agent_profile_id + agent_template_id`) без capability-fallback;
   - итог делегации синхронизируется обратно в статус задачи:
     - `completed -> DONE`
-    - `failed -> FAILED_TERMINAL` (или `WAITING_LIMIT`/`BLOCKED` по причинам);
+    - `failed -> FAILED_TERMINAL` (или `WAITING_LIMIT`/`BLOCKED` по причинам)
+    - `cancel -> CANCELLED` с guard от перезаписи статуса после отмены;
   - если нет активного auth-профиля, задача автоматически уходит в `WAITING_LIMIT`;
+  - добавлен hard-cancel endpoint `POST /api/tasks/{id}/cancel` с best-effort остановкой активного процесса делегации;
   - поведение настраивается env-параметрами:
     - `TASK_AUTODISPATCH_ENABLED`
-    - `TASK_AUTODISPATCH_INTERVAL_MS`
-    - `TASK_AUTODISPATCH_CAPABILITY`.
+    - `TASK_AUTODISPATCH_INTERVAL_MS`.
 - Что остается:
-  - расширить strategy-политику выбора capability/template на основе project/task intent (сейчас baseline: preferred capability + fallback на первый enabled template).
+  - расширить политики приоритезации очереди (batch/weights), не меняя task-first модель.
 
 ## Orchestrator Setup v1: Autostart + Auto-switch + Schedules
 - Статус: `in_progress` (код реализован, идет manual acceptance на живом контуре).
@@ -53,7 +56,9 @@
   - правило выбора кандидата: `max 5h -> max week`;
   - fallback в `WAITING_LIMIT` при отсутствии валидного профиля;
   - `POST /api/schedules/{id}/trigger` теперь реально создает task при `matched=true`;
-  - в `ScheduledRule` добавлен task-шаблон (`task_title`, `task_description`, `task_repo_id`, `task_branch`, `task_priority`);
+  - `ScheduledRule` хранит task-шаблон в task-first формате:
+    - `task_title`, `task_description`, `task_priority`
+    - обязательные `task_agent_profile_id`, `task_agent_template_id`;
   - UI: маршрут `#/schedules` + policy-блок в `Accounts -> Limits`.
 - Что остается:
   - операционная обкатка на реальном стенде (`docker compose up -d` + manual сценарии);

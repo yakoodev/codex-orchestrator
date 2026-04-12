@@ -1,6 +1,6 @@
 # Manual Test Scenarios (UI + API)
 
-Обновлено: 2026-04-11
+Обновлено: 2026-04-12
 
 Этот документ даёт точные ручные сценарии, которые можно прогонять после каждого `git pull`.
 
@@ -26,12 +26,24 @@ $ADMIN_TOKEN = (
   ForEach-Object { $_.Split("=",2)[1].Trim() }
 )
 $HEADERS = @{ "X-Admin-Token" = $ADMIN_TOKEN; "Content-Type" = "application/json" }
+
+$TASK_AGENT_PROFILE_ID = (
+  Invoke-RestMethod -Uri "$BASE/api/agent-profiles?include_disabled=false&limit=1" `
+    -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
+).items[0].id
+
+$TASK_AGENT_TEMPLATE_ID = (
+  Invoke-RestMethod -Uri "$BASE/api/agents/templates?include_disabled=false&limit=1" `
+    -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
+).items[0].id
 ```
 
 Проверка:
 
 ```powershell
 if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
+if (-not $TASK_AGENT_PROFILE_ID) { throw "No enabled agent profile found" }
+if (-not $TASK_AGENT_TEMPLATE_ID) { throw "No enabled agent template found" }
 ```
 
 ## 3. Сценарий A: UI доступен и локализация работает
@@ -201,7 +213,7 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
 2. Создай проект через форму:
    - `key = ui-project-<HHmmss>`
    - `name = UI Project`
-   - `github_repo = owner/ui-project`
+   - `github_url = https://github.com/owner/ui-project`
    - `workspace_path = /app`
 3. Нажми `Создать проект` и проверь:
    - проект появился в левом списке;
@@ -212,7 +224,7 @@ Invoke-RestMethod -Uri "$BASE/api/memory/entries?project_id=manual-memory&agent_
    - `Switch events (окно)`
    - `Последний switch`
    - `Задачи по статусам`.
-5. В форме редактирования поменяй `name` и `default_branch`, нажми `Сохранить изменения`, проверь, что список/детали обновились.
+5. В форме редактирования поменяй `name` и `workspace_path`, нажми `Сохранить изменения`, проверь, что список/детали обновились.
 6. Открой `#/tasks` и проверь, что в форме создания и фильтре проектов есть созданный `project key`.
 7. Открой `#/memory` и проверь, что `project_id` выбирается из того же project registry (селект, без свободного ввода).
 
@@ -241,7 +253,8 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit" `
    - `name`: `manual-schedule-<HHmmss>`;
    - `project_id`: существующий активный проект;
    - `cron`: `*/5 * * * *`;
-   - `task_title/task_description/task_repo_id`, опционально `task_branch`, `task_priority`.
+   - `task_title/task_description/task_priority`;
+   - `task_agent_profile_id` и `task_agent_template_id` (обязательные).
 7. Нажми `Запустить` у правила.
 8. Проверь, что в `История запусков` появился новый run.
 9. Перейди на `#/tasks` и проверь, что появилась новая задача от расписания.
@@ -284,36 +297,37 @@ npm run mcp:serve
 
 Ожидаемо: возвращаются `items`, `total`, `returned`, `truncated`.
 
-6. Вызови MCP tool `orchestrator.dispatch_agent` с аргументами:
+6. Вызови MCP tool `orchestrator.create_task` с аргументами:
 
 ```json
 {
-  "requester_task_id": "task-<id>",
-  "capability": "reviewer",
-  "target_selector": { "agent_profile_id": "<PROFILE_ID>" },
-  "payload": { "execution_mode": "mock", "prompt": "mcp smoke run" },
-  "idempotency_key": "mcp-smoke-dispatch-1"
+  "title": "mcp-smoke-task",
+  "description": "mcp create task smoke",
+  "project_id": "project",
+  "agent_profile_id": "<PROFILE_ID>",
+  "agent_template_id": "<TEMPLATE_ID>",
+  "priority": 90,
+  "idempotency_key": "mcp-smoke-task-1"
 }
 ```
 
 Ожидаемо:
 - возвращается `trace_id` (детерминированный от `idempotency_key`, если `trace_id` явно не задан);
-- в `result` есть объект делегации от `/api/delegation/dispatch`.
+- в `result` есть созданная задача с `agent_profile_id` и `agent_template_id`.
 
-6.1. Вызови MCP tool `orchestrator.list_agent_profiles` (например `{ "role": "reviewer", "include_disabled": false }`) и выбери `PROFILE_ID` из ответа.
+6.1. Вызови MCP tool `orchestrator.list_agent_profiles` (например `{ "role": "reviewer", "include_disabled": false }`) и выбери `PROFILE_ID` из ответа.  
+6.1.1. Выбери `TEMPLATE_ID` через `orchestrator.list_agents` (из `templates` с нужной `role`).
 
-6.2. Негативный кейс: вызови `orchestrator.dispatch_agent` без `payload.prompt|payload.task` или без `target_selector.agent_profile_id`.
+6.2. Негативный кейс: вызови `orchestrator.create_task` без `agent_profile_id` или `agent_template_id`.
 
 Ожидаемо:
 - MCP возвращает `REQUEST_VALIDATION_FAILED`;
-- делегация в backend не создается.
+- задача в backend не создается.
 
-6.3. Негативный REST-кейс: вызови `POST /api/delegation/dispatch` напрямую с payload без `prompt/task` (например только `instructions`).
+6.3. Негативный MCP-кейс: вызови удаленный tool `orchestrator.dispatch_agent`.
 
 Ожидаемо:
-- API возвращает `400 VALIDATION_ERROR`;
-- сообщение ошибки содержит `payload.prompt or payload.task is required`;
-- делегация в backend не создается (закрыт обход MCP-guard через прямой REST).
+- MCP возвращает `MCP_TOOL_NOT_FOUND` (или эквивалент).
 
 7. Вызови MCP tool `orchestrator.get_limits`:
    - вариант 1: `{ "profile_id": "<profile-id>" }`;
@@ -534,7 +548,8 @@ $taskBody = @{
   title = "secret-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime secret resolve check"
   project_id = "project"
-  repo_id = "project"
+  agent_profile_id = $TASK_AGENT_PROFILE_ID
+  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -812,7 +827,8 @@ $taskBody = @{
   title = "profile-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime profile resolve check"
   project_id = "project"
-  repo_id = "project"
+  agent_profile_id = $TASK_AGENT_PROFILE_ID
+  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -850,19 +866,21 @@ $taskBody = @{
   title = "mcp-child-delegation-$(Get-Date -Format HHmmss)"
   description = "e2e check: agent dispatches child via MCP"
   project_id = "project"
-  repo_id = "project"
+  agent_profile_id = $TASK_AGENT_PROFILE_ID
+  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 95
 } | ConvertTo-Json
 
 $task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
 
 $prompt = @"
-Вызови один раз MCP инструмент orchestrator.dispatch_agent.
+Вызови один раз MCP инструмент orchestrator.create_task.
 Используй поля:
-- requester_task_id: $($task.id)
-- capability: reviewer
-- target_selector: {"role":"reviewer","agent_profile_id":"$($profile.id)"}
-- payload: {"execution_mode":"mock","prompt":"child delegation smoke"}
+- title: child-task-smoke
+- description: child task created via MCP
+- project_id: project
+- agent_profile_id: $($profile.id)
+- agent_template_id: $($TASK_AGENT_TEMPLATE_ID)
 - priority: 70
 После вызова верни TASK_RESULT:SUCCESS.
 "@
@@ -891,7 +909,7 @@ $delegation.execution_meta_json | ConvertTo-Json -Depth 10
 - `status = completed`, `execution_mode = codex_exec`;
 - `result_summary` содержит `TASK_RESULT:SUCCESS`;
 - в `execution_meta_json` присутствует `mcp_servers_configured` с `orchestrator-core`;
-- в БД/карточках делегаций появляется дочерняя делегация (`execution_mode = mock`) для того же `requester_task_id`.
+- в `GET /api/tasks` появляется новая дочерняя задача `child-task-smoke` (созданная через MCP).
 
 ## 4. Сценарий B: Security boundary
 
@@ -919,7 +937,8 @@ $taskBody = @{
   title = "manual-task-$(Get-Date -Format HHmmss)"
   description = "created in manual scenario"
   project_id = "manual-project"
-  repo_id = "manual-repo"
+  agent_profile_id = $TASK_AGENT_PROFILE_ID
+  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -1081,7 +1100,8 @@ $taskBody = @{
   title = "manual-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime delegation test"
   project_id = "manual-runtime"
-  repo_id = "manual-runtime"
+  agent_profile_id = $TASK_AGENT_PROFILE_ID
+  agent_template_id = $TASK_AGENT_TEMPLATE_ID
 } | ConvertTo-Json
 $task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
 

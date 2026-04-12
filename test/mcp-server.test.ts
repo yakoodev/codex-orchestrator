@@ -2,7 +2,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type DispatchAgentRequest,
   OrchestratorApiError,
   type OrchestratorApiClient
 } from "../src/mcp/api-client";
@@ -13,7 +12,8 @@ interface ApiClientMock extends OrchestratorApiClient {
   listAgentProfiles: ReturnType<typeof vi.fn>;
   listDelegationCapabilities: ReturnType<typeof vi.fn>;
   listTasks: ReturnType<typeof vi.fn>;
-  dispatchAgent: ReturnType<typeof vi.fn>;
+  createTask: ReturnType<typeof vi.fn>;
+  cancelTask: ReturnType<typeof vi.fn>;
   createAgentRequest: ReturnType<typeof vi.fn>;
   listOpenAgentRequests: ReturnType<typeof vi.fn>;
   resolveAgentRequest: ReturnType<typeof vi.fn>;
@@ -31,7 +31,8 @@ function createApiClientMock(): ApiClientMock {
     listAgentProfiles: vi.fn(),
     listDelegationCapabilities: vi.fn(),
     listTasks: vi.fn(),
-    dispatchAgent: vi.fn(),
+    createTask: vi.fn(),
+    cancelTask: vi.fn(),
     createAgentRequest: vi.fn(),
     listOpenAgentRequests: vi.fn(),
     resolveAgentRequest: vi.fn(),
@@ -118,7 +119,8 @@ describe("MCP Bridge Server", () => {
         "orchestrator.list_agents",
         "orchestrator.list_agent_profiles",
         "orchestrator.list_tasks",
-        "orchestrator.dispatch_agent",
+        "orchestrator.create_task",
+        "orchestrator.cancel_task",
         "orchestrator.create_agent_request",
         "orchestrator.list_open_agent_requests",
         "orchestrator.resolve_agent_request",
@@ -216,34 +218,26 @@ describe("MCP Bridge Server", () => {
     expect(Array.isArray(content["items"])).toBe(true);
   });
 
-  it("использует idempotency_key для детерминированного trace_id в orchestrator.dispatch_agent", async () => {
-    apiClientMock.dispatchAgent.mockResolvedValue({ id: "dlg-1", status: "accepted" });
-
-    const dispatchArgs: DispatchAgentRequest = {
-      requester_task_id: "task-1",
-      capability: "reviewer",
-      target_selector: { agent_profile_id: "profile-1" },
-      payload: {
-        prompt: "run review"
-      },
-      priority: 100
-    };
+  it("использует idempotency_key для детерминированного trace_id в orchestrator.create_task", async () => {
+    apiClientMock.createTask.mockResolvedValue({ id: "task-1", status: "NEW" });
 
     const result = await client.callTool({
-      name: "orchestrator.dispatch_agent",
+      name: "orchestrator.create_task",
       arguments: {
-        ...dispatchArgs,
+        title: "Smoke task",
+        description: "Run smoke",
+        project_id: "web-ui",
+        agent_profile_id: "profile-1",
+        agent_template_id: "template-1",
+        priority: 100,
         idempotency_key: "same-input"
       }
     });
 
     expect(result.isError).toBeFalsy();
-    expect(apiClientMock.dispatchAgent).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.createTask).toHaveBeenCalledTimes(1);
 
-    const [, traceIdArg] = apiClientMock.dispatchAgent.mock.calls[0] as [
-      DispatchAgentRequest,
-      string
-    ];
+    const [, traceIdArg] = apiClientMock.createTask.mock.calls[0] as [Record<string, unknown>, string];
     expect(traceIdArg.startsWith("mcp-idempotency-")).toBe(true);
 
     const content = readStructuredContent(result);
@@ -251,38 +245,39 @@ describe("MCP Bridge Server", () => {
     expect(content["idempotency_key"]).toBe("same-input");
   });
 
-  it("возвращает validation error если dispatch_agent вызван без prompt/task", async () => {
+  it("возвращает validation error если create_task вызван без agent_profile_id", async () => {
     const result = await client.callTool({
-      name: "orchestrator.dispatch_agent",
+      name: "orchestrator.create_task",
       arguments: {
-        requester_task_id: "task-1",
-        capability: "reviewer",
-        target_selector: { agent_profile_id: "profile-1" },
-        payload: {}
+        title: "Smoke task",
+        description: "Run smoke",
+        project_id: "web-ui",
+        agent_template_id: "template-1"
       }
     });
 
     expect(result.isError).toBe(true);
-    const errorPayload = readErrorPayload(result);
-    expect(errorPayload["code"]).toBe("REQUEST_VALIDATION_FAILED");
-    expect(apiClientMock.dispatchAgent).not.toHaveBeenCalled();
+    expect(apiClientMock.createTask).not.toHaveBeenCalled();
   });
 
-  it("возвращает validation error если dispatch_agent вызван без agent_profile_id", async () => {
+  it("отменяет задачу через orchestrator.cancel_task", async () => {
+    apiClientMock.cancelTask.mockResolvedValue({ id: "task-1", status: "CANCELLED" });
+
     const result = await client.callTool({
-      name: "orchestrator.dispatch_agent",
+      name: "orchestrator.cancel_task",
       arguments: {
-        requester_task_id: "task-1",
-        capability: "reviewer",
-        target_selector: {},
-        payload: { prompt: "run review" }
+        task_id: "task-1",
+        reason: "manual cancel",
+        idempotency_key: "cancel-same-input"
       }
     });
 
-    expect(result.isError).toBe(true);
-    const errorPayload = readErrorPayload(result);
-    expect(errorPayload["code"]).toBe("REQUEST_VALIDATION_FAILED");
-    expect(apiClientMock.dispatchAgent).not.toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    expect(apiClientMock.cancelTask).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.cancelTask.mock.calls[0]?.[0]).toBe("task-1");
+    expect(apiClientMock.cancelTask.mock.calls[0]?.[1]).toEqual({ reason: "manual cancel" });
+    const traceIdArg = apiClientMock.cancelTask.mock.calls[0]?.[2] as string;
+    expect(traceIdArg.startsWith("mcp-idempotency-")).toBe(true);
   });
 
   it("создает универсальную заявку через orchestrator.create_agent_request", async () => {

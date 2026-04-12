@@ -91,7 +91,7 @@ const IMPLEMENTED_ROUTES = new Set<string>([
   "GET /api/tasks/{id}",
   "POST /api/tasks/{id}/pause",
   "POST /api/tasks/{id}/resume",
-  "POST /api/tasks/{id}/stop",
+  "POST /api/tasks/{id}/cancel",
   "POST /api/tasks/{id}/replan",
   "POST /api/tasks/{id}/say",
   "POST /api/tasks/{id}/approve",
@@ -190,8 +190,8 @@ interface TaskCreateRequest {
   title?: unknown;
   description?: unknown;
   project_id?: unknown;
-  repo_id?: unknown;
-  branch?: unknown;
+  agent_profile_id?: unknown;
+  agent_template_id?: unknown;
   priority?: unknown;
 }
 
@@ -200,8 +200,6 @@ interface ProjectCreateRequest {
   name?: unknown;
   description?: unknown;
   github_url?: unknown;
-  github_repo?: unknown;
-  default_branch?: unknown;
   workspace_path?: unknown;
   meta_json?: unknown;
   is_active?: unknown;
@@ -211,8 +209,6 @@ interface ProjectPatchRequest {
   name?: unknown;
   description?: unknown;
   github_url?: unknown;
-  github_repo?: unknown;
-  default_branch?: unknown;
   workspace_path?: unknown;
   meta_json?: unknown;
   is_active?: unknown;
@@ -238,6 +234,10 @@ interface ProjectSecretRotateRequest {
 
 interface TaskSayRequest {
   message?: unknown;
+}
+
+interface TaskCancelRequest {
+  reason?: unknown;
 }
 
 interface AuthContextCreateRequest {
@@ -348,7 +348,6 @@ interface AgentRequestResolveRequest {
 }
 
 interface AgentProfileCreateRequest {
-  project_id?: unknown; // legacy optional field
   name?: unknown;
   role?: unknown;
   description?: unknown;
@@ -418,12 +417,10 @@ interface ScheduleCreateRequest {
   scope?: unknown;
   project_id?: unknown;
   rule_ast?: unknown;
-  target_agent_template_id?: unknown;
-  fallback_role?: unknown;
+  task_agent_profile_id?: unknown;
+  task_agent_template_id?: unknown;
   task_title?: unknown;
   task_description?: unknown;
-  task_repo_id?: unknown;
-  task_branch?: unknown;
   task_priority?: unknown;
   overlap_policy?: unknown;
   misfire_policy?: unknown;
@@ -433,12 +430,10 @@ interface SchedulePatchRequest {
   name?: unknown;
   is_enabled?: unknown;
   rule_ast?: unknown;
-  target_agent_template_id?: unknown;
-  fallback_role?: unknown;
+  task_agent_profile_id?: unknown;
+  task_agent_template_id?: unknown;
   task_title?: unknown;
   task_description?: unknown;
-  task_repo_id?: unknown;
-  task_branch?: unknown;
   task_priority?: unknown;
   overlap_policy?: unknown;
   misfire_policy?: unknown;
@@ -834,8 +829,8 @@ function buildTaskAutoDispatchPrompt(task: TaskEntity): string {
     "- TASK_RESULT:FAILED (если выполнить задачу не удалось или выполнена частично)",
     `task_id: ${task.id}`,
     `project_id: ${task.project_id}`,
-    `repo_id: ${task.repo_id}`,
-    `branch: ${task.branch ?? "n/a"}`,
+    `agent_profile_id: ${task.agent_profile_id}`,
+    `agent_template_id: ${task.agent_template_id}`,
     `priority: ${task.priority}`,
     "",
     `Title: ${task.title}`,
@@ -865,20 +860,6 @@ function detectTaskAutoDispatchOutcome(
   }
 
   return "unknown";
-}
-
-function selectTaskAutoDispatchTemplate(
-  templates: AgentTemplateEntity[],
-  preferredCapability: string
-): AgentTemplateEntity | null {
-  const normalizedPreferred = preferredCapability.trim().toLowerCase();
-  const preferred =
-    templates.find((template) => template.role.trim().toLowerCase() === normalizedPreferred) ?? null;
-  if (preferred) {
-    return preferred;
-  }
-
-  return templates[0] ?? null;
 }
 
 function resolveTaskStatusAfterAutoDispatchFailure(
@@ -1140,6 +1121,14 @@ function redactSecretsInUnknown(value: unknown, redactionValues: string[]): unkn
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function detectLegacyFields(body: unknown, legacyFields: readonly string[]): string[] {
+  if (!isPlainObject(body)) {
+    return [];
+  }
+
+  return legacyFields.filter((field) => Object.prototype.hasOwnProperty.call(body, field));
 }
 
 function isAuthContextType(value: string): value is AuthContextType {
@@ -1914,8 +1903,6 @@ function projectToResponse(project: ProjectEntity): Record<string, unknown> {
     name: project.name,
     description: project.description,
     github_url: project.github_url,
-    github_repo: project.github_repo,
-    default_branch: project.default_branch,
     workspace_path: project.workspace_path,
     meta_json: project.meta_json,
     is_active: project.is_active,
@@ -2005,8 +1992,12 @@ function taskToResponse(task: TaskEntity): Record<string, unknown> {
     status: task.status,
     priority: task.priority,
     project_id: task.project_id,
-    repo_id: task.repo_id,
-    branch: task.branch
+    agent_profile_id: task.agent_profile_id,
+    agent_template_id: task.agent_template_id,
+    cancel_reason: task.cancel_reason,
+    cancelled_at: task.cancelled_at,
+    created_at: task.created_at,
+    updated_at: task.updated_at
   };
 }
 
@@ -2160,7 +2151,6 @@ function getAgentRequestStatusEventType(status: AgentRequestStatus): string {
 function agentProfileToResponse(profile: AgentProfileEntity): Record<string, unknown> {
   return {
     id: profile.id,
-    project_id: profile.project_id,
     name: profile.name,
     role: profile.role,
     description: profile.description,
@@ -2399,12 +2389,10 @@ function scheduledRuleToResponse(rule: ScheduledRuleEntity): Record<string, unkn
     project_id: rule.project_id,
     is_enabled: rule.is_enabled,
     rule_ast: rule.rule_ast,
-    target_agent_template_id: rule.target_agent_template_id,
-    fallback_role: rule.fallback_role,
+    task_agent_profile_id: rule.task_agent_profile_id,
+    task_agent_template_id: rule.task_agent_template_id,
     task_title: rule.task_title,
     task_description: rule.task_description,
-    task_repo_id: rule.task_repo_id,
-    task_branch: rule.task_branch,
     task_priority: rule.task_priority,
     overlap_policy: rule.overlap_policy,
     misfire_policy: rule.misfire_policy,
@@ -2750,18 +2738,33 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return;
       }
 
-      const enabledTemplates = (await persistence.listAgentTemplates()).filter(
-        (template) => template.is_enabled
-      );
-      const targetTemplate = selectTaskAutoDispatchTemplate(
-        enabledTemplates,
-        config.taskAutoDispatchCapability
-      );
-      if (!targetTemplate) {
+      const [agentProfile, allTemplates] = await Promise.all([
+        persistence.getAgentProfileById(currentTask.agent_profile_id),
+        persistence.listAgentTemplates()
+      ]);
+      const targetTemplate =
+        allTemplates.find((template) => template.id === currentTask.agent_template_id) ?? null;
+      if (!agentProfile || !targetTemplate) {
         await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
         app.log.warn(
           { task_id: currentTask.id },
-          "Task moved to BLOCKED because no enabled agent template exists"
+          "Task moved to BLOCKED because assigned agent selector was not found"
+        );
+        return;
+      }
+      if (!agentProfile.is_enabled || !targetTemplate.is_enabled) {
+        await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
+        app.log.warn(
+          { task_id: currentTask.id },
+          "Task moved to BLOCKED because assigned agent profile/template is disabled"
+        );
+        return;
+      }
+      if (normalizeAgentRole(agentProfile.role) !== normalizeAgentRole(targetTemplate.role)) {
+        await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
+        app.log.warn(
+          { task_id: currentTask.id },
+          "Task moved to BLOCKED because assigned agent profile/template role mismatch"
         );
         return;
       }
@@ -2783,6 +2786,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           requester_task_id: assignedTask.id,
           capability: targetTemplate.role,
           target_selector: {
+            agent_profile_id: assignedTask.agent_profile_id,
             agent_template_id: targetTemplate.id
           },
           payload: {
@@ -2798,6 +2802,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
       const dispatchBody = parseJsonObject(dispatchResponse.body);
       if (dispatchResponse.statusCode !== 202 || !dispatchBody) {
+        const latestTask = await persistence.getTaskById(assignedTask.id);
+        if (latestTask && (latestTask.status === "CANCELLED" || latestTask.status === "INTERRUPTING")) {
+          return;
+        }
         await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
         app.log.error(
           {
@@ -2814,6 +2822,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       if (delegationStatus === "completed") {
         const resultSummary = asNonEmptyString(dispatchBody["result_summary"]) ?? "";
         const outcome = detectTaskAutoDispatchOutcome(resultSummary);
+        const latestTask = await persistence.getTaskById(assignedTask.id);
+        if (latestTask && (latestTask.status === "CANCELLED" || latestTask.status === "INTERRUPTING")) {
+          return;
+        }
         if (outcome === "failed") {
           await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
           app.log.warn(
@@ -2831,16 +2843,28 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
 
       if (delegationStatus === "failed") {
+        const latestTask = await persistence.getTaskById(assignedTask.id);
+        if (latestTask && (latestTask.status === "CANCELLED" || latestTask.status === "INTERRUPTING")) {
+          return;
+        }
         const failedTaskStatus = resolveTaskStatusAfterAutoDispatchFailure(dispatchBody);
         await persistence.updateTaskStatus(assignedTask.id, failedTaskStatus);
         return;
       }
 
       if (delegationStatus && TASK_AUTODISPATCH_RUNNING_STATUSES.has(delegationStatus)) {
+        const latestTask = await persistence.getTaskById(assignedTask.id);
+        if (latestTask && (latestTask.status === "CANCELLED" || latestTask.status === "INTERRUPTING")) {
+          return;
+        }
         await persistence.updateTaskStatus(assignedTask.id, "RUNNING");
         return;
       }
 
+      const latestTask = await persistence.getTaskById(assignedTask.id);
+      if (latestTask && (latestTask.status === "CANCELLED" || latestTask.status === "INTERRUPTING")) {
+        return;
+      }
       await persistence.updateTaskStatus(assignedTask.id, "FAILED_TERMINAL");
       app.log.error(
         { task_id: assignedTask.id, delegation_status: delegationStatus ?? null },
@@ -3503,7 +3527,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       if (
         !options.rule.task_title ||
         !options.rule.task_description ||
-        !options.rule.task_repo_id
+        !options.rule.task_agent_profile_id ||
+        !options.rule.task_agent_template_id
       ) {
         const failedRun =
           (await persistence.updateScheduledRun(startedRun.id, {
@@ -3585,12 +3610,97 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return failedRun;
       }
 
+      const [profile, template] = await Promise.all([
+        persistence.getAgentProfileById(options.rule.task_agent_profile_id),
+        persistence.listAgentTemplates().then((items) =>
+          items.find((item) => item.id === options.rule.task_agent_template_id) ?? null
+        )
+      ]);
+      if (!profile || !template) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "agent_selector_not_found",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:agent_selector_not_found:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "agent_selector_not_found"
+          }
+        });
+        return failedRun;
+      }
+      if (!profile.is_enabled || !template.is_enabled) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "agent_selector_disabled",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:agent_selector_disabled:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "agent_selector_disabled"
+          }
+        });
+        return failedRun;
+      }
+      if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
+        const failedRun =
+          (await persistence.updateScheduledRun(startedRun.id, {
+            status: "failed",
+            ended_at: new Date(),
+            skip_reason: "agent_selector_role_mismatch",
+            result_json: {
+              matched: true,
+              reasons,
+              trigger_source: options.triggerSource
+            }
+          })) ?? startedRun;
+        await publisher.publish({
+          eventType: "schedule.run.failed",
+          traceId: options.traceId,
+          idempotencyKey: `${failedRun.id}:agent_selector_role_mismatch:${options.traceId}`,
+          payload: {
+            rule_id: options.rule.id,
+            run_id: failedRun.id,
+            scope: options.rule.scope,
+            status: failedRun.status,
+            reason: "agent_selector_role_mismatch"
+          }
+        });
+        return failedRun;
+      }
+
       const createdTask = await persistence.createTask({
         title: options.rule.task_title,
         description: options.rule.task_description,
         project_id: options.rule.project_id,
-        repo_id: options.rule.task_repo_id,
-        branch: options.rule.task_branch ?? null,
+        agent_profile_id: options.rule.task_agent_profile_id,
+        agent_template_id: options.rule.task_agent_template_id,
         priority: options.rule.task_priority,
         status: "NEW",
         source: "schedule",
@@ -3693,8 +3803,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       taskAutoDispatchTimer.unref?.();
       app.log.info(
         {
-          interval_ms: config.taskAutoDispatchIntervalMs,
-          capability: config.taskAutoDispatchCapability
+          interval_ms: config.taskAutoDispatchIntervalMs
         },
         "Task auto-dispatch runner started"
       );
@@ -3759,6 +3868,15 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/projects", async (request, reply) => {
     const body = request.body as ProjectCreateRequest;
+    const legacyProjectFields = detectLegacyFields(body, ["github_repo", "default_branch"]);
+    if (legacyProjectFields.length > 0) {
+      return sendError(
+        reply,
+        400,
+        `Legacy fields are not supported: ${legacyProjectFields.join(", ")}`,
+        "VALIDATION_ERROR"
+      );
+    }
     const key = asProjectKey(body?.key);
     const name = asNonEmptyString(body?.name);
 
@@ -3787,14 +3905,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     let description: string | null | undefined;
     let githubUrl: string | null | undefined;
-    let githubRepo: string | null | undefined;
-    let defaultBranch: string | null | undefined;
     let workspacePath: string | null | undefined;
     try {
       description = parseNullableField(body.description, "description");
       githubUrl = parseNullableField(body.github_url, "github_url");
-      githubRepo = parseNullableField(body.github_repo, "github_repo");
-      defaultBranch = parseNullableField(body.default_branch, "default_branch");
       workspacePath = parseNullableField(body.workspace_path, "workspace_path");
     } catch (error) {
       return sendError(reply, 400, getErrorMessage(error), "VALIDATION_ERROR");
@@ -3825,8 +3939,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         name,
         description,
         github_url: githubUrl,
-        github_repo: githubRepo,
-        default_branch: defaultBranch,
         workspace_path: workspacePath,
         meta_json: metaJson,
         is_active: isActive
@@ -3878,6 +3990,15 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     const body = request.body as ProjectPatchRequest;
+    const legacyProjectFields = detectLegacyFields(body, ["github_repo", "default_branch"]);
+    if (legacyProjectFields.length > 0) {
+      return sendError(
+        reply,
+        400,
+        `Legacy fields are not supported: ${legacyProjectFields.join(", ")}`,
+        "VALIDATION_ERROR"
+      );
+    }
     const patch: Parameters<Persistence["patchProject"]>[1] = {};
 
     if (body.name !== undefined) {
@@ -3911,12 +4032,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
       if (body.github_url !== undefined) {
         patch.github_url = parseNullablePatchField(body.github_url, "github_url");
-      }
-      if (body.github_repo !== undefined) {
-        patch.github_repo = parseNullablePatchField(body.github_repo, "github_repo");
-      }
-      if (body.default_branch !== undefined) {
-        patch.default_branch = parseNullablePatchField(body.default_branch, "default_branch");
       }
       if (body.workspace_path !== undefined) {
         patch.workspace_path = parseNullablePatchField(body.workspace_path, "workspace_path");
@@ -4484,33 +4599,72 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/tasks", async (request, reply) => {
     const body = request.body as TaskCreateRequest;
+    const legacyTaskFields = detectLegacyFields(body, ["repo_id", "branch"]);
+    if (legacyTaskFields.length > 0) {
+      return sendError(
+        reply,
+        400,
+        `Legacy fields are not supported: ${legacyTaskFields.join(", ")}`,
+        "VALIDATION_ERROR"
+      );
+    }
 
     const title = asNonEmptyString(body?.title);
     const description = asNonEmptyString(body?.description);
     const projectId = asNonEmptyString(body?.project_id);
-    const repoId = asNonEmptyString(body?.repo_id);
+    const agentProfileId = asNonEmptyString(body?.agent_profile_id);
+    const agentTemplateId = asNonEmptyString(body?.agent_template_id);
 
-    if (!title || !description || !projectId || !repoId) {
-      return sendError(reply, 400, "title, description, project_id and repo_id are required", "VALIDATION_ERROR");
+    if (!title || !description || !projectId || !agentProfileId || !agentTemplateId) {
+      return sendError(
+        reply,
+        400,
+        "title, description, project_id, agent_profile_id and agent_template_id are required",
+        "VALIDATION_ERROR"
+      );
     }
 
-    const project = await persistence.getProjectByKey(projectId);
+    const [project, profile, templates] = await Promise.all([
+      persistence.getProjectByKey(projectId),
+      persistence.getAgentProfileById(agentProfileId),
+      persistence.listAgentTemplates()
+    ]);
     if (!project) {
       return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
     }
     if (!project.is_active) {
       return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
     }
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+    }
+    if (!profile.is_enabled) {
+      return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
+    }
+    const template = templates.find((item) => item.id === agentTemplateId) ?? null;
+    if (!template) {
+      return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
+    }
+    if (!template.is_enabled) {
+      return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
+    }
+    if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
+      return sendError(
+        reply,
+        409,
+        "Agent profile role does not match agent template role",
+        "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
+      );
+    }
 
-    const branch = body.branch == null ? null : asNonEmptyString(body.branch);
     const priority = typeof body.priority === "number" ? body.priority : 100;
 
     const createdTask = await persistence.createTask({
       title,
       description,
       project_id: projectId,
-      repo_id: repoId,
-      branch,
+      agent_profile_id: agentProfileId,
+      agent_template_id: agentTemplateId,
       priority,
       status: "NEW",
       source: "api",
@@ -4563,14 +4717,110 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     return reply.send(taskToResponse(task));
   });
 
-  app.post("/api/tasks/:id/stop", async (request, reply) => {
+  app.post("/api/tasks/:id/cancel", async (request, reply) => {
     const { id } = request.params as { id: string };
-    const task = await persistence.updateTaskStatus(id, "FAILED_TERMINAL");
+    const body = request.body as TaskCancelRequest;
+    const reason =
+      body?.reason === undefined || body.reason === null
+        ? null
+        : asNonEmptyString(body.reason);
+    if (body?.reason !== undefined && body.reason !== null && !reason) {
+      return sendError(reply, 400, "reason must be a non-empty string or null", "VALIDATION_ERROR");
+    }
+
+    const task = await persistence.getTaskById(id);
     if (!task) {
       return sendError(reply, 404, "Task not found", "NOT_FOUND");
     }
 
-    return reply.send(taskToResponse(task));
+    const waitingStatuses = new Set<TaskStatus>([
+      "NEW",
+      "QUEUED",
+      "WAITING_APPROVAL",
+      "WAITING_LIMIT",
+      "WAITING_USER",
+      "REPLANNING",
+      "BLOCKED",
+      "FAILED_RETRYABLE"
+    ]);
+    const activeStatuses = new Set<TaskStatus>([
+      "ASSIGNED",
+      "STARTING",
+      "RUNNING",
+      "INTERRUPTING",
+      "DRAINING_ACTIVE",
+      "SWITCHING_AUTH"
+    ]);
+    const terminalStatuses = new Set<TaskStatus>([
+      "DONE",
+      "FAILED_TERMINAL",
+      "INTERRUPTED",
+      "ARCHIVED",
+      "CANCELLED"
+    ]);
+
+    if (terminalStatuses.has(task.status)) {
+      if (task.status === "CANCELLED") {
+        return reply.send(taskToResponse(task));
+      }
+      return sendError(reply, 409, `Task cannot be cancelled from status ${task.status}`, "TASK_CANCEL_INVALID_STATUS");
+    }
+
+    if (waitingStatuses.has(task.status)) {
+      const cancelled = await persistence.updateTask(task.id, {
+        status: "CANCELLED",
+        cancelled_at: new Date(),
+        cancel_reason: reason
+      });
+      if (!cancelled) {
+        return sendError(reply, 500, "Failed to cancel task", "INTERNAL_ERROR");
+      }
+      return reply.send(taskToResponse(cancelled));
+    }
+
+    if (activeStatuses.has(task.status)) {
+      await persistence.updateTaskStatus(task.id, "INTERRUPTING");
+      const runningDelegations = (await persistence.listDelegationRequests({
+        statuses: ["requested", "accepted", "running"],
+        limit: 200
+      })).filter((item) => item.requester_task_id === task.id);
+
+      for (const delegation of runningDelegations) {
+        try {
+          if (delegationExecutor?.cancel) {
+            await delegationExecutor.cancel(delegation.id);
+          }
+        } catch (error) {
+          request.log.warn(
+            { err: error, delegation_id: delegation.id, task_id: task.id },
+            "Failed to cancel delegation child process"
+          );
+        }
+
+        await persistence.updateDelegationRequest(delegation.id, {
+          status: "cancelled",
+          result_summary: reason ? `Task cancelled: ${reason}` : "Task cancelled by operator",
+          ended_at: new Date()
+        });
+      }
+
+      const cancelled = await persistence.updateTask(task.id, {
+        status: "CANCELLED",
+        cancelled_at: new Date(),
+        cancel_reason: reason
+      });
+      if (!cancelled) {
+        return sendError(reply, 500, "Failed to cancel task", "INTERNAL_ERROR");
+      }
+      return reply.send(taskToResponse(cancelled));
+    }
+
+    return sendError(
+      reply,
+      409,
+      `Task cannot be cancelled from status ${task.status}`,
+      "TASK_CANCEL_INVALID_STATUS"
+    );
   });
 
   app.post("/api/tasks/:id/replan", async (request, reply) => {
@@ -6452,18 +6702,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.post("/api/agent-profiles", async (request, reply) => {
     const body = request.body as AgentProfileCreateRequest;
-    const legacyProjectId = asProjectKey(body.project_id) ?? null;
     const name = asNonEmptyString(body.name);
     const roleValue = asNonEmptyString(body.role);
-    if (body.project_id !== undefined && body.project_id !== null && !legacyProjectId) {
-      return sendError(
-        reply,
-        400,
-        "project_id must be a valid project key or null",
-        "REQUEST_VALIDATION_FAILED"
-      );
-    }
-
     if (!name || !roleValue) {
       return sendError(
         reply,
@@ -6517,7 +6757,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     }
 
     const created = await persistence.createAgentProfile({
-      project_id: legacyProjectId,
       name,
       role: normalizeAgentRole(roleValue),
       description,
@@ -6537,7 +6776,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
   app.get("/api/agent-profiles", async (request, reply) => {
     const query = request.query as {
-      project_id?: unknown;
       include_disabled?: unknown;
       role?: unknown;
       limit?: unknown;
@@ -8157,15 +8395,30 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
   app.post("/api/schedules", async (request, reply) => {
     const traceId = getTraceId(request);
     const body = request.body as ScheduleCreateRequest;
+    const legacyScheduleFields = detectLegacyFields(body, [
+      "task_repo_id",
+      "task_branch",
+      "target_agent_template_id",
+      "fallback_role"
+    ]);
+    if (legacyScheduleFields.length > 0) {
+      return sendError(
+        reply,
+        400,
+        `Legacy fields are not supported: ${legacyScheduleFields.join(", ")}`,
+        "VALIDATION_ERROR"
+      );
+    }
 
     const name = asNonEmptyString(body.name);
     const scopeValue = asNonEmptyString(body.scope);
     const overlapPolicyValue = asNonEmptyString(body.overlap_policy);
     const misfirePolicyValue = asNonEmptyString(body.misfire_policy);
     const projectId = asNonEmptyString(body.project_id);
+    const taskAgentProfileId = asNonEmptyString(body.task_agent_profile_id);
+    const taskAgentTemplateId = asNonEmptyString(body.task_agent_template_id);
     const taskTitle = asNonEmptyString(body.task_title);
     const taskDescription = asNonEmptyString(body.task_description);
-    const taskRepoId = asNonEmptyString(body.task_repo_id);
     const parsedTaskPriority = asNonNegativeInteger(body.task_priority);
     const taskPriority = parsedTaskPriority == null ? 100 : parsedTaskPriority;
 
@@ -8200,11 +8453,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "project_id is required when scope=project", "VALIDATION_ERROR");
     }
 
-    if (!taskTitle || !taskDescription || !taskRepoId) {
+    if (!taskTitle || !taskDescription || !taskAgentProfileId || !taskAgentTemplateId) {
       return sendError(
         reply,
         400,
-        "task_title, task_description and task_repo_id are required",
+        "task_title, task_description, task_agent_profile_id and task_agent_template_id are required",
         "VALIDATION_ERROR"
       );
     }
@@ -8213,41 +8466,37 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "task_priority must be a positive integer", "VALIDATION_ERROR");
     }
 
-    const taskBranch =
-      body.task_branch == null
-        ? null
-        : asNonEmptyString(body.task_branch);
-    if (body.task_branch != null && !taskBranch) {
-      return sendError(reply, 400, "task_branch must be a non-empty string or null", "VALIDATION_ERROR");
-    }
-
-    const project = await persistence.getProjectByKey(projectId);
+    const [project, profile, templates] = await Promise.all([
+      persistence.getProjectByKey(projectId),
+      persistence.getAgentProfileById(taskAgentProfileId),
+      persistence.listAgentTemplates()
+    ]);
     if (!project) {
       return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
     }
     if (!project.is_active) {
       return sendError(reply, 409, "Project is inactive", "PROJECT_INACTIVE");
     }
-
-    let targetAgentTemplateId: string | null = null;
-    if (body.target_agent_template_id !== undefined && body.target_agent_template_id !== null) {
-      targetAgentTemplateId = asNonEmptyString(body.target_agent_template_id);
-      if (!targetAgentTemplateId) {
-        return sendError(
-          reply,
-          400,
-          "target_agent_template_id must be a non-empty string or null",
-          "VALIDATION_ERROR"
-        );
-      }
+    if (!profile) {
+      return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
     }
-
-    let fallbackRole: string | null = null;
-    if (body.fallback_role !== undefined && body.fallback_role !== null) {
-      fallbackRole = asNonEmptyString(body.fallback_role);
-      if (!fallbackRole) {
-        return sendError(reply, 400, "fallback_role must be a non-empty string or null", "VALIDATION_ERROR");
-      }
+    if (!profile.is_enabled) {
+      return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
+    }
+    const template = templates.find((item) => item.id === taskAgentTemplateId) ?? null;
+    if (!template) {
+      return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
+    }
+    if (!template.is_enabled) {
+      return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
+    }
+    if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
+      return sendError(
+        reply,
+        409,
+        "Agent profile role does not match agent template role",
+        "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
+      );
     }
 
     const created = await persistence.createScheduledRule({
@@ -8255,12 +8504,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       scope: scopeValue,
       project_id: projectId,
       rule_ast: body.rule_ast,
-      target_agent_template_id: targetAgentTemplateId,
-      fallback_role: fallbackRole,
+      task_agent_profile_id: taskAgentProfileId,
+      task_agent_template_id: taskAgentTemplateId,
       task_title: taskTitle,
       task_description: taskDescription,
-      task_repo_id: taskRepoId,
-      task_branch: taskBranch,
       task_priority: taskPriority,
       overlap_policy: overlapPolicyValue,
       misfire_policy: misfirePolicyValue,
@@ -8301,6 +8548,20 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const traceId = getTraceId(request);
     const { id } = request.params as { id: string };
     const body = request.body as SchedulePatchRequest;
+    const legacyScheduleFields = detectLegacyFields(body, [
+      "task_repo_id",
+      "task_branch",
+      "target_agent_template_id",
+      "fallback_role"
+    ]);
+    if (legacyScheduleFields.length > 0) {
+      return sendError(
+        reply,
+        400,
+        `Legacy fields are not supported: ${legacyScheduleFields.join(", ")}`,
+        "VALIDATION_ERROR"
+      );
+    }
 
     const patch: Parameters<Persistence["patchScheduledRule"]>[1] = {};
 
@@ -8326,33 +8587,30 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       patch.rule_ast = body.rule_ast;
     }
 
-    if (body.target_agent_template_id !== undefined) {
-      if (body.target_agent_template_id === null) {
-        patch.target_agent_template_id = null;
-      } else {
-        const value = asNonEmptyString(body.target_agent_template_id);
-        if (!value) {
-          return sendError(
-            reply,
-            400,
-            "target_agent_template_id must be a non-empty string or null",
-            "VALIDATION_ERROR"
-          );
-        }
-        patch.target_agent_template_id = value;
+    if (body.task_agent_profile_id !== undefined) {
+      const value = asNonEmptyString(body.task_agent_profile_id);
+      if (!value) {
+        return sendError(
+          reply,
+          400,
+          "task_agent_profile_id must be a non-empty string",
+          "VALIDATION_ERROR"
+        );
       }
+      patch.task_agent_profile_id = value;
     }
 
-    if (body.fallback_role !== undefined) {
-      if (body.fallback_role === null) {
-        patch.fallback_role = null;
-      } else {
-        const value = asNonEmptyString(body.fallback_role);
-        if (!value) {
-          return sendError(reply, 400, "fallback_role must be a non-empty string or null", "VALIDATION_ERROR");
-        }
-        patch.fallback_role = value;
+    if (body.task_agent_template_id !== undefined) {
+      const value = asNonEmptyString(body.task_agent_template_id);
+      if (!value) {
+        return sendError(
+          reply,
+          400,
+          "task_agent_template_id must be a non-empty string",
+          "VALIDATION_ERROR"
+        );
       }
+      patch.task_agent_template_id = value;
     }
 
     if (body.task_title !== undefined) {
@@ -8384,30 +8642,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
     }
 
-    if (body.task_repo_id !== undefined) {
-      if (body.task_repo_id === null) {
-        patch.task_repo_id = null;
-      } else {
-        const value = asNonEmptyString(body.task_repo_id);
-        if (!value) {
-          return sendError(reply, 400, "task_repo_id must be a non-empty string or null", "VALIDATION_ERROR");
-        }
-        patch.task_repo_id = value;
-      }
-    }
-
-    if (body.task_branch !== undefined) {
-      if (body.task_branch === null) {
-        patch.task_branch = null;
-      } else {
-        const value = asNonEmptyString(body.task_branch);
-        if (!value) {
-          return sendError(reply, 400, "task_branch must be a non-empty string or null", "VALIDATION_ERROR");
-        }
-        patch.task_branch = value;
-      }
-    }
-
     if (body.task_priority !== undefined) {
       const value = asNonNegativeInteger(body.task_priority);
       if (value == null || value < 1) {
@@ -8430,6 +8664,40 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return sendError(reply, 400, "Invalid misfire_policy", "VALIDATION_ERROR");
       }
       patch.misfire_policy = value;
+    }
+
+    if (patch.task_agent_profile_id || patch.task_agent_template_id) {
+      const current = await persistence.getScheduledRuleById(id);
+      if (!current) {
+        return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
+      }
+      const effectiveProfileId = patch.task_agent_profile_id ?? current.task_agent_profile_id;
+      const effectiveTemplateId = patch.task_agent_template_id ?? current.task_agent_template_id;
+      const [profile, templates] = await Promise.all([
+        persistence.getAgentProfileById(effectiveProfileId),
+        persistence.listAgentTemplates()
+      ]);
+      if (!profile) {
+        return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+      }
+      if (!profile.is_enabled) {
+        return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
+      }
+      const template = templates.find((item) => item.id === effectiveTemplateId) ?? null;
+      if (!template) {
+        return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
+      }
+      if (!template.is_enabled) {
+        return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
+      }
+      if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
+        return sendError(
+          reply,
+          409,
+          "Agent profile role does not match agent template role",
+          "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
+        );
+      }
     }
 
     const updated = await persistence.patchScheduledRule(id, patch);

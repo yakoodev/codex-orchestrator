@@ -1,6 +1,6 @@
 # Project Object v1 (Design + Rollout Plan)
 
-Обновлено: 2026-04-08  
+Обновлено: 2026-04-12  
 Статус: `completed` (Phase A/B/C реализованы).
 
 ## 1. Цель
@@ -29,8 +29,6 @@
 - `name: String`
 - `description: String?`
 - `github_url: String?`
-- `github_repo: String?` (`owner/repo`)
-- `default_branch: String?`
 - `workspace_path: String?` (локальный путь, используемый по умолчанию для делегаций)
 - `meta_json: Json?`
 - `is_active: Boolean @default(true)`
@@ -73,7 +71,7 @@
 
 Добавить отдельный экран `Projects` в консоль:
 - список проектов;
-- создание/редактирование (`key/name/github/default_branch/workspace_path`);
+- создание/редактирование (`key/name/github_url/workspace_path`);
 - карточка проекта с summary (`tasks/memory/recent activity`).
 
 В `Tasks` и `Memory`:

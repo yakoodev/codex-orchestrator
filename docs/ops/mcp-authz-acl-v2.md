@@ -1,6 +1,6 @@
 # MCP AuthZ ACL v2 (Design + Rollout Plan)
 
-Обновлено: 2026-04-09  
+Обновлено: 2026-04-12  
 Статус: `in_progress` (Phase 1+2 backend/runtime реализованы)
 
 ## 1. Цель
@@ -93,7 +93,7 @@
 ## 8. Manual acceptance (planned)
 
 1. Создать ключ `reviewer-readonly` с allow-list на `orchestrator.list_*`.
-2. Убедиться, что `orchestrator.dispatch_agent` возвращает `403 MCP_TOOL_FORBIDDEN`.
+2. Убедиться, что `orchestrator.create_task` возвращает `403 MCP_TOOL_FORBIDDEN`.
 3. Привязать ключ к конкретному `agent_profile_id` и проверить `403 MCP_PROFILE_FORBIDDEN` для другого профиля.
 4. При добавленном template constraint проверить `403 MCP_TEMPLATE_FORBIDDEN` для другого шаблона.
 5. Ревокнуть ключ и проверить `401 MCP_KEY_REVOKED`.

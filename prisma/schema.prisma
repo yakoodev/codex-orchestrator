@@ -24,6 +24,7 @@ enum TaskStatus {
   BLOCKED
   FAILED_RETRYABLE
   FAILED_TERMINAL
+  CANCELLED
   DONE
   ARCHIVED
 
@@ -261,6 +262,7 @@ model AgentTemplate {
 
   pack_registry_entry PackRegistryEntry? @relation(fields: [pack_registry_entry_id], references: [id], onDelete: SetNull)
   workers            WorkerInstance[]
+  tasks              Task[]
   scheduled_rules    ScheduledRule[]
   delegation_targets DelegationRequest[]  @relation("delegation_target_template")
   mcp_key_constraints McpKeyTemplateConstraint[]
@@ -317,8 +319,6 @@ model Project {
   name           String
   description    String?
   github_url     String?
-  github_repo    String?
-  default_branch String?
   workspace_path String?
   meta_json      Json?
   is_active      Boolean  @default(true)
@@ -335,26 +335,32 @@ model Task {
   description        String
   source             String
   project_id         String
-  repo_id            String
-  branch             String?
+  agent_profile_id   String
+  agent_template_id  String
   priority           Int        @default(100)
   requested_pipeline String?
   status             TaskStatus
   hold_reason        String?
+  cancel_reason      String?
+  cancelled_at       DateTime?
   created_by         String
   created_at         DateTime   @default(now())
   updated_at         DateTime   @updatedAt
 
-  subtasks      Subtask[]
-  task_runs     TaskRun[]
-  artifacts     Artifact[]
-  interventions Intervention[]
-  file_locks    FileLock[]
+  subtasks            Subtask[]
+  task_runs           TaskRun[]
+  artifacts           Artifact[]
+  interventions       Intervention[]
+  file_locks          FileLock[]
+  agent_profile       AgentProfile      @relation(fields: [agent_profile_id], references: [id], onDelete: Restrict)
+  agent_template      AgentTemplate     @relation(fields: [agent_template_id], references: [id], onDelete: Restrict)
   delegation_requests DelegationRequest[] @relation("delegation_requester_task")
-  scheduled_runs ScheduledRun[] @relation("scheduled_created_task")
+  scheduled_runs      ScheduledRun[]      @relation("scheduled_created_task")
 
-  @@index([status])
-  @@index([project_id, repo_id])
+  @@index([status, created_at])
+  @@index([project_id, created_at])
+  @@index([agent_profile_id, status, created_at])
+  @@index([agent_template_id, status, created_at])
   @@map("tasks")
 }
 
@@ -561,30 +567,31 @@ model PackRegistryEntry {
 }
 
 model ScheduledRule {
-  id                       String               @id @default(cuid())
-  name                     String
-  scope                    ScheduleScope
-  project_id               String?
-  is_enabled               Boolean              @default(true)
-  rule_ast                 Json
-  target_agent_template_id String?
-  fallback_role            String?
-  task_title               String?
-  task_description         String?
-  task_repo_id             String?
-  task_branch              String?
-  task_priority            Int                  @default(100)
-  overlap_policy           ScheduleOverlapPolicy
-  misfire_policy           ScheduleMisfirePolicy
-  created_by               String
-  created_at               DateTime             @default(now())
-  updated_at               DateTime             @updatedAt
+  id                     String                @id @default(cuid())
+  name                   String
+  scope                  ScheduleScope
+  project_id             String?
+  is_enabled             Boolean               @default(true)
+  rule_ast               Json
+  task_agent_profile_id  String
+  task_agent_template_id String
+  task_title             String?
+  task_description       String?
+  task_priority          Int                   @default(100)
+  overlap_policy         ScheduleOverlapPolicy
+  misfire_policy         ScheduleMisfirePolicy
+  created_by             String
+  created_at             DateTime              @default(now())
+  updated_at             DateTime              @updatedAt
 
-  target_agent_template AgentTemplate? @relation(fields: [target_agent_template_id], references: [id], onDelete: SetNull)
-  runs                  ScheduledRun[]
+  task_agent_profile  AgentProfile  @relation(fields: [task_agent_profile_id], references: [id], onDelete: Restrict)
+  task_agent_template AgentTemplate @relation(fields: [task_agent_template_id], references: [id], onDelete: Restrict)
+  runs                ScheduledRun[]
 
   @@index([scope, is_enabled])
   @@index([project_id, is_enabled])
+  @@index([task_agent_profile_id, is_enabled, updated_at])
+  @@index([task_agent_template_id, is_enabled, updated_at])
   @@map("scheduled_rules")
 }
 
@@ -723,6 +730,8 @@ model AgentProfile {
   mcp_bindings AgentProfileMcpServerBinding[]
   script_sets  AgentProfileScriptSet[]
   mcp_key_bindings McpKeyProfileBinding[]
+  tasks          Task[]
+  scheduled_rules ScheduledRule[]
 
   @@index([is_enabled, updated_at])
   @@index([role, is_enabled, updated_at])

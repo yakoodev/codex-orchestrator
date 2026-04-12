@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppConfig } from "../config";
@@ -635,6 +635,11 @@ class MockDelegationExecutor implements DelegationExecutor {
       }
     };
   }
+
+  public async cancel(delegationId: string): Promise<boolean> {
+    void delegationId;
+    return false;
+  }
 }
 
 interface CodexDelegationExecutorOptions {
@@ -646,6 +651,7 @@ interface CodexDelegationExecutorOptions {
 class CodexDelegationExecutor implements DelegationExecutor {
   private readonly mockExecutor = new MockDelegationExecutor();
   private codexAvailability: boolean | null = null;
+  private readonly activeProcesses = new Map<string, ChildProcess>();
 
   public constructor(private readonly options: CodexDelegationExecutorOptions) {}
 
@@ -689,6 +695,29 @@ class CodexDelegationExecutor implements DelegationExecutor {
     }
 
     return this.executeCodex(input, activeProfile);
+  }
+
+  public async cancel(delegationId: string): Promise<boolean> {
+    const child = this.activeProcesses.get(delegationId);
+    if (!child) {
+      return false;
+    }
+
+    try {
+      if (process.platform === "win32" && child.pid) {
+        const taskkill = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          shell: true
+        });
+        taskkill.unref();
+      }
+      child.kill("SIGKILL");
+      return true;
+    } catch {
+      return false;
+    } finally {
+      this.activeProcesses.delete(delegationId);
+    }
   }
 
   private async checkCodexAvailability(): Promise<boolean> {
@@ -809,6 +838,7 @@ class CodexDelegationExecutor implements DelegationExecutor {
       timeoutMs: this.options.config.delegationExecutionTimeoutMs,
       redactionValues: secretRedactionValues,
       stdin: prompt,
+      delegationId: input.delegation_id,
       env: {
         ...process.env,
         ...runtimeSecretEnv,
@@ -859,9 +889,10 @@ class CodexDelegationExecutor implements DelegationExecutor {
     timeoutMs: number;
     env: NodeJS.ProcessEnv;
     redactionValues: string[];
+    delegationId?: string;
     stdin?: string;
   }): Promise<{ stdout: string; stderr: string }> {
-    const { command, args, cwd, timeoutMs, env, redactionValues, stdin } = options;
+    const { command, args, cwd, timeoutMs, env, redactionValues, delegationId, stdin } = options;
 
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, {
@@ -870,10 +901,18 @@ class CodexDelegationExecutor implements DelegationExecutor {
         stdio: ["pipe", "pipe", "pipe"],
         shell: process.platform === "win32"
       });
+      if (delegationId) {
+        this.activeProcesses.set(delegationId, child);
+      }
 
       let stdout = "";
       let stderr = "";
       let timedOut = false;
+      const finalize = () => {
+        if (delegationId) {
+          this.activeProcesses.delete(delegationId);
+        }
+      };
 
       const timeout = setTimeout(() => {
         timedOut = true;
@@ -895,11 +934,13 @@ class CodexDelegationExecutor implements DelegationExecutor {
 
       child.on("error", (error) => {
         clearTimeout(timeout);
+        finalize();
         reject(new DelegationExecutionFailure("EXECUTION_FAILED", `Codex process error: ${error.message}`));
       });
 
       child.on("close", (code) => {
         clearTimeout(timeout);
+        finalize();
 
         if (timedOut) {
           reject(new DelegationExecutionFailure("TIMEOUT", "Codex execution timed out"));

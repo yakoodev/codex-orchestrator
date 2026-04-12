@@ -28,7 +28,6 @@ export interface AppConfig {
   delegationExecutionTimeoutMs: number;
   taskAutoDispatchEnabled: boolean;
   taskAutoDispatchIntervalMs: number;
-  taskAutoDispatchCapability: string;
   taskAutoDispatchExecutionMode: "mock" | "auto" | "codex_exec";
   taskAutoDispatchSandboxPolicy: "read-only" | "workspace-write" | "danger-full-access";
   taskAutoDispatchApprovalPolicy: "never" | "on-request" | "on-failure" | "untrusted";
@@ -185,7 +184,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     delegationExecutionTimeoutMs: readInt(env["DELEGATION_EXECUTION_TIMEOUT_MS"], 180000),
     taskAutoDispatchEnabled: readBool(env["TASK_AUTODISPATCH_ENABLED"], true),
     taskAutoDispatchIntervalMs: Math.max(250, readInt(env["TASK_AUTODISPATCH_INTERVAL_MS"], 5000)),
-    taskAutoDispatchCapability: env["TASK_AUTODISPATCH_CAPABILITY"]?.trim() || "reviewer",
     taskAutoDispatchExecutionMode: readTaskAutoDispatchExecutionMode(
       env["TASK_AUTODISPATCH_EXECUTION_MODE"]
     ),

@@ -441,7 +441,7 @@ export async function executeTelegramCommand(options: {
       "/task <id>",
       "/pause <id>",
       "/resume <id>",
-      "/stop <id>",
+      "/cancel <id>",
       "/replan <id> <message>",
       "/say <id> <message>",
       "/approve <id>",
@@ -510,7 +510,8 @@ export async function executeTelegramCommand(options: {
   const simpleActions: Record<string, string> = {
     "/pause": "pause",
     "/resume": "resume",
-    "/stop": "stop",
+    "/cancel": "cancel",
+    "/stop": "cancel",
     "/approve": "approve"
   };
 

@@ -8,7 +8,7 @@ import type {
   AgentRequestCreateInput,
   AgentRequestResolveInput,
   BindAgentProfileMcpServerInput,
-  DispatchAgentRequest,
+  CreateTaskRequest,
   OrchestratorApiClient
 } from "./api-client";
 import { OrchestratorApiError } from "./api-client";
@@ -130,21 +130,6 @@ function toToolError(error: unknown): CallToolResult {
   } as CallToolResult;
 }
 
-function toolValidationError(
-  toolName: string,
-  message: string,
-  details?: Record<string, unknown>
-): OrchestratorApiError {
-  return new OrchestratorApiError({
-    error: message,
-    code: "REQUEST_VALIDATION_FAILED",
-    statusCode: 400,
-    method: "MCP",
-    path: `tool://${toolName}`,
-    details
-  });
-}
-
 function resolveTraceId(traceId: string | undefined, idempotencyKey: string | undefined): string {
   if (traceId && traceId.trim()) {
     return traceId.trim();
@@ -213,40 +198,6 @@ function asAgentProfileScriptType(value: unknown): AgentProfileScriptType | null
   return AGENT_PROFILE_SCRIPT_TYPE_VALUES.includes(parsed as AgentProfileScriptType)
     ? (parsed as AgentProfileScriptType)
     : null;
-}
-
-function getDispatchPrompt(payload: Record<string, unknown>): string | null {
-  return asStringValue(payload["prompt"]) ?? asStringValue(payload["task"]);
-}
-
-function getDispatchAgentProfileId(targetSelector: Record<string, unknown>): string | null {
-  return asStringValue(targetSelector["agent_profile_id"]);
-}
-
-function validateDispatchInputForMcp(input: {
-  target_selector?: Record<string, unknown>;
-  payload: Record<string, unknown>;
-}): void {
-  const targetSelector = asRecord(input.target_selector);
-  const payload = asRecord(input.payload);
-  const prompt = getDispatchPrompt(payload);
-  const agentProfileId = getDispatchAgentProfileId(targetSelector);
-
-  if (!prompt) {
-    throw toolValidationError(
-      "orchestrator.dispatch_agent",
-      "payload.prompt or payload.task is required and must be non-empty",
-      { field: "payload.prompt|payload.task" }
-    );
-  }
-
-  if (!agentProfileId) {
-    throw toolValidationError(
-      "orchestrator.dispatch_agent",
-      "target_selector.agent_profile_id is required",
-      { field: "target_selector.agent_profile_id" }
-    );
-  }
 }
 
 function getAgentRequestPayload(request: Record<string, unknown>): Record<string, unknown> {
@@ -847,20 +798,20 @@ function mapGovernorError(error: unknown): Record<string, unknown> {
   };
 }
 
-function normalizeDispatchInput(input: {
-  requester_task_id: string;
-  requester_task_run_id?: string;
-  capability: string;
-  target_selector?: Record<string, unknown>;
-  payload: Record<string, unknown>;
+function normalizeCreateTaskInput(input: {
+  title: string;
+  description: string;
+  project_id: string;
+  agent_profile_id: string;
+  agent_template_id: string;
   priority?: number;
-}): DispatchAgentRequest {
+}): CreateTaskRequest {
   return {
-    requester_task_id: input.requester_task_id.trim(),
-    requester_task_run_id: input.requester_task_run_id?.trim(),
-    capability: input.capability.trim(),
-    target_selector: input.target_selector ?? {},
-    payload: input.payload,
+    title: input.title.trim(),
+    description: input.description.trim(),
+    project_id: input.project_id.trim().toLowerCase(),
+    agent_profile_id: input.agent_profile_id.trim(),
+    agent_template_id: input.agent_template_id.trim(),
     priority: input.priority
   };
 }
@@ -1067,16 +1018,16 @@ export function createOrchestratorMcpServer(
   );
 
   server.registerTool(
-    "orchestrator.dispatch_agent",
+    "orchestrator.create_task",
     {
       description:
-        "Запустить делегацию агента через /api/delegation/dispatch с trace/idempotency на уровне MCP bridge.",
+        "Создать задачу task-first с явным исполнителем (agent_profile_id + agent_template_id).",
       inputSchema: {
-        requester_task_id: z.string().min(1),
-        requester_task_run_id: z.string().min(1).optional(),
-        capability: z.string().min(1),
-        target_selector: z.record(z.string(), z.unknown()).optional(),
-        payload: z.record(z.string(), z.unknown()),
+        title: z.string().min(1),
+        description: z.string().min(1),
+        project_id: z.string().min(1),
+        agent_profile_id: z.string().min(1),
+        agent_template_id: z.string().min(1),
         priority: z.number().int().min(0).max(1_000).optional(),
         trace_id: z.string().min(1).optional(),
         idempotency_key: z.string().min(1).optional()
@@ -1084,21 +1035,53 @@ export function createOrchestratorMcpServer(
     },
     async (input): Promise<CallToolResult> => {
       try {
-        const authError = await authorizeToolCall("orchestrator.dispatch_agent", input);
+        const authError = await authorizeToolCall("orchestrator.create_task", input);
         if (authError) {
           return authError;
         }
-        validateDispatchInputForMcp(input);
         const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
-        const dispatchInput = normalizeDispatchInput(input);
-        const response = await options.apiClient.dispatchAgent(dispatchInput, traceId);
+        const createTaskInput = normalizeCreateTaskInput(input);
+        const response = await options.apiClient.createTask(createTaskInput, traceId);
         const structuredContent = {
           trace_id: traceId,
           idempotency_key: input.idempotency_key ?? null,
           result: asRecord(response)
         };
 
-        return toToolSuccess("Dispatch request accepted", structuredContent);
+        return toToolSuccess("Task created", structuredContent);
+      } catch (error) {
+        return toToolError(error);
+      }
+    }
+  );
+
+  server.registerTool(
+    "orchestrator.cancel_task",
+    {
+      description: "Отменить задачу task-first по task_id (best-effort hard-cancel).",
+      inputSchema: {
+        task_id: z.string().min(1),
+        reason: z.string().min(1).nullable().optional(),
+        trace_id: z.string().min(1).optional(),
+        idempotency_key: z.string().min(1).optional()
+      }
+    },
+    async (input): Promise<CallToolResult> => {
+      try {
+        const authError = await authorizeToolCall("orchestrator.cancel_task", input);
+        if (authError) {
+          return authError;
+        }
+        const traceId = resolveTraceId(input.trace_id, input.idempotency_key);
+        const taskId = input.task_id.trim();
+        const reason = input.reason === undefined ? undefined : input.reason;
+        const response = await options.apiClient.cancelTask(taskId, { reason }, traceId);
+
+        return toToolSuccess("Task cancelled", {
+          trace_id: traceId,
+          idempotency_key: input.idempotency_key ?? null,
+          result: asRecord(response)
+        });
       } catch (error) {
         return toToolError(error);
       }

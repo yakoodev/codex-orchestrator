@@ -1,7 +1,7 @@
 # MCP Agent Bridge (MVP + Request Plane + AuthZ v2)
 
-Обновлено: 2026-04-10  
-Статус: `completed` (MVP), `in_progress` (Request Plane v2 backend + governor baseline + audit trail + AuthZ ACL v2 runtime)
+Обновлено: 2026-04-12  
+Статус: `completed` (Task-first MCP v1), `in_progress` (Request Plane v2 backend + governor baseline + audit trail + AuthZ ACL v2 runtime)
 
 ## 1. Цель
 
@@ -24,15 +24,20 @@
 - MCP tool: `orchestrator.list_tasks`
 - Источник данных: `GET /api/tasks`
 - Поддержка входных параметров: `status`, `limit`
+- Ответ включает `agent_profile_id`, `agent_template_id`, `created_at`, `updated_at`, `cancelled_at`, `cancel_reason`.
 
-4. Запуск агента/делегации:
-- MCP tool: `orchestrator.dispatch_agent`
-- Источник данных: `POST /api/delegation/dispatch`
+4. Создание задачи (task-first):
+- MCP tool: `orchestrator.create_task`
+- Источник данных: `POST /api/tasks`
+- Обязательные поля: `title`, `description`, `project_id`, `agent_profile_id`, `agent_template_id`
 - Поддержка `trace_id` и `idempotency_key`
-- Guard в MCP-ветке: обязателен непустой `payload.prompt|payload.task`
-- Guard в MCP-ветке: обязателен явный `target_selector.agent_profile_id`
 
-5. Получение лимитов:
+5. Отмена задачи:
+- MCP tool: `orchestrator.cancel_task`
+- Источник данных: `POST /api/tasks/{id}/cancel`
+- Optional: `reason`
+
+6. Получение лимитов:
 - MCP tool: `orchestrator.get_limits`
 - Источник данных:
   - `GET /api/auth-profiles/chatgpt/{id}/limits`
@@ -142,7 +147,8 @@ npm run mcp:serve
    - `orchestrator.list_agents`
    - `orchestrator.list_agent_profiles`
    - `orchestrator.list_tasks`
-   - `orchestrator.dispatch_agent`
+   - `orchestrator.create_task`
+   - `orchestrator.cancel_task`
    - `orchestrator.get_limits`
 
 ## 7. Следующие шаги

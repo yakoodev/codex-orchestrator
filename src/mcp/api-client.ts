@@ -86,12 +86,12 @@ export interface EvaluateMcpToolAccessInput {
   actor?: string;
 }
 
-export interface DispatchAgentRequest {
-  requester_task_id: string;
-  requester_task_run_id?: string;
-  capability: string;
-  target_selector: Record<string, unknown>;
-  payload: Record<string, unknown>;
+export interface CreateTaskRequest {
+  title: string;
+  description: string;
+  project_id: string;
+  agent_profile_id: string;
+  agent_template_id: string;
   priority?: number;
 }
 
@@ -112,7 +112,14 @@ export interface OrchestratorApiClient {
   }): Promise<AgentProfilesResponse>;
   listDelegationCapabilities(): Promise<DelegationCapabilitiesResponse>;
   listTasks(options?: { status?: string }): Promise<TasksResponse>;
-  dispatchAgent(input: DispatchAgentRequest, traceId: string): Promise<Record<string, unknown>>;
+  createTask(input: CreateTaskRequest, traceId: string): Promise<Record<string, unknown>>;
+  cancelTask(
+    taskId: string,
+    input: {
+      reason?: string | null;
+    },
+    traceId: string
+  ): Promise<Record<string, unknown>>;
   createAgentRequest(input: AgentRequestCreateInput, traceId: string): Promise<Record<string, unknown>>;
   listOpenAgentRequests(options?: {
     project_id?: string;
@@ -393,10 +400,18 @@ export function createHttpOrchestratorApiClient(
         }
       }),
 
-    dispatchAgent: (input, traceId) =>
+    createTask: (input, traceId) =>
       requestJson<Record<string, unknown>>({
         method: "POST",
-        path: "/api/delegation/dispatch",
+        path: "/api/tasks",
+        body: input,
+        traceId
+      }),
+
+    cancelTask: (taskId, input, traceId) =>
+      requestJson<Record<string, unknown>>({
+        method: "POST",
+        path: `/api/tasks/${encodeURIComponent(taskId)}/cancel`,
         body: input,
         traceId
       }),

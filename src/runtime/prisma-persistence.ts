@@ -137,8 +137,12 @@ function toTaskEntity(task: {
   status: PrismaTaskStatus;
   priority: number;
   project_id: string;
-  repo_id: string;
-  branch: string | null;
+  agent_profile_id: string;
+  agent_template_id: string;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }): TaskEntity {
   return {
     id: task.id,
@@ -147,8 +151,12 @@ function toTaskEntity(task: {
     status: task.status as TaskStatus,
     priority: task.priority,
     project_id: task.project_id,
-    repo_id: task.repo_id,
-    branch: task.branch
+    agent_profile_id: task.agent_profile_id,
+    agent_template_id: task.agent_template_id,
+    cancel_reason: task.cancel_reason,
+    cancelled_at: task.cancelled_at,
+    created_at: task.created_at,
+    updated_at: task.updated_at
   };
 }
 
@@ -158,8 +166,6 @@ function toProjectEntity(entity: {
   name: string;
   description: string | null;
   github_url: string | null;
-  github_repo: string | null;
-  default_branch: string | null;
   workspace_path: string | null;
   meta_json: Prisma.JsonValue | null;
   is_active: boolean;
@@ -172,8 +178,6 @@ function toProjectEntity(entity: {
     name: entity.name,
     description: entity.description,
     github_url: entity.github_url,
-    github_repo: entity.github_repo,
-    default_branch: entity.default_branch,
     workspace_path: entity.workspace_path,
     meta_json: entity.meta_json as Record<string, unknown> | null,
     is_active: entity.is_active,
@@ -538,7 +542,6 @@ function toAgentRequestAuditEventEntity(entity: {
 
 function toAgentProfileEntity(entity: {
   id: string;
-  project_id: string | null;
   name: string;
   role: string;
   description: string | null;
@@ -549,7 +552,6 @@ function toAgentProfileEntity(entity: {
 }): AgentProfileEntity {
   return {
     id: entity.id,
-    project_id: entity.project_id,
     name: entity.name,
     role: entity.role,
     description: entity.description,
@@ -739,12 +741,10 @@ function toScheduledRuleEntity(entity: {
   project_id: string | null;
   is_enabled: boolean;
   rule_ast: Prisma.JsonValue;
-  target_agent_template_id: string | null;
-  fallback_role: string | null;
+  task_agent_profile_id: string;
+  task_agent_template_id: string;
   task_title: string | null;
   task_description: string | null;
-  task_repo_id: string | null;
-  task_branch: string | null;
   task_priority: number;
   overlap_policy: PrismaScheduleOverlapPolicy;
   misfire_policy: PrismaScheduleMisfirePolicy;
@@ -759,12 +759,10 @@ function toScheduledRuleEntity(entity: {
     project_id: entity.project_id,
     is_enabled: entity.is_enabled,
     rule_ast: entity.rule_ast as Record<string, unknown>,
-    target_agent_template_id: entity.target_agent_template_id,
-    fallback_role: entity.fallback_role,
+    task_agent_profile_id: entity.task_agent_profile_id,
+    task_agent_template_id: entity.task_agent_template_id,
     task_title: entity.task_title,
     task_description: entity.task_description,
-    task_repo_id: entity.task_repo_id,
-    task_branch: entity.task_branch,
     task_priority: entity.task_priority,
     overlap_policy: entity.overlap_policy as ScheduleOverlapPolicy,
     misfire_policy: entity.misfire_policy as ScheduleMisfirePolicy,
@@ -879,8 +877,6 @@ export class PrismaPersistence implements Persistence {
         name: input.name,
         description: input.description ?? null,
         github_url: input.github_url ?? null,
-        github_repo: input.github_repo ?? null,
-        default_branch: input.default_branch ?? null,
         workspace_path: input.workspace_path ?? null,
         meta_json:
           input.meta_json === undefined
@@ -921,8 +917,6 @@ export class PrismaPersistence implements Persistence {
       name?: string;
       description?: string | null;
       github_url?: string | null;
-      github_repo?: string | null;
-      default_branch?: string | null;
       workspace_path?: string | null;
       meta_json?: Record<string, unknown> | null;
       is_active?: boolean;
@@ -941,8 +935,6 @@ export class PrismaPersistence implements Persistence {
         name: patch.name,
         description: patch.description,
         github_url: patch.github_url,
-        github_repo: patch.github_repo,
-        default_branch: patch.default_branch,
         workspace_path: patch.workspace_path,
         meta_json:
           patch.meta_json === undefined
@@ -1333,8 +1325,10 @@ export class PrismaPersistence implements Persistence {
         status: input.status as PrismaTaskStatus,
         priority: input.priority,
         project_id: input.project_id,
-        repo_id: input.repo_id,
-        branch: input.branch,
+        agent_profile_id: input.agent_profile_id,
+        agent_template_id: input.agent_template_id,
+        cancel_reason: input.cancel_reason ?? null,
+        cancelled_at: input.cancelled_at ?? null,
         source: input.source,
         created_by: input.created_by
       }
@@ -1365,6 +1359,17 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null> {
+    return this.updateTask(id, { status });
+  }
+
+  public async updateTask(
+    id: string,
+    patch: {
+      status?: TaskStatus;
+      cancel_reason?: string | null;
+      cancelled_at?: Date | null;
+    }
+  ): Promise<TaskEntity | null> {
     const existing = await this.prisma.task.findUnique({
       where: { id }
     });
@@ -1375,7 +1380,11 @@ export class PrismaPersistence implements Persistence {
 
     const updated = await this.prisma.task.update({
       where: { id },
-      data: { status: status as PrismaTaskStatus }
+      data: {
+        status: patch.status as PrismaTaskStatus | undefined,
+        cancel_reason: patch.cancel_reason,
+        cancelled_at: patch.cancelled_at
+      }
     });
 
     return toTaskEntity(updated);
@@ -1667,7 +1676,7 @@ export class PrismaPersistence implements Persistence {
   public async createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity> {
     const created = await this.prisma.agentProfile.create({
       data: {
-        project_id: input.project_id ?? null,
+        project_id: null,
         name: input.name,
         role: input.role,
         description: input.description ?? null,
@@ -1680,7 +1689,6 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async listAgentProfiles(options?: {
-    project_id?: string;
     include_disabled?: boolean;
     role?: string;
     limit?: number;
@@ -2532,12 +2540,10 @@ export class PrismaPersistence implements Persistence {
         project_id: input.project_id ?? null,
         is_enabled: true,
         rule_ast: input.rule_ast as Prisma.InputJsonValue,
-        target_agent_template_id: input.target_agent_template_id ?? null,
-        fallback_role: input.fallback_role ?? null,
+        task_agent_profile_id: input.task_agent_profile_id,
+        task_agent_template_id: input.task_agent_template_id,
         task_title: input.task_title ?? null,
         task_description: input.task_description ?? null,
-        task_repo_id: input.task_repo_id ?? null,
-        task_branch: input.task_branch ?? null,
         task_priority: input.task_priority ?? 100,
         overlap_policy: input.overlap_policy as PrismaScheduleOverlapPolicy,
         misfire_policy: input.misfire_policy as PrismaScheduleMisfirePolicy,
@@ -2573,12 +2579,10 @@ export class PrismaPersistence implements Persistence {
       name?: string;
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
-      target_agent_template_id?: string | null;
-      fallback_role?: string | null;
+      task_agent_profile_id?: string;
+      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
-      task_repo_id?: string | null;
-      task_branch?: string | null;
       task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
@@ -2597,12 +2601,10 @@ export class PrismaPersistence implements Persistence {
         name: patch.name,
         is_enabled: patch.is_enabled,
         rule_ast: patch.rule_ast as Prisma.InputJsonValue | undefined,
-        target_agent_template_id: patch.target_agent_template_id,
-        fallback_role: patch.fallback_role,
+        task_agent_profile_id: patch.task_agent_profile_id,
+        task_agent_template_id: patch.task_agent_template_id,
         task_title: patch.task_title,
         task_description: patch.task_description,
-        task_repo_id: patch.task_repo_id,
-        task_branch: patch.task_branch,
         task_priority: patch.task_priority,
         overlap_policy: patch.overlap_policy as PrismaScheduleOverlapPolicy | undefined,
         misfire_policy: patch.misfire_policy as PrismaScheduleMisfirePolicy | undefined

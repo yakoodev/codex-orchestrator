@@ -1,10 +1,39 @@
 # PR1 Progress Tracker (API-only Bootstrap)
 
-Обновлено: 2026-04-11  
+Обновлено: 2026-04-12  
 Ветка: `codex/pr1-bootstrap-api-only`
 
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
+
+## Итерация 2026-04-11: Task-first refactor v1 (breaking)
+
+### Реализовано
+- [x] Выполнен breaking-переход на `task-first`:
+  - через UI/MCP создается только задача;
+  - запуск делегации идет только из task-очереди;
+  - у задачи обязательны `agent_profile_id + agent_template_id`.
+- [x] Добавлен hard-cancel:
+  - новый endpoint `POST /api/tasks/{id}/cancel`;
+  - статус `CANCELLED` + поля `cancelled_at/cancel_reason`;
+  - best-effort остановка running child-process через runtime registry.
+- [x] Удалены legacy поля:
+  - `Task`: `repo_id`, `branch`;
+  - `Project`: `github_repo`, `default_branch`;
+  - `ScheduledRule`: `task_repo_id`, `task_branch`, `target_agent_template_id`, `fallback_role`.
+- [x] MCP переведен на task-first:
+  - удален `orchestrator.dispatch_agent`;
+  - добавлены `orchestrator.create_task` и `orchestrator.cancel_task`;
+  - `orchestrator.list_tasks` возвращает явного исполнителя и timestamps.
+- [x] Добавлена Prisma-миграция `0015_task_first_orchestrator_refactor`:
+  - жесткая очистка legacy operational data (`tasks/schedules/delegations`);
+  - сохранение аккаунтов/профилей/проектов.
+
+### В работе
+- [x] Документация выровнена под task-first контракт (`manual-test-scenarios`, `roadmap`, `runbook`, `mcp-agent-bridge`).
+
+### Остается
+- [~] Только follow-up оптимизации (приоритезация очереди, richer policy), без возврата к direct agent-dispatch.
 
 ## Итерация 2026-04-11: Фикс немых дочерних делегаций (prompt/task guard в REST dispatch)
 
@@ -16,10 +45,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - `test/app.test.ts`: негативный кейс dispatch без `prompt/task` теперь проверяется явно.
 
 ### В работе
-- [~] Наблюдение за существующим контуром task->agent->agent после фикса (проверка, что больше не появляется `n/a` prompt в новых запусках).
+- [x] Контур `task -> delegation` стабилизирован, новые запуски с пустым prompt через MCP больше не создаются.
 
 ### Остается
-- [~] Отдельный рефактор контракта делегации: переход с `agent -> agent` на модель `agent -> task for agent` (планируемый следующий инкремент).
+- [x] Рефактор в task-first модель завершен (см. итерацию `Task-first refactor v1` выше).
 
 ## Итерация 2026-04-11: Настройка оркестратора v1 (autostart + auto-switch + schedules)
 
@@ -40,7 +69,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - `enabled=true` теперь требует непустой `eligible_profile_ids`.
 - [x] Schedule trigger доведен до реального create-task flow:
   - `POST /api/schedules/{id}/trigger` теперь создает задачу при `matched=true`;
-  - `ScheduledRule` хранит task-шаблон (`task_title/description/repo/branch/priority`);
+  - `ScheduledRule` хранит task-first шаблон (`task_title/task_description/task_priority/task_agent_profile_id/task_agent_template_id`);
   - v1 ограничение: только `scope=project` и обязательный `project_id`.
 - [x] UI:
   - добавлен отдельный экран `#/schedules` (CRUD/trigger/evaluate/enable/disable/delete + run history);
@@ -145,7 +174,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Для auto-dispatch добавлены env-настройки:
   - `TASK_AUTODISPATCH_ENABLED` (default `true`);
   - `TASK_AUTODISPATCH_INTERVAL_MS` (default `5000`);
-  - `TASK_AUTODISPATCH_CAPABILITY` (default `reviewer`).
+  - `TASK_AUTODISPATCH_EXECUTION_MODE` (default `codex_exec`).
 - [x] Добавлен failover статусов для авто-раннера:
   - без активного auth-профиля задача уходит в `WAITING_LIMIT`;
   - без доступного enabled template задача уходит в `BLOCKED`;
@@ -157,7 +186,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Добавлен механизм съема точных лимитов для нескольких `CODEX_HOME`: `npm run limits:check` использует `codex app-server` RPC `account/rateLimits/read` как primary source, считает и выводит `used_percent` + `remaining_percent` (остаток), плюс fallback-диагностику из sqlite и optional live probe.
 - [x] Механизм точных лимитов интегрирован в API: `GET /api/auth-profiles/chatgpt/{id}/limits` возвращает live snapshot (`used_percent` + `remaining_percent`) через `codex app-server` для загруженного профиля.
 - [x] Исправлен RPC lifecycle bug в API-ридере лимитов: `codex app-server` больше не завершается преждевременно из-за раннего закрытия `stdin` (fixed `RATE_LIMITS_UNAVAILABLE`/`502` при `/api/auth-profiles/chatgpt/{id}/limits` в compose-среде).
-- [x] Добавлен Telegram long-polling адаптер с whitelist + offset persistence + exponential backoff + proxy support (`TG_PROXY_URL`) и MVP-командами управления через существующий API (`/tasks`, `/task`, `/say`, `/pause`, `/resume`, `/stop`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`, `/memory`, `/memory-add`, `/memory-enable`, `/memory-disable`).
+- [x] Добавлен Telegram long-polling адаптер с whitelist + offset persistence + exponential backoff + proxy support (`TG_PROXY_URL`) и MVP-командами управления через существующий API (`/tasks`, `/task`, `/say`, `/pause`, `/resume`, `/cancel`, `/replan`, `/approve`, `/reject`, `/logs`, `/artifacts`, `/limit`, `/switch-status`, `/held`, `/switch-history`, `/memory`, `/memory-add`, `/memory-enable`, `/memory-disable`).
 - [x] Добавлен Telegram bridge системных уведомлений из Redis Streams (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) с debounce-защитой от штормов.
 - [x] Добавлен task steering endpoint `POST /api/tasks/{id}/say` с persistence в `Intervention` (`type=steer`) и интеграцией в Telegram команду `/say`.
 - [x] Добавлен безопасный Telegram discovery-режим: при пустом whitelist адаптер стартует, не исполняет команды и логирует `chat_id/user_id` для первичной настройки.
@@ -241,7 +270,7 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
 - [x] Исправлен Windows prompt-passing для `codex exec` в делегациях: prompt теперь передается через `stdin` (`codex exec -`), что устраняет падение `unexpected argument ...` на кириллических/длинных задачах и возвращает корректное выполнение auto-dispatch до `DONE`.
 - [x] Устранен race в auto-seed custom module (`switch_chatgpt_auth_on_limit`): при конкурентном первом доступе `ensureCustomModuleConfig` обрабатывает уникальный конфликт и перечитывает существующую запись вместо `500/P2002`.
 - [x] `Agents` inspector переведен на run-level drill-down: при выборе карточки подгружается `GET /api/delegation/{id}` и показываются `trace`, `execution_mode`, `timestamps`, `execution_context (cwd/cwd_source)`, `memory_context` и полный `execution_log`.
-- [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_tasks`, `orchestrator.dispatch_agent`, `orchestrator.get_limits`, trace/idempotency для dispatch и единым error mapping (`error/code/status_code`).
+- [x] Реализован MCP bridge MVP (`npm run mcp:serve`) как proxy-adapter поверх текущего API с инструментами `orchestrator.list_agents`, `orchestrator.list_agent_profiles`, `orchestrator.list_tasks`, `orchestrator.create_task`, `orchestrator.cancel_task`, `orchestrator.get_limits`, trace/idempotency и единым error mapping (`error/code/status_code`).
 - [x] Выполнен Doc/Roadmap Upgrade v3: добавлены design-доки и roadmap-эпики для `MCP AuthZ ACL v2`, `Secrets Plane v1`, `Coordination Channel`, `Topology UI`; обновлены `manual-test-scenarios` под планируемую приемку secret-redaction/ACL/topology.
 - [x] В docs добавлен feature backlog `Agent Tool Access Requests` (v1, tool-only).
 - [x] Выполнен Doc Upgrade v4: v1 tool-only модель superseded универсальным `Agent Request Plane v2`; добавлены docs по `Agent Profiles + MCP Server Sets`, governor-loop, MCP request tools и обновленные manual acceptance сценарии.
@@ -358,10 +387,10 @@ Roadmap следующих крупных фич после PR1: `docs/ops/roadm
   - MCP server set из `agent_profile_context` теперь материализуется в `CODEX_HOME/config.toml` перед запуском `codex exec`;
   - встроенный `orchestrator-core` резолвится в локальный MCP bridge process (`dist/mcp/index.js` или dev fallback) с env-контекстом (`MCP_API_BASE_URL`, `MCP_ADMIN_TOKEN`, `MCP_AGENT_PROFILE_ID`, `MCP_AGENT_TEMPLATE_ID`);
   - metadata делегации дополняется `mcp_servers_configured`, что упрощает диагностику “почему агент не видел MCP tools”.
-- [x] MCP guard для дочерних запусков ужесточен:
-  - `orchestrator.dispatch_agent` в MCP bridge теперь отклоняет вызовы без явного `payload.prompt|payload.task`;
-  - `orchestrator.dispatch_agent` требует явный `target_selector.agent_profile_id`;
-  - добавлен MCP tool `orchestrator.list_agent_profiles` для выбора профиля агентом по `role + description`.
+- [x] MCP переведен на task-first:
+  - удален tool `orchestrator.dispatch_agent`;
+  - добавлены tools `orchestrator.create_task` и `orchestrator.cancel_task`;
+  - `orchestrator.list_agent_profiles` используется для явного выбора профиля перед созданием задачи.
 - [x] Добавлен execution policy override для auto-dispatch и REST dispatch:
   - в конфиг добавлены `TASK_AUTODISPATCH_SANDBOX_POLICY` и `TASK_AUTODISPATCH_APPROVAL_POLICY` (дефолт `danger-full-access` + `never` для стабильного Windows-path execution);
   - task auto-dispatch теперь передает policy override в `payload` при вызове `/api/delegation/dispatch`;

@@ -84,8 +84,6 @@ const I18N = {
     project_name_label: "Название проекта",
     project_description_label: "Описание",
     project_github_url_label: "GitHub URL",
-    project_github_repo_label: "GitHub репозиторий",
-    project_default_branch_label: "Базовая ветка",
     project_workspace_path_label: "Рабочая директория",
     project_create_action: "Создать проект",
     project_filter_search_label: "Поиск",
@@ -110,7 +108,8 @@ const I18N = {
     task_title_label: "Заголовок",
     task_description_label: "Описание",
     task_project_label: "ID проекта",
-    task_repo_label: "ID репозитория",
+    task_agent_profile_label: "Профиль агента",
+    task_agent_template_label: "Шаблон агента",
     create_task: "Создать задачу",
     schedules_title: "Расписания",
     schedules_create_toggle: "Создать правило",
@@ -119,8 +118,8 @@ const I18N = {
     schedule_cron_label: "CRON (UTC)",
     schedule_task_title_label: "Заголовок задачи",
     schedule_task_description_label: "Описание задачи",
-    schedule_task_repo_label: "ID репозитория",
-    schedule_task_branch_label: "Ветка (опционально)",
+    schedule_task_agent_profile_label: "Профиль агента",
+    schedule_task_agent_template_label: "Шаблон агента",
     schedule_task_priority_label: "Приоритет",
     schedule_create_action: "Создать правило",
     schedule_rules_title: "Активные правила",
@@ -168,14 +167,18 @@ const I18N = {
     no_held: "Нет задач в WAITING_LIMIT.",
     task_details_title: "Детали задачи",
     task_details_empty: "Выбери карточку задачи, чтобы посмотреть детали.",
+    task_cancel_action: "Отменить задачу",
+    task_cancel_prompt: "Причина отмены (опционально):",
     task_field_id: "ID",
     task_field_status: "Статус",
     task_field_priority: "Приоритет",
     task_field_project: "Проект",
-    task_field_repo: "Репозиторий",
-    task_field_branch: "Ветка",
+    task_field_agent_profile: "Профиль агента",
+    task_field_agent_template: "Шаблон агента",
     task_field_created: "Создано",
     task_field_updated: "Обновлено",
+    task_field_cancelled: "Отменено",
+    task_field_cancel_reason: "Причина отмены",
     task_field_description: "Описание",
     task_field_na: "н/д",
     agent_cards_title: "Карточки агентов",
@@ -205,7 +208,7 @@ const I18N = {
     agent_field_log: "Лог",
     agent_profiles_title: "Профили агентов и MCP",
     agent_profile_create_toggle: "Создать профиль агента",
-    agent_profile_project_label: "Scope (legacy)",
+    agent_profile_project_label: "Глобальный профиль",
     agent_profile_name_label: "Название профиля",
     agent_profile_role_label: "Роль",
     agent_profile_source_policy_label: "Source policy",
@@ -214,17 +217,17 @@ const I18N = {
     agent_profile_create_action: "Создать профиль",
     agent_profile_filter_search_label: "Поиск",
     agent_profile_filter_search_placeholder: "name/role/description",
-    agent_profile_filter_project_label: "Проект (legacy)",
+    agent_profile_filter_project_label: "Проект",
     agent_profile_filter_role_label: "Роль",
     agent_profile_filter_include_disabled: "Показывать отключенные",
-    agent_profile_filter_any_project: "Все проекты (legacy)",
+    agent_profile_filter_any_project: "Все проекты",
     agent_profile_filter_any_role: "Все роли",
     agent_profile_list_empty: "Профилей агентов пока нет.",
     agent_profile_details_empty: "Выбери профиль агента в списке, чтобы управлять MCP серверами и script sets.",
     agent_profile_summary_title: "Сводка профиля",
     agent_profile_edit_title: "Редактирование профиля",
     agent_profile_field_id: "ID",
-    agent_profile_field_project: "Legacy project",
+    agent_profile_field_project: "Проект",
     agent_profile_field_role: "Роль",
     agent_profile_field_source_policy: "Source policy",
     agent_profile_field_status: "Статус",
@@ -371,6 +374,7 @@ const I18N = {
     log_project_updated: "Проект обновлен",
     log_project_selected: "Проект выбран",
     log_task_created: "Задача создана",
+    log_task_cancelled: "Задача отменена",
     log_schedule_created: "Правило расписания создано",
     log_schedule_action: "Операция с расписанием выполнена",
     log_held_released: "Удержанная очередь освобождена",
@@ -455,8 +459,6 @@ I18N.en = {
   project_name_label: "Project name",
   project_description_label: "Description",
   project_github_url_label: "GitHub URL",
-  project_github_repo_label: "GitHub repository",
-  project_default_branch_label: "Default branch",
   project_workspace_path_label: "Workspace path",
   project_create_action: "Create project",
   project_filter_search_label: "Search",
@@ -481,7 +483,8 @@ I18N.en = {
   task_title_label: "Title",
   task_description_label: "Description",
   task_project_label: "Project ID",
-  task_repo_label: "Repo ID",
+  task_agent_profile_label: "Agent profile",
+  task_agent_template_label: "Agent template",
   create_task: "Create task",
   schedules_title: "Schedules",
   schedules_create_toggle: "Create rule",
@@ -490,8 +493,8 @@ I18N.en = {
   schedule_cron_label: "CRON (UTC)",
   schedule_task_title_label: "Task title",
   schedule_task_description_label: "Task description",
-  schedule_task_repo_label: "Repo ID",
-  schedule_task_branch_label: "Branch (optional)",
+  schedule_task_agent_profile_label: "Agent profile",
+  schedule_task_agent_template_label: "Agent template",
   schedule_task_priority_label: "Priority",
   schedule_create_action: "Create rule",
   schedule_rules_title: "Active rules",
@@ -539,13 +542,17 @@ I18N.en = {
   no_held: "No tasks in WAITING_LIMIT.",
   task_details_title: "Task details",
   task_details_empty: "Select a task card to inspect details.",
+  task_cancel_action: "Cancel task",
+  task_cancel_prompt: "Cancel reason (optional):",
   task_field_status: "Status",
   task_field_priority: "Priority",
   task_field_project: "Project",
-  task_field_repo: "Repo",
-  task_field_branch: "Branch",
+  task_field_agent_profile: "Agent profile",
+  task_field_agent_template: "Agent template",
   task_field_created: "Created",
   task_field_updated: "Updated",
+  task_field_cancelled: "Cancelled at",
+  task_field_cancel_reason: "Cancel reason",
   task_field_description: "Description",
   task_field_na: "n/a",
   agent_cards_title: "Agent cards",
@@ -570,7 +577,7 @@ I18N.en = {
   agent_field_log: "Log",
   agent_profiles_title: "Agent Profiles & MCP",
   agent_profile_create_toggle: "Create agent profile",
-  agent_profile_project_label: "Scope (legacy)",
+  agent_profile_project_label: "Global profile",
   agent_profile_name_label: "Profile name",
   agent_profile_role_label: "Role",
   agent_profile_source_policy_label: "Source policy",
@@ -579,17 +586,17 @@ I18N.en = {
   agent_profile_create_action: "Create profile",
   agent_profile_filter_search_label: "Search",
   agent_profile_filter_search_placeholder: "name/role/description",
-  agent_profile_filter_project_label: "Project (legacy)",
+  agent_profile_filter_project_label: "Project",
   agent_profile_filter_role_label: "Role",
   agent_profile_filter_include_disabled: "Include disabled",
-  agent_profile_filter_any_project: "All projects (legacy)",
+  agent_profile_filter_any_project: "All projects",
   agent_profile_filter_any_role: "All roles",
   agent_profile_list_empty: "No agent profiles yet.",
   agent_profile_details_empty: "Select an agent profile to manage MCP servers and script sets.",
   agent_profile_summary_title: "Profile summary",
   agent_profile_edit_title: "Edit profile",
   agent_profile_field_id: "ID",
-  agent_profile_field_project: "Legacy project",
+  agent_profile_field_project: "Project",
   agent_profile_field_role: "Role",
   agent_profile_field_source_policy: "Source policy",
   agent_profile_field_status: "Status",
@@ -725,6 +732,7 @@ I18N.en = {
   log_project_updated: "Project updated",
   log_project_selected: "Project selected",
   log_task_created: "Task created",
+  log_task_cancelled: "Task cancelled",
   log_schedule_created: "Schedule rule created",
   log_schedule_action: "Schedule action completed",
   log_held_released: "Held queue released",
@@ -759,6 +767,8 @@ const state = {
   secretsFilters: { project: "", search: "" },
   logFilters: { level: "all", scope: "all", search: "" },
   tasks: [],
+  taskAgentProfiles: [],
+  taskAgentTemplates: [],
   held: [],
   schedules: [],
   scheduleRuns: [],
@@ -1336,6 +1346,26 @@ function applyProjectSelect(selectNode, options, selectedValue, placeholder) {
   return selectNode.value
 }
 
+function applyGenericSelect(selectNode, options, selectedValue, placeholder) {
+  if (!selectNode) return ""
+
+  if (!Array.isArray(options) || !options.length) {
+    selectNode.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>`
+    selectNode.value = ""
+    selectNode.disabled = true
+    return ""
+  }
+
+  selectNode.innerHTML = options
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("")
+  selectNode.disabled = false
+  const values = options.map((item) => item.value)
+  const fallback = options[0]?.value ?? ""
+  selectNode.value = values.includes(selectedValue) ? selectedValue : fallback
+  return selectNode.value
+}
+
 function syncProjectBindings() {
   if (state.page !== "console") return
 
@@ -1350,14 +1380,52 @@ function syncProjectBindings() {
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
   const scheduleProject = applyProjectSelect(ui.scheduleProject, activeKeys, ui.scheduleProject?.value ?? "", t("project_option_none"))
   const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
+  const profileOptions = state.taskAgentProfiles
+    .filter((item) => item?.id && item?.is_enabled === true)
+    .map((item) => ({
+      value: item.id,
+      label: `${item.name ?? item.id} (${item.role ?? t("task_field_na")})`
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  const templateOptions = state.taskAgentTemplates
+    .filter((item) => item?.id && item?.is_enabled === true)
+    .map((item) => ({
+      value: item.id,
+      label: `${item.name ?? item.id} (${item.role ?? t("task_field_na")})`
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+  const taskAgentProfile = applyGenericSelect(
+    ui.taskAgentProfile,
+    profileOptions,
+    ui.taskAgentProfile?.value ?? "",
+    t("task_field_na")
+  )
+  const taskAgentTemplate = applyGenericSelect(
+    ui.taskAgentTemplate,
+    templateOptions,
+    ui.taskAgentTemplate?.value ?? "",
+    t("task_field_na")
+  )
+  const scheduleAgentProfile = applyGenericSelect(
+    ui.scheduleTaskAgentProfile,
+    profileOptions,
+    ui.scheduleTaskAgentProfile?.value ?? "",
+    t("task_field_na")
+  )
+  const scheduleAgentTemplate = applyGenericSelect(
+    ui.scheduleTaskAgentTemplate,
+    templateOptions,
+    ui.scheduleTaskAgentTemplate?.value ?? "",
+    t("task_field_na")
+  )
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
   const scheduleSubmit = ui.scheduleCreateForm?.querySelector('button[type="submit"]')
   const secretSubmit = ui.secretCreateForm?.querySelector('button[type="submit"]')
-  if (taskSubmit) taskSubmit.disabled = !taskProject
+  if (taskSubmit) taskSubmit.disabled = !taskProject || !taskAgentProfile || !taskAgentTemplate
   if (memorySubmit) memorySubmit.disabled = !memoryProject
-  if (scheduleSubmit) scheduleSubmit.disabled = !scheduleProject
+  if (scheduleSubmit) scheduleSubmit.disabled = !scheduleProject || !scheduleAgentProfile || !scheduleAgentTemplate
   if (secretSubmit) secretSubmit.disabled = !secretsProject
   state.secretsFilters.project = secretsProject
 
@@ -1417,8 +1485,6 @@ function renderProjectDetails() {
   ui.projectEditName.value = selected.name ?? ""
   ui.projectEditDescription.value = selected.description ?? ""
   ui.projectEditGithubUrl.value = selected.github_url ?? ""
-  ui.projectEditGithubRepo.value = selected.github_repo ?? ""
-  ui.projectEditDefaultBranch.value = selected.default_branch ?? ""
   ui.projectEditWorkspacePath.value = selected.workspace_path ?? ""
   ui.projectEditActive.checked = selected.is_active === true
 }
@@ -1433,7 +1499,7 @@ function renderProjects(items) {
   const visible = state.projects.filter((project) => {
     if (!state.projectFilters.includeInactive && project.is_active !== true) return false
     if (!search) return true
-    const haystack = `${project.key ?? ""} ${project.name ?? ""} ${project.github_repo ?? ""} ${project.github_url ?? ""}`
+    const haystack = `${project.key ?? ""} ${project.name ?? ""} ${project.github_url ?? ""} ${project.workspace_path ?? ""}`
     return haystack.toLowerCase().includes(search)
   })
 
@@ -1457,7 +1523,7 @@ function renderProjects(items) {
         <span class="pill ${active ? "pill-active" : ""}">${escapeHtml(active ? t("profile_state_active") : t("profile_state_inactive"))}</span>
       </div>
       <div class="meta-note"><code>${escapeHtml(project.key)}</code></div>
-      <div class="meta-note">${escapeHtml(project.github_repo ?? project.github_url ?? t("task_field_na"))}</div>
+      <div class="meta-note">${escapeHtml(project.github_url ?? project.workspace_path ?? t("task_field_na"))}</div>
     </li>`
   }).join("")
 
@@ -1466,8 +1532,16 @@ function renderProjects(items) {
 
 function renderTaskDetails(task) {
   if (!task) {
+    if (ui.cancelTask) {
+      ui.cancelTask.disabled = true
+    }
     ui.taskDetailsContent.textContent = t("task_details_empty")
     return
+  }
+
+  if (ui.cancelTask) {
+    const terminal = new Set(["DONE", "FAILED_TERMINAL", "ARCHIVED", "CANCELLED", "INTERRUPTED"])
+    ui.cancelTask.disabled = terminal.has(task.status)
   }
 
   const rows = [
@@ -1475,10 +1549,12 @@ function renderTaskDetails(task) {
     [t("task_field_status"), escapeHtml(task.status ?? t("task_field_na"))],
     [t("task_field_priority"), escapeHtml(String(task.priority ?? t("task_field_na")))],
     [t("task_field_project"), escapeHtml(task.project_id ?? t("task_field_na"))],
-    [t("task_field_repo"), escapeHtml(task.repo_id ?? t("task_field_na"))],
-    [t("task_field_branch"), escapeHtml(task.branch ?? t("task_field_na"))],
+    [t("task_field_agent_profile"), escapeHtml(task.agent_profile_id ?? t("task_field_na"))],
+    [t("task_field_agent_template"), escapeHtml(task.agent_template_id ?? t("task_field_na"))],
     [t("task_field_created"), escapeHtml(fmtDate(task.created_at))],
     [t("task_field_updated"), escapeHtml(fmtDate(task.updated_at))],
+    [t("task_field_cancelled"), escapeHtml(fmtDate(task.cancelled_at))],
+    [t("task_field_cancel_reason"), escapeHtml(task.cancel_reason ?? t("task_field_na"))],
     [t("task_field_description"), escapeHtml(task.description ?? t("task_field_na"))]
   ]
 
@@ -1884,6 +1960,7 @@ function renderAgentProfiles(items) {
   state.agentProfiles = Array.isArray(items)
     ? [...items].sort((a, b) => String(a.name ?? "").localeCompare(String(b.name ?? "")))
     : state.agentProfiles
+  state.taskAgentProfiles = state.agentProfiles
   if (state.page !== "console") return
 
   syncProjectBindings()
@@ -2317,9 +2394,18 @@ async function refreshProjects() {
 async function refreshTasks() {
   if (state.token) {
     try {
-      await fetchProjectRegistry({ includeInactive: true })
+      const [projects, profiles, templates] = await Promise.all([
+        fetchProjectRegistry({ includeInactive: true }),
+        requestJson("/api/agent-profiles?include_disabled=false&limit=200"),
+        requestJson("/api/agents/templates")
+      ])
+      if (Array.isArray(projects)) {
+        state.projects = projects
+      }
+      state.taskAgentProfiles = Array.isArray(profiles?.items) ? profiles.items : []
+      state.taskAgentTemplates = Array.isArray(templates?.items) ? templates.items : []
     } catch {
-      // best-effort sync for project selectors in tasks form/filters
+      // best-effort sync for selectors in tasks form/filters
     }
   }
   return withPanel(ui.tasksPanelState, "system", async () => renderTasks((await requestJson("/api/tasks")).items))
@@ -2344,7 +2430,16 @@ async function refreshScheduleRuns() {
 async function refreshSchedulesRoute() {
   if (state.token) {
     try {
-      await fetchProjectRegistry({ includeInactive: false })
+      const [projects, profiles, templates] = await Promise.all([
+        fetchProjectRegistry({ includeInactive: false }),
+        requestJson("/api/agent-profiles?include_disabled=false&limit=200"),
+        requestJson("/api/agents/templates")
+      ])
+      if (Array.isArray(projects)) {
+        state.projects = projects
+      }
+      state.taskAgentProfiles = Array.isArray(profiles?.items) ? profiles.items : []
+      state.taskAgentTemplates = Array.isArray(templates?.items) ? templates.items : []
     } catch {
       // best-effort sync for project selector in schedules form
     }
@@ -2395,11 +2490,14 @@ async function refreshSelectedAgentProfileContext() {
 
 async function refreshAgentProfilesRoute() {
   return withPanel(ui.agentProfilesPanelState, "system", async () => {
-    const [profilesResponse, serversResponse] = await Promise.all([
+    const [profilesResponse, templatesResponse, serversResponse] = await Promise.all([
       requestJson("/api/agent-profiles?include_disabled=true&limit=200"),
+      requestJson("/api/agents/templates"),
       requestJson("/api/mcp/servers?include_unapproved=true")
     ])
     state.agentProfiles = Array.isArray(profilesResponse?.items) ? profilesResponse.items : []
+    state.taskAgentProfiles = state.agentProfiles
+    state.taskAgentTemplates = Array.isArray(templatesResponse?.items) ? templatesResponse.items : []
     state.mcpServers = Array.isArray(serversResponse?.items) ? serversResponse.items : []
 
     if (!state.agentProfiles.some((item) => item.id === state.selectedAgentProfileId)) {
@@ -2786,8 +2884,8 @@ function wireConsoleRefs() {
     quickRefreshAll: document.getElementById("quick-refresh-all"),
     statTasks: document.getElementById("stat-tasks"), statHeld: document.getElementById("stat-held"), statProfiles: document.getElementById("stat-profiles"), statEvents: document.getElementById("stat-events"),
     refreshHealth: document.getElementById("refresh-health"), liveStatus: document.getElementById("live-status"), readyStatus: document.getElementById("ready-status"), dashboardSignals: document.getElementById("dashboard-signals"), dashboardSignalsState: document.getElementById("dashboard-signals-state"),
-    projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateGithubRepo: document.getElementById("project-create-github-repo"), projectCreateDefaultBranch: document.getElementById("project-create-default-branch"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditGithubRepo: document.getElementById("project-edit-github-repo"), projectEditDefaultBranch: document.getElementById("project-edit-default-branch"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
-    toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskRepo: document.getElementById("task-repo"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"), schedulesPanelState: document.getElementById("schedules-panel-state"), refreshSchedules: document.getElementById("refresh-schedules"), refreshScheduleRuns: document.getElementById("refresh-schedule-runs"), scheduleCreateShell: document.getElementById("schedule-create-shell"), scheduleCreateForm: document.getElementById("schedule-create-form"), scheduleName: document.getElementById("schedule-name"), scheduleProject: document.getElementById("schedule-project"), scheduleCron: document.getElementById("schedule-cron"), scheduleTaskTitle: document.getElementById("schedule-task-title"), scheduleTaskDescription: document.getElementById("schedule-task-description"), scheduleTaskRepo: document.getElementById("schedule-task-repo"), scheduleTaskBranch: document.getElementById("schedule-task-branch"), scheduleTaskPriority: document.getElementById("schedule-task-priority"), schedulesList: document.getElementById("schedules-list"), scheduleRunsList: document.getElementById("schedule-runs-list"),
+    projectsPanelState: document.getElementById("projects-panel-state"), refreshProjects: document.getElementById("refresh-projects"), projectCreateShell: document.getElementById("project-create-shell"), projectCreateForm: document.getElementById("project-create-form"), projectCreateKey: document.getElementById("project-create-key"), projectCreateName: document.getElementById("project-create-name"), projectCreateDescription: document.getElementById("project-create-description"), projectCreateGithubUrl: document.getElementById("project-create-github-url"), projectCreateWorkspacePath: document.getElementById("project-create-workspace-path"), projectFilterSearch: document.getElementById("project-filter-search"), projectFilterIncludeInactive: document.getElementById("project-filter-include-inactive"), projectsList: document.getElementById("projects-list"), projectDetailsEmpty: document.getElementById("project-details-empty"), projectDetailsContent: document.getElementById("project-details-content"), projectSummaryGrid: document.getElementById("project-summary-grid"), projectEditForm: document.getElementById("project-edit-form"), projectEditKey: document.getElementById("project-edit-key"), projectEditName: document.getElementById("project-edit-name"), projectEditDescription: document.getElementById("project-edit-description"), projectEditGithubUrl: document.getElementById("project-edit-github-url"), projectEditWorkspacePath: document.getElementById("project-edit-workspace-path"), projectEditActive: document.getElementById("project-edit-active"),
+    toggleAutoRefreshTasks: document.getElementById("toggle-autorefresh-tasks"), tasksPanelState: document.getElementById("tasks-panel-state"), refreshTasks: document.getElementById("refresh-tasks"), taskCreateShell: document.getElementById("task-create-shell"), taskForm: document.getElementById("task-form"), taskTitle: document.getElementById("task-title"), taskDescription: document.getElementById("task-description"), taskProject: document.getElementById("task-project"), taskAgentProfile: document.getElementById("task-agent-profile"), taskAgentTemplate: document.getElementById("task-agent-template"), taskFilterSearch: document.getElementById("task-filter-search"), taskFilterProject: document.getElementById("task-filter-project"), taskFilterStatus: document.getElementById("task-filter-status"), taskFilterClear: document.getElementById("task-filter-clear"), tasksWaiting: document.getElementById("tasks-waiting"), tasksRunning: document.getElementById("tasks-running"), tasksCompleted: document.getElementById("tasks-completed"), tasksWaitingCount: document.getElementById("tasks-waiting-count"), tasksRunningCount: document.getElementById("tasks-running-count"), tasksCompletedCount: document.getElementById("tasks-completed-count"), heldPanelState: document.getElementById("held-panel-state"), refreshHeld: document.getElementById("refresh-held"), releaseHeld: document.getElementById("release-held"), heldSummary: document.getElementById("held-summary"), heldList: document.getElementById("held-list"), taskDetailsContent: document.getElementById("task-details-content"), cancelTask: document.getElementById("cancel-task"), schedulesPanelState: document.getElementById("schedules-panel-state"), refreshSchedules: document.getElementById("refresh-schedules"), refreshScheduleRuns: document.getElementById("refresh-schedule-runs"), scheduleCreateShell: document.getElementById("schedule-create-shell"), scheduleCreateForm: document.getElementById("schedule-create-form"), scheduleName: document.getElementById("schedule-name"), scheduleProject: document.getElementById("schedule-project"), scheduleCron: document.getElementById("schedule-cron"), scheduleTaskTitle: document.getElementById("schedule-task-title"), scheduleTaskDescription: document.getElementById("schedule-task-description"), scheduleTaskAgentProfile: document.getElementById("schedule-task-agent-profile"), scheduleTaskAgentTemplate: document.getElementById("schedule-task-agent-template"), scheduleTaskPriority: document.getElementById("schedule-task-priority"), schedulesList: document.getElementById("schedules-list"), scheduleRunsList: document.getElementById("schedule-runs-list"),
     toggleAutoRefreshAgents: document.getElementById("toggle-autorefresh-agents"), agentsPanelState: document.getElementById("agents-panel-state"), refreshAgentCards: document.getElementById("refresh-agent-cards"), agentsPreparing: document.getElementById("agents-preparing"), agentsRunning: document.getElementById("agents-running"), agentsRecent: document.getElementById("agents-recent"), agentsPreparingCount: document.getElementById("agents-preparing-count"), agentsRunningCount: document.getElementById("agents-running-count"), agentsRecentCount: document.getElementById("agents-recent-count"), agentInspectorEmpty: document.getElementById("agent-inspector-empty"), agentInspectorContent: document.getElementById("agent-inspector-content"), agentInspectorId: document.getElementById("agent-inspector-id"), agentInspectorStatus: document.getElementById("agent-inspector-status"), agentInspectorCapability: document.getElementById("agent-inspector-capability"), agentInspectorTemplate: document.getElementById("agent-inspector-template"), agentInspectorAccount: document.getElementById("agent-inspector-account"), agentInspectorTrace: document.getElementById("agent-inspector-trace"), agentInspectorExecMode: document.getElementById("agent-inspector-exec-mode"), agentInspectorCreated: document.getElementById("agent-inspector-created"), agentInspectorStarted: document.getElementById("agent-inspector-started"), agentInspectorEnded: document.getElementById("agent-inspector-ended"), agentInspectorCwd: document.getElementById("agent-inspector-cwd"), agentInspectorCwdSource: document.getElementById("agent-inspector-cwd-source"), agentInspectorMemory: document.getElementById("agent-inspector-memory"), agentInspectorResult: document.getElementById("agent-inspector-result"), agentInspectorPrompt: document.getElementById("agent-inspector-prompt"), agentInspectorLog: document.getElementById("agent-inspector-log"),
     agentProfilesPanelState: document.getElementById("agent-profiles-panel-state"), refreshAgentProfiles: document.getElementById("refresh-agent-profiles"), agentProfileCreateShell: document.getElementById("agent-profile-create-shell"), agentProfileCreateForm: document.getElementById("agent-profile-create-form"), agentProfileName: document.getElementById("agent-profile-name"), agentProfileRole: document.getElementById("agent-profile-role"), agentProfileSourcePolicy: document.getElementById("agent-profile-source-policy"), agentProfileDescription: document.getElementById("agent-profile-description"), agentProfileEnabled: document.getElementById("agent-profile-enabled"), agentProfileFilterSearch: document.getElementById("agent-profile-filter-search"), agentProfileFilterRole: document.getElementById("agent-profile-filter-role"), agentProfileFilterIncludeDisabled: document.getElementById("agent-profile-filter-include-disabled"), agentProfileFilterClear: document.getElementById("agent-profile-filter-clear"), agentProfilesList: document.getElementById("agent-profiles-list"), agentProfileDetailsEmpty: document.getElementById("agent-profile-details-empty"), agentProfileDetailsContent: document.getElementById("agent-profile-details-content"), agentProfileSummaryGrid: document.getElementById("agent-profile-summary-grid"), agentProfileEditForm: document.getElementById("agent-profile-edit-form"), agentProfileEditId: document.getElementById("agent-profile-edit-id"), agentProfileEditName: document.getElementById("agent-profile-edit-name"), agentProfileEditRole: document.getElementById("agent-profile-edit-role"), agentProfileEditSourcePolicy: document.getElementById("agent-profile-edit-source-policy"), agentProfileEditEnabled: document.getElementById("agent-profile-edit-enabled"), agentProfileEditDescription: document.getElementById("agent-profile-edit-description"), mcpServerCreateForm: document.getElementById("mcp-server-create-form"), mcpServerName: document.getElementById("mcp-server-name"), mcpServerTransport: document.getElementById("mcp-server-transport"), mcpServerOrigin: document.getElementById("mcp-server-origin"), mcpServerEndpoint: document.getElementById("mcp-server-endpoint"), mcpServerMeta: document.getElementById("mcp-server-meta"), mcpServerApproved: document.getElementById("mcp-server-approved"), agentProfileBindForm: document.getElementById("agent-profile-bind-form"), agentProfileBindServer: document.getElementById("agent-profile-bind-server"), agentProfileBindPriority: document.getElementById("agent-profile-bind-priority"), agentProfileBindRequired: document.getElementById("agent-profile-bind-required"), agentProfileBindConfig: document.getElementById("agent-profile-bind-config"), agentProfileBindingsList: document.getElementById("agent-profile-bindings-list"), agentProfileScriptWindowsType: document.getElementById("agent-profile-script-windows-type"), agentProfileScriptWindowsContent: document.getElementById("agent-profile-script-windows-content"), agentProfileScriptWindowsMeta: document.getElementById("agent-profile-script-windows-meta"), agentProfileScriptLinuxType: document.getElementById("agent-profile-script-linux-type"), agentProfileScriptLinuxContent: document.getElementById("agent-profile-script-linux-content"), agentProfileScriptLinuxMeta: document.getElementById("agent-profile-script-linux-meta"), agentProfileScriptMacosType: document.getElementById("agent-profile-script-macos-type"), agentProfileScriptMacosContent: document.getElementById("agent-profile-script-macos-content"), agentProfileScriptMacosMeta: document.getElementById("agent-profile-script-macos-meta"),
     accountSectionButtons: Array.from(document.querySelectorAll("[data-accounts-section]")), accountPanels: Array.from(document.querySelectorAll("[data-accounts-panel]")), profilesPanelState: document.getElementById("profiles-panel-state"), refreshProfiles: document.getElementById("refresh-profiles"), uploadForm: document.getElementById("upload-form"), profileLabel: document.getElementById("profile-label"), profileFile: document.getElementById("profile-file"), activeProfile: document.getElementById("active-profile"), profilesBody: document.getElementById("profiles-body"), limitsPanelState: document.getElementById("limits-panel-state"), refreshAccountFleet: document.getElementById("refresh-account-fleet"), accountFleet: document.getElementById("account-fleet"), switchPolicyState: document.getElementById("switch-policy-state"), switchPolicyForm: document.getElementById("switch-policy-form"), switchPolicyEnabled: document.getElementById("switch-policy-enabled"), switchPolicyEligible: document.getElementById("switch-policy-eligible"), switchPolicyFive: document.getElementById("switch-policy-five"), switchPolicyWeek: document.getElementById("switch-policy-week"), switchPolicyGuard: document.getElementById("switch-policy-guard"), switchPolicyProbe: document.getElementById("switch-policy-probe"), switchPolicyCooldown: document.getElementById("switch-policy-cooldown"), switchPolicyLast: document.getElementById("switch-policy-last"), toggleAutoRefreshEvents: document.getElementById("toggle-autorefresh-events"), eventsPanelState: document.getElementById("events-panel-state"), refreshSwitchEvents: document.getElementById("refresh-switch-events"), switchFilterSearch: document.getElementById("switch-filter-search"), switchFilterStatus: document.getElementById("switch-filter-status"), switchFilterProfile: document.getElementById("switch-filter-profile"), switchFilterClear: document.getElementById("switch-filter-clear"), switchEvents: document.getElementById("switch-events"),
@@ -2905,8 +3003,6 @@ function wireConsoleHandlers() {
       name: ui.projectCreateName.value.trim(),
       description: toNullableString(ui.projectCreateDescription.value),
       github_url: toNullableString(ui.projectCreateGithubUrl.value),
-      github_repo: toNullableString(ui.projectCreateGithubRepo.value),
-      default_branch: toNullableString(ui.projectCreateDefaultBranch.value),
       workspace_path: toNullableString(ui.projectCreateWorkspacePath.value)
     }
 
@@ -2927,8 +3023,6 @@ function wireConsoleHandlers() {
       name: ui.projectEditName.value.trim(),
       description: toNullableString(ui.projectEditDescription.value),
       github_url: toNullableString(ui.projectEditGithubUrl.value),
-      github_repo: toNullableString(ui.projectEditGithubRepo.value),
-      default_branch: toNullableString(ui.projectEditDefaultBranch.value),
       workspace_path: toNullableString(ui.projectEditWorkspacePath.value),
       is_active: ui.projectEditActive.checked
     }
@@ -2989,11 +3083,33 @@ function wireConsoleHandlers() {
 
   ui.refreshTasks.addEventListener("click", async () => state.token ? refreshTasks() : requireTokenPanels())
 
+  ui.cancelTask?.addEventListener("click", async () => {
+    if (!state.token) return requireTokenPanels()
+    if (!state.selectedTaskId) return
+    const reasonInput = window.prompt(t("task_cancel_prompt"))
+    if (reasonInput === null) return
+    const reason = reasonInput.trim()
+    await requestJson(`/api/tasks/${encodeURIComponent(state.selectedTaskId)}/cancel`, {
+      method: "POST",
+      json: {
+        reason: reason || null
+      }
+    })
+    pushLog("success", "ui", t("log_task_cancelled"), { task_id: state.selectedTaskId })
+    await refreshTasks()
+  })
+
   ui.taskForm.addEventListener("submit", async (event) => {
     event.preventDefault()
     if (!state.token) return requireTokenPanels()
 
-    const payload = { title: ui.taskTitle.value.trim(), description: ui.taskDescription.value.trim(), project_id: ui.taskProject.value.trim(), repo_id: ui.taskRepo.value.trim() }
+    const payload = {
+      title: ui.taskTitle.value.trim(),
+      description: ui.taskDescription.value.trim(),
+      project_id: ui.taskProject.value.trim(),
+      agent_profile_id: ui.taskAgentProfile.value.trim(),
+      agent_template_id: ui.taskAgentTemplate.value.trim()
+    }
     await requestJson("/api/tasks", { method: "POST", json: payload })
     pushLog("success", "ui", t("log_task_created"), { title: payload.title, project_id: payload.project_id })
     ui.taskTitle.value = ""
@@ -3037,8 +3153,8 @@ function wireConsoleHandlers() {
       misfire_policy: "recompute_due_on_restart",
       task_title: ui.scheduleTaskTitle.value.trim(),
       task_description: ui.scheduleTaskDescription.value.trim(),
-      task_repo_id: ui.scheduleTaskRepo.value.trim(),
-      task_branch: toNullableString(ui.scheduleTaskBranch.value),
+      task_agent_profile_id: ui.scheduleTaskAgentProfile.value.trim(),
+      task_agent_template_id: ui.scheduleTaskAgentTemplate.value.trim(),
       task_priority: toIntegerInRange(ui.scheduleTaskPriority.value, 100, 1, 100000)
     }
 

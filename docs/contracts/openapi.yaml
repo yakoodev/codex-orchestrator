@@ -532,12 +532,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
-  /api/tasks/{id}/stop:
+  /api/tasks/{id}/cancel:
     post:
       tags: [Tasks]
-      summary: Stop task
+      summary: Cancel task
       parameters:
         - $ref: "#/components/parameters/TaskId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: [string, "null"]
+              additionalProperties: false
       responses:
         "200":
           description: Updated task
@@ -545,6 +555,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Task"
+        "409":
+          description: Invalid cancellation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/tasks/{id}/replan:
     post:
       tags: [Tasks]
@@ -2355,10 +2371,6 @@ components:
           type: [string, "null"]
         github_url:
           type: [string, "null"]
-        github_repo:
-          type: [string, "null"]
-        default_branch:
-          type: [string, "null"]
         workspace_path:
           type: [string, "null"]
         meta_json:
@@ -2392,10 +2404,6 @@ components:
           type: [string, "null"]
         github_url:
           type: [string, "null"]
-        github_repo:
-          type: [string, "null"]
-        default_branch:
-          type: [string, "null"]
         workspace_path:
           type: [string, "null"]
         meta_json:
@@ -2414,10 +2422,6 @@ components:
         description:
           type: [string, "null"]
         github_url:
-          type: [string, "null"]
-        github_repo:
-          type: [string, "null"]
-        default_branch:
           type: [string, "null"]
         workspace_path:
           type: [string, "null"]
@@ -2627,6 +2631,7 @@ components:
         - BLOCKED
         - FAILED_RETRYABLE
         - FAILED_TERMINAL
+        - CANCELLED
         - DONE
         - ARCHIVED
     Task:
@@ -2644,11 +2649,34 @@ components:
           type: integer
         project_id:
           type: string
-        repo_id:
+        agent_profile_id:
           type: string
-        branch:
+        agent_template_id:
           type: string
-      required: [id, title, status]
+        cancel_reason:
+          type: [string, "null"]
+        cancelled_at:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - title
+        - description
+        - status
+        - priority
+        - project_id
+        - agent_profile_id
+        - agent_template_id
+        - cancel_reason
+        - cancelled_at
+        - created_at
+        - updated_at
     TaskCreateRequest:
       type: object
       properties:
@@ -2658,13 +2686,13 @@ components:
           type: string
         project_id:
           type: string
-        repo_id:
+        agent_profile_id:
           type: string
-        branch:
+        agent_template_id:
           type: string
         priority:
           type: integer
-      required: [title, description, project_id, repo_id]
+      required: [title, description, project_id, agent_profile_id, agent_template_id]
 
     AgentTemplate:
       type: object
@@ -3168,9 +3196,6 @@ components:
       properties:
         id:
           type: string
-        project_id:
-          type: string
-          nullable: true
         name:
           type: string
         role:
@@ -3199,10 +3224,6 @@ components:
     AgentProfileCreateRequest:
       type: object
       properties:
-        project_id:
-          type: string
-          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
-          nullable: true
         name:
           type: string
         role:
@@ -4000,7 +4021,7 @@ components:
           type: string
         scope:
           type: string
-          enum: [project]
+          enum: [global, project]
         project_id:
           type: [string, "null"]
         is_enabled:
@@ -4008,17 +4029,13 @@ components:
         rule_ast:
           $ref: "#/components/schemas/RuleAst"
           description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
-        target_agent_template_id:
-          type: [string, "null"]
-        fallback_role:
-          type: [string, "null"]
+        task_agent_profile_id:
+          type: string
+        task_agent_template_id:
+          type: string
         task_title:
           type: [string, "null"]
         task_description:
-          type: [string, "null"]
-        task_repo_id:
-          type: [string, "null"]
-        task_branch:
           type: [string, "null"]
         task_priority:
           type: integer
@@ -4043,10 +4060,10 @@ components:
         - scope
         - is_enabled
         - rule_ast
+        - task_agent_profile_id
+        - task_agent_template_id
         - task_title
         - task_description
-        - task_repo_id
-        - task_branch
         - task_priority
         - overlap_policy
         - misfire_policy
@@ -4061,24 +4078,20 @@ components:
           type: string
         scope:
           type: string
-          enum: [project]
+          enum: [global, project]
         project_id:
           type: string
         rule_ast:
           $ref: "#/components/schemas/RuleAst"
           description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
-        target_agent_template_id:
-          type: [string, "null"]
-        fallback_role:
-          type: [string, "null"]
+        task_agent_profile_id:
+          type: string
+        task_agent_template_id:
+          type: string
         task_title:
           type: string
         task_description:
           type: string
-        task_repo_id:
-          type: string
-        task_branch:
-          type: [string, "null"]
         task_priority:
           type: integer
           minimum: 1
@@ -4094,9 +4107,10 @@ components:
         - scope
         - project_id
         - rule_ast
+        - task_agent_profile_id
+        - task_agent_template_id
         - task_title
         - task_description
-        - task_repo_id
         - overlap_policy
         - misfire_policy
 
@@ -4110,17 +4124,13 @@ components:
         rule_ast:
           $ref: "#/components/schemas/RuleAst"
           description: "For `time.cron` predicates, schedule evaluation is performed in UTC."
-        target_agent_template_id:
-          type: [string, "null"]
-        fallback_role:
-          type: [string, "null"]
+        task_agent_profile_id:
+          type: string
+        task_agent_template_id:
+          type: string
         task_title:
           type: [string, "null"]
         task_description:
-          type: [string, "null"]
-        task_repo_id:
-          type: [string, "null"]
-        task_branch:
           type: [string, "null"]
         task_priority:
           type: integer

@@ -159,17 +159,6 @@
                         <input id="project-create-github-url" name="github_url" placeholder="https://github.com/owner/repo" />
                       </div>
                       <div>
-                        <label for="project-create-github-repo" data-i18n="project_github_repo_label">GitHub repo</label>
-                        <input id="project-create-github-repo" name="github_repo" placeholder="owner/repo" />
-                      </div>
-                    </div>
-
-                    <div class="split-2">
-                      <div>
-                        <label for="project-create-default-branch" data-i18n="project_default_branch_label">Default branch</label>
-                        <input id="project-create-default-branch" name="default_branch" placeholder="main" />
-                      </div>
-                      <div>
                         <label for="project-create-workspace-path" data-i18n="project_workspace_path_label">Workspace path</label>
                         <input id="project-create-workspace-path" name="workspace_path" placeholder="/app/projects/web-ui" />
                       </div>
@@ -228,17 +217,6 @@
                         <input id="project-edit-github-url" />
                       </div>
                       <div>
-                        <label for="project-edit-github-repo" data-i18n="project_github_repo_label">GitHub repo</label>
-                        <input id="project-edit-github-repo" />
-                      </div>
-                    </div>
-
-                    <div class="split-2">
-                      <div>
-                        <label for="project-edit-default-branch" data-i18n="project_default_branch_label">Default branch</label>
-                        <input id="project-edit-default-branch" />
-                      </div>
-                      <div>
                         <label for="project-edit-workspace-path" data-i18n="project_workspace_path_label">Workspace path</label>
                         <input id="project-edit-workspace-path" />
                       </div>
@@ -281,15 +259,20 @@
                     <textarea id="task-description" name="description" rows="3" required></textarea>
 
                     <div class="split-2">
-                    <div>
-                      <label for="task-project" data-i18n="task_project_label">Project ID</label>
+                      <div>
+                        <label for="task-project" data-i18n="task_project_label">Project ID</label>
                         <select id="task-project" name="project_id" required></select>
                       </div>
                       <div>
-                        <label for="task-repo" data-i18n="task_repo_label">Repo ID</label>
-                        <input id="task-repo" name="repo_id" value="web-ui" required />
+                        <label for="task-agent-profile" data-i18n="task_agent_profile_label">Профиль агента</label>
+                        <select id="task-agent-profile" name="agent_profile_id" required></select>
                       </div>
                     </div>
+
+                    <div>
+                      <label for="task-agent-template" data-i18n="task_agent_template_label">Шаблон агента</label>
+                      <select id="task-agent-template" name="agent_template_id" required></select>
+                      </div>
 
                     <button type="submit" data-i18n="create_task">Создать задачу</button>
                   </form>
@@ -361,6 +344,9 @@
 
                 <section class="detail-card">
                   <p class="tiny-label" data-i18n="task_details_title">Детали задачи</p>
+                  <div class="action-bar">
+                    <button id="cancel-task" class="button-danger" type="button" data-i18n="task_cancel_action">Отменить задачу</button>
+                  </div>
                   <div id="task-details-content" class="meta-note" data-i18n="task_details_empty">
                     Выбери карточку задачи, чтобы посмотреть детали.
                   </div>
@@ -403,8 +389,8 @@
                         <input id="schedule-task-title" name="task_title" required />
                       </div>
                       <div>
-                        <label for="schedule-task-repo" data-i18n="schedule_task_repo_label">Repo ID</label>
-                        <input id="schedule-task-repo" name="task_repo_id" required />
+                        <label for="schedule-task-agent-profile" data-i18n="schedule_task_agent_profile_label">Профиль агента</label>
+                        <select id="schedule-task-agent-profile" name="task_agent_profile_id" required></select>
                       </div>
                     </div>
 
@@ -413,8 +399,8 @@
 
                     <div class="split-2">
                       <div>
-                        <label for="schedule-task-branch" data-i18n="schedule_task_branch_label">Ветка (опционально)</label>
-                        <input id="schedule-task-branch" name="task_branch" />
+                        <label for="schedule-task-agent-template" data-i18n="schedule_task_agent_template_label">Шаблон агента</label>
+                        <select id="schedule-task-agent-template" name="task_agent_template_id" required></select>
                       </div>
                       <div>
                         <label for="schedule-task-priority" data-i18n="schedule_task_priority_label">Приоритет</label>

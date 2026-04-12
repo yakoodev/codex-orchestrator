@@ -1,5 +1,7 @@
 # Runbook (MVP)
 
+Обновлено: 2026-04-12
+
 ## Prerequisites
 - Docker Engine with Compose plugin.
 - Host minimum: 4 CPU / 8 GB RAM.
@@ -25,7 +27,6 @@ docker compose up -d
 - Task auto-dispatch:
   - `TASK_AUTODISPATCH_ENABLED` (default `true`)
   - `TASK_AUTODISPATCH_INTERVAL_MS` (default `5000`)
-  - `TASK_AUTODISPATCH_CAPABILITY` (default `reviewer`)
   - `TASK_AUTODISPATCH_EXECUTION_MODE` (default `codex_exec`)
   - `TASK_AUTODISPATCH_SANDBOX_POLICY` (default `danger-full-access`, overrides template sandbox for auto-launch)
   - `TASK_AUTODISPATCH_APPROVAL_POLICY` (default `never`, overrides template approval for auto-launch)
@@ -80,6 +81,7 @@ Notes:
 - Adapter also bridges key Redis Stream events into Telegram (`queue.hold_started`, `auth_profile.switch.started/completed/skipped`, `queue.hold_released`) with debounce.
 - If whitelist is empty, adapter starts in discovery mode: updates are ignored, while `chat_id/user_id` are logged for initial setup.
 - `/say <task_id> <message>` is supported and creates an admin steering intervention (`POST /api/tasks/{id}/say`).
+- `/cancel <task_id>` отменяет задачу через `POST /api/tasks/{id}/cancel` (`/stop` поддерживается как совместимый алиас команды бота).
 
 ## Health checks
 - Bus liveness: `GET /health/live`
@@ -162,6 +164,9 @@ Service integration (uploaded auth profiles):
 - Open `http://localhost:8080/ui/`.
 - Save `X-Admin-Token` from root `.env` in the Connection section.
 - Optional: switch UI locale (`RU/EN`) in panel header.
+- Task-first rule:
+  - задачи создаются только с явным исполнителем (`agent_profile_id` + `agent_template_id`);
+  - операторская остановка задач выполняется через `POST /api/tasks/{id}/cancel`.
 - Validate primary workflow from UI:
   - create task;
   - create schedule rule and trigger it;

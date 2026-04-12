@@ -186,8 +186,6 @@ class FakePersistence implements Persistence {
       name: input.name,
       description: input.description ?? null,
       github_url: input.github_url ?? null,
-      github_repo: input.github_repo ?? null,
-      default_branch: input.default_branch ?? null,
       workspace_path: input.workspace_path ?? null,
       meta_json: input.meta_json ?? null,
       is_active: input.is_active ?? true,
@@ -218,8 +216,6 @@ class FakePersistence implements Persistence {
       name?: string;
       description?: string | null;
       github_url?: string | null;
-      github_repo?: string | null;
-      default_branch?: string | null;
       workspace_path?: string | null;
       meta_json?: Record<string, unknown> | null;
       is_active?: boolean;
@@ -238,12 +234,6 @@ class FakePersistence implements Persistence {
     }
     if (patch.github_url !== undefined) {
       project.github_url = patch.github_url;
-    }
-    if (patch.github_repo !== undefined) {
-      project.github_repo = patch.github_repo;
-    }
-    if (patch.default_branch !== undefined) {
-      project.default_branch = patch.default_branch;
     }
     if (patch.workspace_path !== undefined) {
       project.workspace_path = patch.workspace_path;
@@ -570,13 +560,18 @@ class FakePersistence implements Persistence {
     title: string;
     description: string;
     project_id: string;
-    repo_id: string;
-    branch: string | null;
+    agent_profile_id?: string;
+    agent_template_id?: string;
+    repo_id?: string;
+    branch?: string | null;
     priority: number;
     status: TaskStatus;
+    cancel_reason?: string | null;
+    cancelled_at?: Date | null;
     source: string;
     created_by: string;
   }): Promise<TaskEntity> {
+    const now = new Date();
     const task: TaskEntity = {
       id: `task-${this.taskCounter++}`,
       title: input.title,
@@ -584,8 +579,13 @@ class FakePersistence implements Persistence {
       status: input.status,
       priority: input.priority,
       project_id: input.project_id,
-      repo_id: input.repo_id,
-      branch: input.branch
+      agent_profile_id: input.agent_profile_id ?? this.agentProfiles[0]?.id ?? "agent-profile-default",
+      agent_template_id:
+        input.agent_template_id ?? this.agentTemplates[0]?.id ?? "agent-template-default",
+      cancel_reason: input.cancel_reason ?? null,
+      cancelled_at: input.cancelled_at ?? null,
+      created_at: now,
+      updated_at: now
     };
     this.tasks.push(task);
     return task;
@@ -606,6 +606,33 @@ class FakePersistence implements Persistence {
     }
 
     task.status = status;
+    task.updated_at = new Date();
+    return task;
+  }
+
+  public async updateTask(
+    id: string,
+    patch: {
+      status?: TaskStatus;
+      cancel_reason?: string | null;
+      cancelled_at?: Date | null;
+    }
+  ): Promise<TaskEntity | null> {
+    const task = this.tasks.find((item) => item.id === id);
+    if (!task) {
+      return null;
+    }
+
+    if (patch.status !== undefined) {
+      task.status = patch.status;
+    }
+    if (patch.cancel_reason !== undefined) {
+      task.cancel_reason = patch.cancel_reason;
+    }
+    if (patch.cancelled_at !== undefined) {
+      task.cancelled_at = patch.cancelled_at;
+    }
+    task.updated_at = new Date();
     return task;
   }
 
@@ -638,6 +665,7 @@ class FakePersistence implements Persistence {
     for (const task of this.tasks) {
       if (task.status === "WAITING_LIMIT") {
         task.status = "QUEUED";
+        task.updated_at = new Date();
         changed += 1;
       }
     }
@@ -917,7 +945,6 @@ class FakePersistence implements Persistence {
     const now = new Date();
     const profile: AgentProfileEntity = {
       id: `agent-profile-${this.agentProfileCounter++}`,
-      project_id: input.project_id ?? null,
       name: input.name,
       role: input.role,
       description: input.description ?? null,
@@ -931,7 +958,6 @@ class FakePersistence implements Persistence {
   }
 
   public async listAgentProfiles(options?: {
-    project_id?: string;
     include_disabled?: boolean;
     role?: string;
     limit?: number;
@@ -1671,7 +1697,12 @@ class FakePersistence implements Persistence {
     return delegation;
   }
 
-  public async createScheduledRule(input: CreateScheduledRuleInput): Promise<ScheduledRuleEntity> {
+  public async createScheduledRule(
+    input: Omit<CreateScheduledRuleInput, "task_agent_profile_id" | "task_agent_template_id"> & {
+      task_agent_profile_id?: string;
+      task_agent_template_id?: string;
+    }
+  ): Promise<ScheduledRuleEntity> {
     const now = new Date();
     const rule: ScheduledRuleEntity = {
       id: `schedule-${this.scheduleCounter++}`,
@@ -1680,12 +1711,11 @@ class FakePersistence implements Persistence {
       project_id: input.project_id ?? null,
       is_enabled: true,
       rule_ast: input.rule_ast,
-      target_agent_template_id: input.target_agent_template_id ?? null,
-      fallback_role: input.fallback_role ?? null,
+      task_agent_profile_id: input.task_agent_profile_id ?? this.agentProfiles[0]?.id ?? "agent-profile-default",
+      task_agent_template_id:
+        input.task_agent_template_id ?? this.agentTemplates[0]?.id ?? "agent-template-default",
       task_title: input.task_title ?? null,
       task_description: input.task_description ?? null,
-      task_repo_id: input.task_repo_id ?? null,
-      task_branch: input.task_branch ?? null,
       task_priority: input.task_priority ?? 100,
       overlap_policy: input.overlap_policy,
       misfire_policy: input.misfire_policy,
@@ -1715,12 +1745,10 @@ class FakePersistence implements Persistence {
       name?: string;
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
-      target_agent_template_id?: string | null;
-      fallback_role?: string | null;
+      task_agent_profile_id?: string;
+      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
-      task_repo_id?: string | null;
-      task_branch?: string | null;
       task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
@@ -1740,23 +1768,17 @@ class FakePersistence implements Persistence {
     if (patch.rule_ast) {
       rule.rule_ast = patch.rule_ast;
     }
-    if (patch.target_agent_template_id !== undefined) {
-      rule.target_agent_template_id = patch.target_agent_template_id;
+    if (patch.task_agent_profile_id !== undefined) {
+      rule.task_agent_profile_id = patch.task_agent_profile_id;
     }
-    if (patch.fallback_role !== undefined) {
-      rule.fallback_role = patch.fallback_role;
+    if (patch.task_agent_template_id !== undefined) {
+      rule.task_agent_template_id = patch.task_agent_template_id;
     }
     if (patch.task_title !== undefined) {
       rule.task_title = patch.task_title;
     }
     if (patch.task_description !== undefined) {
       rule.task_description = patch.task_description;
-    }
-    if (patch.task_repo_id !== undefined) {
-      rule.task_repo_id = patch.task_repo_id;
-    }
-    if (patch.task_branch !== undefined) {
-      rule.task_branch = patch.task_branch;
     }
     if (patch.task_priority !== undefined) {
       rule.task_priority = patch.task_priority;
@@ -2352,6 +2374,7 @@ describe("smoke-core API", () => {
   let storage: FakeStorage;
   let publisher: FakePublisher;
   let authProfileRateLimitsReader: FakeAuthProfileRateLimitsReader;
+  let executorCounter = 1;
 
   const config: AppConfig = {
     nodeEnv: "test",
@@ -2381,7 +2404,6 @@ describe("smoke-core API", () => {
     delegationExecutionTimeoutMs: 60_000,
     taskAutoDispatchEnabled: false,
     taskAutoDispatchIntervalMs: 50,
-    taskAutoDispatchCapability: "reviewer",
     taskAutoDispatchExecutionMode: "codex_exec",
     taskAutoDispatchSandboxPolicy: "danger-full-access",
     taskAutoDispatchApprovalPolicy: "never",
@@ -2427,11 +2449,39 @@ describe("smoke-core API", () => {
       key: "proj-memory",
       name: "Project Memory"
     });
+
+    executorCounter = 1;
   });
 
   afterEach(async () => {
     await app.close();
   });
+
+  const prepareExecutorBinding = async (
+    role = "reviewer"
+  ): Promise<{ profileId: string; templateId: string }> => {
+    const suffix = executorCounter++;
+    const template = await persistence.createAgentTemplate({
+      name: `template-${role}-${suffix}`,
+      role,
+      model: "gpt-5.4-mini",
+      system_prompt: `template ${role}`,
+      sandbox_policy: "workspace-write",
+      approval_policy: "never"
+    });
+
+    const profile = await persistence.createAgentProfile({
+      name: `profile-${role}-${suffix}`,
+      role,
+      source_policy: "catalog_only",
+      is_enabled: true
+    });
+
+    return {
+      profileId: profile.id,
+      templateId: template.id
+    };
+  };
 
   it("returns live health without token", async () => {
     const response = await app.inject({ method: "GET", url: "/health/live" });
@@ -2494,8 +2544,6 @@ describe("smoke-core API", () => {
         key: "web-ui",
         name: "Web UI",
         github_url: "https://github.com/example/web-ui",
-        github_repo: "example/web-ui",
-        default_branch: "main",
         workspace_path: "/workspace/web-ui",
         meta_json: { owner: "platform" }
       }
@@ -2553,6 +2601,23 @@ describe("smoke-core API", () => {
     });
     expect(getResponse.statusCode).toBe(200);
     expect(getResponse.json().name).toBe("Web UI");
+  });
+
+  it("rejects legacy project fields", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/projects",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        key: "legacy-proj",
+        name: "Legacy Project",
+        github_repo: "example/legacy"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(400);
+    expect(createResponse.json().code).toBe("VALIDATION_ERROR");
+    expect(createResponse.json().error).toContain("Legacy fields are not supported");
   });
 
   it("returns project summary", async () => {
@@ -2751,6 +2816,8 @@ describe("smoke-core API", () => {
   });
 
   it("validates project_id for task and memory create", async () => {
+    const executor = await prepareExecutorBinding();
+
     const missingProjectTaskResponse = await app.inject({
       method: "POST",
       url: "/api/tasks",
@@ -2759,7 +2826,8 @@ describe("smoke-core API", () => {
         title: "Task with unknown project",
         description: "desc",
         project_id: "unknown-project",
-        repo_id: "repo"
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId
       }
     });
 
@@ -2780,7 +2848,8 @@ describe("smoke-core API", () => {
         title: "Task inactive project",
         description: "desc",
         project_id: "inactive-proj",
-        repo_id: "repo"
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId
       }
     });
     expect(inactiveTaskResponse.statusCode).toBe(409);
@@ -2816,6 +2885,8 @@ describe("smoke-core API", () => {
   });
 
   it("creates and lists tasks", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/tasks",
@@ -2824,7 +2895,8 @@ describe("smoke-core API", () => {
         title: "Test task",
         description: "Do something",
         project_id: "project-1",
-        repo_id: "repo-1",
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId,
         priority: 10
       }
     });
@@ -2842,6 +2914,28 @@ describe("smoke-core API", () => {
     expect(listResponse.json().items).toHaveLength(1);
   });
 
+  it("rejects legacy task fields", async () => {
+    const executor = await prepareExecutorBinding();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/tasks",
+      headers: { "x-admin-token": config.adminToken },
+      payload: {
+        title: "Legacy task payload",
+        description: "legacy fields should be rejected",
+        project_id: "project-1",
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId,
+        repo_id: "legacy-repo"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("VALIDATION_ERROR");
+    expect(response.json().error).toContain("Legacy fields are not supported");
+  });
+
   it("auto-dispatches queued tasks and marks them done", async () => {
     await app.close();
 
@@ -2850,7 +2944,6 @@ describe("smoke-core API", () => {
         ...config,
         taskAutoDispatchEnabled: true,
         taskAutoDispatchIntervalMs: 20,
-        taskAutoDispatchCapability: "reviewer"
       },
       persistence,
       storage,
@@ -2859,14 +2952,7 @@ describe("smoke-core API", () => {
     });
     await app.ready();
 
-    await persistence.createAgentTemplate({
-      name: "auto-dispatch-reviewer",
-      role: "reviewer",
-      model: "gpt-5",
-      system_prompt: "review task",
-      sandbox_policy: "workspace-write",
-      approval_policy: "never"
-    });
+    const executor = await prepareExecutorBinding();
     await persistence.createAuthProfile({
       label: "auto-dispatch-profile",
       status: "active",
@@ -2884,7 +2970,8 @@ describe("smoke-core API", () => {
         title: "Auto task",
         description: "Task should be dispatched automatically",
         project_id: "project-1",
-        repo_id: "repo-1",
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId,
         priority: 10
       }
     });
@@ -2930,7 +3017,6 @@ describe("smoke-core API", () => {
         ...config,
         taskAutoDispatchEnabled: true,
         taskAutoDispatchIntervalMs: 20,
-        taskAutoDispatchCapability: "reviewer",
         taskAutoDispatchSandboxPolicy: "danger-full-access",
         taskAutoDispatchApprovalPolicy: "never"
       },
@@ -2942,14 +3028,7 @@ describe("smoke-core API", () => {
     });
     await app.ready();
 
-    await persistence.createAgentTemplate({
-      name: "auto-dispatch-policy-override",
-      role: "reviewer",
-      model: "gpt-5",
-      system_prompt: "review task",
-      sandbox_policy: "workspace-write",
-      approval_policy: "on-request"
-    });
+    const executor = await prepareExecutorBinding();
     await persistence.createAuthProfile({
       label: "auto-dispatch-policy-profile",
       status: "active",
@@ -2967,7 +3046,8 @@ describe("smoke-core API", () => {
         title: "Auto task policy override",
         description: "Task should be dispatched automatically with forced policy",
         project_id: "project-1",
-        repo_id: "repo-1",
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId,
         priority: 10
       }
     });
@@ -3009,7 +3089,6 @@ describe("smoke-core API", () => {
         ...config,
         taskAutoDispatchEnabled: true,
         taskAutoDispatchIntervalMs: 20,
-        taskAutoDispatchCapability: "reviewer"
       },
       persistence,
       storage,
@@ -3019,14 +3098,7 @@ describe("smoke-core API", () => {
     });
     await app.ready();
 
-    await persistence.createAgentTemplate({
-      name: "auto-dispatch-reviewer-failed-marker",
-      role: "reviewer",
-      model: "gpt-5",
-      system_prompt: "review task",
-      sandbox_policy: "workspace-write",
-      approval_policy: "never"
-    });
+    const executor = await prepareExecutorBinding();
     await persistence.createAuthProfile({
       label: "auto-dispatch-profile-failed-marker",
       status: "active",
@@ -3044,7 +3116,8 @@ describe("smoke-core API", () => {
         title: "Auto task failed marker",
         description: "Task should be marked terminal failed",
         project_id: "project-1",
-        repo_id: "repo-1",
+        agent_profile_id: executor.profileId,
+        agent_template_id: executor.templateId,
         priority: 10
       }
     });
@@ -3281,13 +3354,15 @@ describe("smoke-core API", () => {
     expect(replanResponse.statusCode).toBe(202);
     expect(replanResponse.json()).toEqual({ accepted: true });
 
-    const stopResponse = await app.inject({
+    const cancelResponse = await app.inject({
       method: "POST",
-      url: `/api/tasks/${task.id}/stop`,
-      headers: { "x-admin-token": config.adminToken }
+      url: `/api/tasks/${task.id}/cancel`,
+      headers: { "x-admin-token": config.adminToken },
+      payload: { reason: "manual test cancel" }
     });
-    expect(stopResponse.statusCode).toBe(200);
-    expect(stopResponse.json().status).toBe("FAILED_TERMINAL");
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.json().status).toBe("CANCELLED");
+    expect(cancelResponse.json().cancel_reason).toBe("manual test cancel");
   });
 
   it("accepts task /say message and persists intervention", async () => {
@@ -4866,7 +4941,6 @@ describe("smoke-core API", () => {
 
     expect(createResponse.statusCode).toBe(201);
     expect(createResponse.json()).toMatchObject({
-      project_id: null,
       name: "UI tester",
       role: "tester",
       source_policy: "catalog_plus_custom",
@@ -5519,7 +5593,6 @@ describe("smoke-core API", () => {
     });
 
     const profile = await persistence.createAgentProfile({
-      project_id: "proj-memory",
       name: "ui-reviewer-profile",
       role: "reviewer",
       source_policy: "catalog_plus_custom",
@@ -5612,7 +5685,6 @@ describe("smoke-core API", () => {
     });
 
     const wrongRoleProfile = await persistence.createAgentProfile({
-      project_id: "project",
       name: "wrong-role-profile",
       role: "devops",
       is_enabled: true
@@ -6228,6 +6300,8 @@ describe("smoke-core API", () => {
   });
 
   it("manages schedules endpoints", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/schedules",
@@ -6241,7 +6315,8 @@ describe("smoke-core API", () => {
         },
         task_title: "nightly-task",
         task_description: "run nightly task",
-        task_repo_id: "repo",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6274,12 +6349,12 @@ describe("smoke-core API", () => {
       payload: {
         name: "Nightly check updated",
         is_enabled: false,
-        fallback_role: "reviewer"
+        task_priority: 90
       }
     });
     expect(patchResponse.statusCode).toBe(200);
     expect(patchResponse.json().is_enabled).toBe(false);
-    expect(patchResponse.json().fallback_role).toBe("reviewer");
+    expect(patchResponse.json().task_priority).toBe(90);
 
     const evaluateResponse = await app.inject({
       method: "POST",
@@ -6387,7 +6462,39 @@ describe("smoke-core API", () => {
     ).toBe(true);
   });
 
+  it("rejects legacy schedule fields", async () => {
+    const executor = await prepareExecutorBinding();
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/schedules",
+      headers: { "x-admin-token": config.adminToken, "x-trace-id": "trace-schedule-legacy-fields" },
+      payload: {
+        name: "Legacy schedule",
+        scope: "project",
+        project_id: "project",
+        rule_ast: {
+          conditions: [{ predicate: "time.cron", operator: "eq", value: "0 3 * * *" }]
+        },
+        task_title: "legacy-task",
+        task_description: "legacy",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
+        task_priority: 100,
+        overlap_policy: "one_active_skip",
+        misfire_policy: "recompute_due_on_restart",
+        task_repo_id: "legacy-repo"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(400);
+    expect(createResponse.json().code).toBe("VALIDATION_ERROR");
+    expect(createResponse.json().error).toContain("Legacy fields are not supported");
+  });
+
   it("evaluates schedule AST with all/any/not predicates", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/schedules",
@@ -6410,7 +6517,8 @@ describe("smoke-core API", () => {
         },
         task_title: "limit-task",
         task_description: "limit task desc",
-        task_repo_id: "repo",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6453,6 +6561,8 @@ describe("smoke-core API", () => {
   });
 
   it("evaluates time.cron predicate in UTC", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/schedules",
@@ -6467,7 +6577,8 @@ describe("smoke-core API", () => {
         },
         task_title: "utc-task",
         task_description: "utc task desc",
-        task_repo_id: "repo",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6504,6 +6615,8 @@ describe("smoke-core API", () => {
   });
 
   it("supports legacy rule_ast.conditions format in schedule evaluation", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/schedules",
@@ -6517,7 +6630,8 @@ describe("smoke-core API", () => {
         },
         task_title: "legacy-task",
         task_description: "legacy task desc",
-        task_repo_id: "repo",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6542,6 +6656,8 @@ describe("smoke-core API", () => {
   });
 
   it("returns existing scheduled run on trigger retry with same trace id", async () => {
+    const executor = await prepareExecutorBinding();
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/api/schedules",
@@ -6556,7 +6672,8 @@ describe("smoke-core API", () => {
         },
         task_title: "idem-task",
         task_description: "idem task desc",
-        task_repo_id: "repo",
+        task_agent_profile_id: executor.profileId,
+        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6593,6 +6710,8 @@ describe("smoke-core API", () => {
   });
 
   it("recovers due schedule run on app startup for restart event", async () => {
+    const executor = await prepareExecutorBinding();
+
     await app.close();
     publisher.events.splice(0, publisher.events.length);
 
@@ -6604,6 +6723,8 @@ describe("smoke-core API", () => {
         predicate: "event.type",
         value: "system.restart"
       },
+      task_agent_profile_id: executor.profileId,
+      task_agent_template_id: executor.templateId,
       overlap_policy: "one_active_skip",
       misfire_policy: "recompute_due_on_restart",
       created_by: "admin"
@@ -6637,6 +6758,8 @@ describe("smoke-core API", () => {
   });
 
   it("records skipped startup recovery when active run already exists", async () => {
+    const executor = await prepareExecutorBinding();
+
     await app.close();
     publisher.events.splice(0, publisher.events.length);
 
@@ -6648,6 +6771,8 @@ describe("smoke-core API", () => {
         predicate: "event.type",
         value: "system.restart"
       },
+      task_agent_profile_id: executor.profileId,
+      task_agent_template_id: executor.templateId,
       overlap_policy: "one_active_skip",
       misfire_policy: "recompute_due_on_restart",
       created_by: "admin"
@@ -7115,3 +7240,5 @@ describe("smoke-core API", () => {
     expect(response.statusCode).toBe(404);
   });
 });
+
+

@@ -15,6 +15,7 @@ export const TASK_STATUSES = [
   "BLOCKED",
   "FAILED_RETRYABLE",
   "FAILED_TERMINAL",
+  "CANCELLED",
   "DONE",
   "ARCHIVED"
 ] as const;

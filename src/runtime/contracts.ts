@@ -7,8 +7,12 @@ export interface TaskEntity {
   status: TaskStatus;
   priority: number;
   project_id: string;
-  repo_id: string;
-  branch: string | null;
+  agent_profile_id: string;
+  agent_template_id: string;
+  cancel_reason: string | null;
+  cancelled_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface ProjectEntity {
@@ -17,8 +21,6 @@ export interface ProjectEntity {
   name: string;
   description: string | null;
   github_url: string | null;
-  github_repo: string | null;
-  default_branch: string | null;
   workspace_path: string | null;
   meta_json: Record<string, unknown> | null;
   is_active: boolean;
@@ -310,7 +312,6 @@ export type McpKeyAclEffect = "allow";
 
 export interface AgentProfileEntity {
   id: string;
-  project_id: string | null;
   name: string;
   role: string;
   description: string | null;
@@ -465,12 +466,10 @@ export interface ScheduledRuleEntity {
   project_id: string | null;
   is_enabled: boolean;
   rule_ast: Record<string, unknown>;
-  target_agent_template_id: string | null;
-  fallback_role: string | null;
+  task_agent_profile_id: string;
+  task_agent_template_id: string;
   task_title: string | null;
   task_description: string | null;
-  task_repo_id: string | null;
-  task_branch: string | null;
   task_priority: number;
   overlap_policy: ScheduleOverlapPolicy;
   misfire_policy: ScheduleMisfirePolicy;
@@ -496,10 +495,12 @@ export interface CreateTaskInput {
   title: string;
   description: string;
   project_id: string;
-  repo_id: string;
-  branch: string | null;
+  agent_profile_id: string;
+  agent_template_id: string;
   priority: number;
   status: TaskStatus;
+  cancel_reason?: string | null;
+  cancelled_at?: Date | null;
   source: string;
   created_by: string;
 }
@@ -509,8 +510,6 @@ export interface CreateProjectInput {
   name: string;
   description?: string | null;
   github_url?: string | null;
-  github_repo?: string | null;
-  default_branch?: string | null;
   workspace_path?: string | null;
   meta_json?: Record<string, unknown> | null;
   is_active?: boolean;
@@ -582,12 +581,10 @@ export interface CreateScheduledRuleInput {
   scope: ScheduleScope;
   project_id?: string | null;
   rule_ast: Record<string, unknown>;
-  target_agent_template_id?: string | null;
-  fallback_role?: string | null;
+  task_agent_profile_id: string;
+  task_agent_template_id: string;
   task_title?: string | null;
   task_description?: string | null;
-  task_repo_id?: string | null;
-  task_branch?: string | null;
   task_priority?: number;
   overlap_policy: ScheduleOverlapPolicy;
   misfire_policy: ScheduleMisfirePolicy;
@@ -642,7 +639,6 @@ export interface CreateAgentRequestAuditEventInput {
 }
 
 export interface CreateAgentProfileInput {
-  project_id?: string | null;
   name: string;
   role: string;
   description?: string | null;
@@ -746,6 +742,7 @@ export interface DelegationExecutionError extends Error {
 
 export interface DelegationExecutor {
   execute(input: DelegationExecutionInput): Promise<DelegationExecutionResult>;
+  cancel?(delegationId: string): Promise<boolean>;
 }
 
 export interface Persistence {
@@ -759,8 +756,6 @@ export interface Persistence {
       name?: string;
       description?: string | null;
       github_url?: string | null;
-      github_repo?: string | null;
-      default_branch?: string | null;
       workspace_path?: string | null;
       meta_json?: Record<string, unknown> | null;
       is_active?: boolean;
@@ -829,6 +824,14 @@ export interface Persistence {
   listTasks(status?: TaskStatus): Promise<TaskEntity[]>;
   getTaskById(id: string): Promise<TaskEntity | null>;
   updateTaskStatus(id: string, status: TaskStatus): Promise<TaskEntity | null>;
+  updateTask(
+    id: string,
+    patch: {
+      status?: TaskStatus;
+      cancel_reason?: string | null;
+      cancelled_at?: Date | null;
+    }
+  ): Promise<TaskEntity | null>;
   createIntervention(input: CreateInterventionInput): Promise<boolean>;
   releaseHeldQueue(): Promise<number>;
   createAgentTemplate(input: CreateAgentTemplateInput): Promise<AgentTemplateEntity>;
@@ -878,7 +881,6 @@ export interface Persistence {
   }): Promise<AgentMemoryEntryEntity[]>;
   createAgentProfile(input: CreateAgentProfileInput): Promise<AgentProfileEntity>;
   listAgentProfiles(options?: {
-    project_id?: string;
     include_disabled?: boolean;
     role?: string;
     limit?: number;
@@ -1038,12 +1040,10 @@ export interface Persistence {
       name?: string;
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
-      target_agent_template_id?: string | null;
-      fallback_role?: string | null;
+      task_agent_profile_id?: string;
+      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
-      task_repo_id?: string | null;
-      task_branch?: string | null;
       task_priority?: number;
       overlap_policy?: ScheduleOverlapPolicy;
       misfire_policy?: ScheduleMisfirePolicy;
