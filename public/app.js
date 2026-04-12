@@ -1366,6 +1366,47 @@ function applyGenericSelect(selectNode, options, selectedValue, placeholder) {
   return selectNode.value
 }
 
+function normalizeRoleValue(role) {
+  if (typeof role !== "string") return ""
+  return role.trim().toLowerCase()
+}
+
+function mapExecutorOptions(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item?.id && item?.is_enabled === true)
+    .map((item) => ({
+      value: item.id,
+      role: normalizeRoleValue(item.role),
+      label: `${item.name ?? item.id} (${item.role ?? t("task_field_na")})`
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+function applyExecutorBinding(profileSelect, templateSelect, profileOptions, templateOptions, placeholder) {
+  const selectedProfileId = applyGenericSelect(
+    profileSelect,
+    profileOptions,
+    profileSelect?.value ?? "",
+    placeholder
+  )
+  const selectedProfileRole =
+    profileOptions.find((option) => option.value === selectedProfileId)?.role ?? ""
+  const filteredTemplateOptions = selectedProfileRole
+    ? templateOptions.filter((option) => option.role === selectedProfileRole)
+    : templateOptions
+  const selectedTemplateId = applyGenericSelect(
+    templateSelect,
+    filteredTemplateOptions,
+    templateSelect?.value ?? "",
+    placeholder
+  )
+
+  return {
+    profileId: selectedProfileId,
+    templateId: selectedTemplateId
+  }
+}
+
 function syncProjectBindings() {
   if (state.page !== "console") return
 
@@ -1380,42 +1421,20 @@ function syncProjectBindings() {
   const memoryProject = applyProjectSelect(ui.memoryProject, activeKeys, ui.memoryProject?.value ?? "", t("project_option_none"))
   const scheduleProject = applyProjectSelect(ui.scheduleProject, activeKeys, ui.scheduleProject?.value ?? "", t("project_option_none"))
   const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
-  const profileOptions = state.taskAgentProfiles
-    .filter((item) => item?.id && item?.is_enabled === true)
-    .map((item) => ({
-      value: item.id,
-      label: `${item.name ?? item.id} (${item.role ?? t("task_field_na")})`
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label))
-  const templateOptions = state.taskAgentTemplates
-    .filter((item) => item?.id && item?.is_enabled === true)
-    .map((item) => ({
-      value: item.id,
-      label: `${item.name ?? item.id} (${item.role ?? t("task_field_na")})`
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label))
-  const taskAgentProfile = applyGenericSelect(
+  const profileOptions = mapExecutorOptions(state.taskAgentProfiles)
+  const templateOptions = mapExecutorOptions(state.taskAgentTemplates)
+  const taskBinding = applyExecutorBinding(
     ui.taskAgentProfile,
-    profileOptions,
-    ui.taskAgentProfile?.value ?? "",
-    t("task_field_na")
-  )
-  const taskAgentTemplate = applyGenericSelect(
     ui.taskAgentTemplate,
-    templateOptions,
-    ui.taskAgentTemplate?.value ?? "",
-    t("task_field_na")
-  )
-  const scheduleAgentProfile = applyGenericSelect(
-    ui.scheduleTaskAgentProfile,
     profileOptions,
-    ui.scheduleTaskAgentProfile?.value ?? "",
+    templateOptions,
     t("task_field_na")
   )
-  const scheduleAgentTemplate = applyGenericSelect(
+  const scheduleBinding = applyExecutorBinding(
+    ui.scheduleTaskAgentProfile,
     ui.scheduleTaskAgentTemplate,
+    profileOptions,
     templateOptions,
-    ui.scheduleTaskAgentTemplate?.value ?? "",
     t("task_field_na")
   )
 
@@ -1423,9 +1442,12 @@ function syncProjectBindings() {
   const memorySubmit = ui.memoryForm?.querySelector('button[type="submit"]')
   const scheduleSubmit = ui.scheduleCreateForm?.querySelector('button[type="submit"]')
   const secretSubmit = ui.secretCreateForm?.querySelector('button[type="submit"]')
-  if (taskSubmit) taskSubmit.disabled = !taskProject || !taskAgentProfile || !taskAgentTemplate
+  if (taskSubmit) taskSubmit.disabled = !taskProject || !taskBinding.profileId || !taskBinding.templateId
   if (memorySubmit) memorySubmit.disabled = !memoryProject
-  if (scheduleSubmit) scheduleSubmit.disabled = !scheduleProject || !scheduleAgentProfile || !scheduleAgentTemplate
+  if (scheduleSubmit) {
+    scheduleSubmit.disabled =
+      !scheduleProject || !scheduleBinding.profileId || !scheduleBinding.templateId
+  }
   if (secretSubmit) secretSubmit.disabled = !secretsProject
   state.secretsFilters.project = secretsProject
 
@@ -3069,6 +3091,13 @@ function wireConsoleHandlers() {
     state.taskFilters = { search: "", project: "all", status: "all" }
     saveJson(KEYS.taskFilters, state.taskFilters)
     renderTasks(state.tasks)
+  })
+
+  ui.taskAgentProfile?.addEventListener("change", () => {
+    syncProjectBindings()
+  })
+  ui.scheduleTaskAgentProfile?.addEventListener("change", () => {
+    syncProjectBindings()
   })
 
   const onTaskClick = (event) => {
