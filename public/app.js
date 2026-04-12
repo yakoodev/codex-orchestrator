@@ -110,6 +110,8 @@ const I18N = {
     task_project_label: "ID проекта",
     task_agent_profile_label: "Профиль агента",
     task_agent_template_label: "Шаблон агента",
+    executor_no_runnable_profiles: "Нет активных профилей с совместимым шаблоном",
+    executor_no_template_for_profile: "Нет совместимых шаблонов для выбранного профиля",
     create_task: "Создать задачу",
     schedules_title: "Расписания",
     schedules_create_toggle: "Создать правило",
@@ -485,6 +487,8 @@ I18N.en = {
   task_project_label: "Project ID",
   task_agent_profile_label: "Agent profile",
   task_agent_template_label: "Agent template",
+  executor_no_runnable_profiles: "No enabled profiles with compatible templates",
+  executor_no_template_for_profile: "No compatible templates for selected profile",
   create_task: "Create task",
   schedules_title: "Schedules",
   schedules_create_toggle: "Create rule",
@@ -1382,23 +1386,53 @@ function mapExecutorOptions(items) {
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
+function profileHasCompatibleTemplate(profileOption, templateOptions) {
+  if (!profileOption) return false
+  if (!Array.isArray(templateOptions) || !templateOptions.length) return false
+  if (!profileOption.role) return true
+  return templateOptions.some((templateOption) => templateOption.role === profileOption.role)
+}
+
 function applyExecutorBinding(profileSelect, templateSelect, profileOptions, templateOptions, placeholder) {
-  const selectedProfileId = applyGenericSelect(
+  let selectedProfileId = applyGenericSelect(
     profileSelect,
     profileOptions,
     profileSelect?.value ?? "",
     placeholder
   )
-  const selectedProfileRole =
+  let selectedProfileRole =
     profileOptions.find((option) => option.value === selectedProfileId)?.role ?? ""
-  const filteredTemplateOptions = selectedProfileRole
+  let filteredTemplateOptions = selectedProfileRole
     ? templateOptions.filter((option) => option.role === selectedProfileRole)
     : templateOptions
+
+  if (!filteredTemplateOptions.length) {
+    const fallbackProfile = profileOptions.find((profileOption) => {
+      if (!profileOption.role) return templateOptions.length > 0
+      return templateOptions.some((templateOption) => templateOption.role === profileOption.role)
+    })
+    if (fallbackProfile) {
+      selectedProfileId = applyGenericSelect(
+        profileSelect,
+        profileOptions,
+        fallbackProfile.value,
+        placeholder
+      )
+      selectedProfileRole = fallbackProfile.role
+      filteredTemplateOptions = selectedProfileRole
+        ? templateOptions.filter((option) => option.role === selectedProfileRole)
+        : templateOptions
+    }
+  }
+
+  const templatePlaceholder = filteredTemplateOptions.length
+    ? placeholder
+    : t("executor_no_template_for_profile")
   const selectedTemplateId = applyGenericSelect(
     templateSelect,
     filteredTemplateOptions,
     templateSelect?.value ?? "",
-    placeholder
+    templatePlaceholder
   )
 
   return {
@@ -1423,19 +1457,24 @@ function syncProjectBindings() {
   const secretsProject = applyProjectSelect(ui.secretProject, allKeys, state.secretsFilters.project, t("project_option_none"))
   const profileOptions = mapExecutorOptions(state.taskAgentProfiles)
   const templateOptions = mapExecutorOptions(state.taskAgentTemplates)
+  const runnableProfileOptions = profileOptions.filter((profileOption) =>
+    profileHasCompatibleTemplate(profileOption, templateOptions)
+  )
+  const effectiveProfileOptions = runnableProfileOptions.length ? runnableProfileOptions : profileOptions
+  const profilePlaceholder = runnableProfileOptions.length ? t("task_field_na") : t("executor_no_runnable_profiles")
   const taskBinding = applyExecutorBinding(
     ui.taskAgentProfile,
     ui.taskAgentTemplate,
-    profileOptions,
+    effectiveProfileOptions,
     templateOptions,
-    t("task_field_na")
+    profilePlaceholder
   )
   const scheduleBinding = applyExecutorBinding(
     ui.scheduleTaskAgentProfile,
     ui.scheduleTaskAgentTemplate,
-    profileOptions,
+    effectiveProfileOptions,
     templateOptions,
-    t("task_field_na")
+    profilePlaceholder
   )
 
   const taskSubmit = ui.taskForm?.querySelector('button[type="submit"]')
@@ -1852,6 +1891,35 @@ function syncAgentProfileRoleFilter(items) {
   state.agentProfileFilters.role = ui.agentProfileFilterRole.value
 }
 
+function collectAgentProfileRoleOptions(extraRole = "") {
+  const roleValues = new Set()
+  ;(Array.isArray(state.taskAgentTemplates) ? state.taskAgentTemplates : []).forEach((template) => {
+    if (template?.is_enabled !== true) return
+    const normalized = normalizeRoleValue(template.role)
+    if (normalized) roleValues.add(normalized)
+  })
+  ;(Array.isArray(state.agentProfiles) ? state.agentProfiles : []).forEach((profile) => {
+    const normalized = normalizeRoleValue(profile?.role)
+    if (normalized) roleValues.add(normalized)
+  })
+  const normalizedExtraRole = normalizeRoleValue(extraRole)
+  if (normalizedExtraRole) roleValues.add(normalizedExtraRole)
+  if (!roleValues.size) roleValues.add("reviewer")
+  return Array.from(roleValues).sort((a, b) => a.localeCompare(b))
+}
+
+function applyAgentProfileRoleSelect(selectNode, roleOptions, selectedRole) {
+  if (!selectNode) return ""
+  const options = roleOptions.map((role) => ({ value: role, label: role }))
+  return applyGenericSelect(selectNode, options, normalizeRoleValue(selectedRole), t("task_field_na"))
+}
+
+function syncAgentProfileRoleSelects(extraRole = "") {
+  const roles = collectAgentProfileRoleOptions(extraRole)
+  applyAgentProfileRoleSelect(ui.agentProfileRole, roles, ui.agentProfileRole?.value ?? "reviewer")
+  applyAgentProfileRoleSelect(ui.agentProfileEditRole, roles, extraRole || ui.agentProfileEditRole?.value || "")
+}
+
 function renderAgentProfileBindings(profile) {
   if (!ui.agentProfileBindServer || !ui.agentProfileBindingsList) return
 
@@ -1948,6 +2016,7 @@ function renderAgentProfileScripts() {
 
 function renderAgentProfileDetails() {
   const profile = selectedAgentProfile()
+  syncAgentProfileRoleSelects(profile?.role ?? "")
   if (!profile) {
     ui.agentProfileDetailsEmpty.hidden = false
     ui.agentProfileDetailsContent.hidden = true
@@ -1985,6 +2054,7 @@ function renderAgentProfiles(items) {
   state.taskAgentProfiles = state.agentProfiles
   if (state.page !== "console") return
 
+  syncAgentProfileRoleSelects()
   syncProjectBindings()
   syncAgentProfileRoleFilter(state.agentProfiles)
 
@@ -3864,6 +3934,7 @@ function loadState() {
 
 async function initConsole() {
   wireConsoleRefs()
+  syncAgentProfileRoleSelects()
   applyTheme()
   applyI18n()
   wireConsoleHandlers()
