@@ -4,10 +4,6 @@ export interface AuthProfileListResponse {
   items: Array<Record<string, unknown>>;
 }
 
-export interface AgentTemplatesResponse {
-  items: Array<Record<string, unknown>>;
-}
-
 export interface DelegationCapabilitiesResponse {
   items: Array<Record<string, unknown>>;
 }
@@ -46,7 +42,6 @@ export interface AgentRequestCreateInput {
   task_id: string;
   agent_run_id?: string | null;
   agent_profile_id?: string | null;
-  agent_template_id?: string | null;
   requested_by_agent_id?: string | null;
   title: string;
   reason: string;
@@ -82,7 +77,6 @@ export interface EvaluateMcpToolAccessInput {
   api_key: string;
   tool_name: string;
   agent_profile_id?: string;
-  agent_template_id?: string;
   actor?: string;
 }
 
@@ -91,7 +85,6 @@ export interface CreateTaskRequest {
   description: string;
   project_id: string;
   agent_profile_id: string;
-  agent_template_id: string;
   priority?: number;
 }
 
@@ -104,7 +97,6 @@ export interface HttpOrchestratorApiClientOptions {
 }
 
 export interface OrchestratorApiClient {
-  listAgentTemplates(): Promise<AgentTemplatesResponse>;
   listAgentProfiles(options?: {
     role?: string;
     include_disabled?: boolean;
@@ -125,7 +117,6 @@ export interface OrchestratorApiClient {
     project_id?: string;
     task_id?: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     type?: AgentRequestType;
     include_in_progress?: boolean;
     limit?: number;
@@ -364,12 +355,6 @@ export function createHttpOrchestratorApiClient(
   }
 
   return {
-    listAgentTemplates: () =>
-      requestJson<AgentTemplatesResponse>({
-        method: "GET",
-        path: "/api/agents/templates"
-      }),
-
     listAgentProfiles: (listOptions) =>
       requestJson<AgentProfilesResponse>({
         method: "GET",
@@ -432,7 +417,6 @@ export function createHttpOrchestratorApiClient(
           project_id: listOptions?.project_id,
           task_id: listOptions?.task_id,
           agent_profile_id: listOptions?.agent_profile_id,
-          agent_template_id: listOptions?.agent_template_id,
           type: listOptions?.type,
           open_pool: "true",
           include_in_progress: listOptions?.include_in_progress ? "true" : undefined,

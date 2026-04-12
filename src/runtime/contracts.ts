@@ -8,7 +8,6 @@ export interface TaskEntity {
   priority: number;
   project_id: string;
   agent_profile_id: string;
-  agent_template_id: string;
   cancel_reason: string | null;
   cancelled_at: Date | null;
   created_at: Date;
@@ -224,7 +223,7 @@ export interface DelegationRequestEntity {
   payload: Record<string, unknown>;
   priority: number;
   status: "requested" | "accepted" | "running" | "completed" | "failed" | "cancelled";
-  target_agent_template_id: string | null;
+  target_agent_profile_id: string | null;
   target_worker_instance_id: string | null;
   result_summary: string | null;
   input_prompt: string | null;
@@ -275,7 +274,6 @@ export interface AgentRequestEntity {
   task_id: string;
   agent_run_id: string | null;
   agent_profile_id: string | null;
-  agent_template_id: string | null;
   requested_by_agent_id: string | null;
   title: string;
   reason: string;
@@ -315,6 +313,16 @@ export interface AgentProfileEntity {
   name: string;
   role: string;
   description: string | null;
+  model: string;
+  auth_context_id: string | null;
+  pack_registry_entry_id: string | null;
+  system_prompt: string;
+  instructions_md: string | null;
+  sandbox_policy: string;
+  approval_policy: string;
+  cwd_policy: string | null;
+  input_schema: Record<string, unknown> | null;
+  output_schema: Record<string, unknown> | null;
   source_policy: AgentProfileSourcePolicy;
   is_enabled: boolean;
   created_at: Date;
@@ -389,6 +397,14 @@ export interface McpKeyProfileBindingEntity {
   created_at: Date;
 }
 
+export interface McpKeyProfileConstraintEntity {
+  id: string;
+  key_id: string;
+  agent_profile_id: string;
+  created_by: string;
+  created_at: Date;
+}
+
 export interface McpKeyTemplateConstraintEntity {
   id: string;
   key_id: string;
@@ -435,6 +451,14 @@ export interface ProjectSecretTemplateBindingEntity {
   created_at: Date;
 }
 
+export interface ProjectSecretProfileBindingEntity {
+  id: string;
+  secret_id: string;
+  profile_id: string;
+  created_by: string;
+  created_at: Date;
+}
+
 export interface ProjectSecretRoleBindingEntity {
   id: string;
   secret_id: string;
@@ -467,7 +491,6 @@ export interface ScheduledRuleEntity {
   is_enabled: boolean;
   rule_ast: Record<string, unknown>;
   task_agent_profile_id: string;
-  task_agent_template_id: string;
   task_title: string | null;
   task_description: string | null;
   task_priority: number;
@@ -496,7 +519,6 @@ export interface CreateTaskInput {
   description: string;
   project_id: string;
   agent_profile_id: string;
-  agent_template_id: string;
   priority: number;
   status: TaskStatus;
   cancel_reason?: string | null;
@@ -582,7 +604,6 @@ export interface CreateScheduledRuleInput {
   project_id?: string | null;
   rule_ast: Record<string, unknown>;
   task_agent_profile_id: string;
-  task_agent_template_id: string;
   task_title?: string | null;
   task_description?: string | null;
   task_priority?: number;
@@ -619,7 +640,6 @@ export interface CreateAgentRequestInput {
   task_id: string;
   agent_run_id?: string | null;
   agent_profile_id?: string | null;
-  agent_template_id?: string | null;
   requested_by_agent_id?: string | null;
   title: string;
   reason: string;
@@ -642,6 +662,16 @@ export interface CreateAgentProfileInput {
   name: string;
   role: string;
   description?: string | null;
+  model?: string;
+  auth_context_id?: string | null;
+  pack_registry_entry_id?: string | null;
+  system_prompt?: string;
+  instructions_md?: string | null;
+  sandbox_policy?: string;
+  approval_policy?: string;
+  cwd_policy?: string | null;
+  input_schema?: Record<string, unknown> | null;
+  output_schema?: Record<string, unknown> | null;
   source_policy?: AgentProfileSourcePolicy;
   is_enabled?: boolean;
 }
@@ -808,6 +838,13 @@ export interface Persistence {
   ): Promise<ProjectSecretTemplateBindingEntity | null>;
   unbindProjectSecretFromTemplate(secretId: string, templateId: string): Promise<boolean>;
   listProjectSecretTemplateBindings(secretId: string): Promise<ProjectSecretTemplateBindingEntity[]>;
+  bindProjectSecretToProfile(
+    secretId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<ProjectSecretProfileBindingEntity | null>;
+  unbindProjectSecretFromProfile(secretId: string, profileId: string): Promise<boolean>;
+  listProjectSecretProfileBindings(secretId: string): Promise<ProjectSecretProfileBindingEntity[]>;
   bindProjectSecretToRole(
     secretId: string,
     role: string,
@@ -892,6 +929,16 @@ export interface Persistence {
       name?: string;
       role?: string;
       description?: string | null;
+      model?: string;
+      auth_context_id?: string | null;
+      pack_registry_entry_id?: string | null;
+      system_prompt?: string;
+      instructions_md?: string | null;
+      sandbox_policy?: string;
+      approval_policy?: string;
+      cwd_policy?: string | null;
+      input_schema?: Record<string, unknown> | null;
+      output_schema?: Record<string, unknown> | null;
       source_policy?: AgentProfileSourcePolicy;
       is_enabled?: boolean;
     }
@@ -968,6 +1015,13 @@ export interface Persistence {
   ): Promise<McpKeyTemplateConstraintEntity | null>;
   unbindMcpKeyTemplateConstraint(keyId: string, templateId: string): Promise<boolean>;
   listMcpKeyTemplateConstraints(keyId: string): Promise<McpKeyTemplateConstraintEntity[]>;
+  bindMcpKeyProfileConstraint(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileConstraintEntity | null>;
+  unbindMcpKeyProfileConstraint(keyId: string, profileId: string): Promise<boolean>;
+  listMcpKeyProfileConstraints(keyId: string): Promise<McpKeyProfileConstraintEntity[]>;
   createMcpAuthAuditEvent(input: CreateMcpAuthAuditEventInput): Promise<McpAuthAuditEventEntity>;
   upsertAgentProfileScriptSet(
     profileId: string,
@@ -983,7 +1037,6 @@ export interface Persistence {
     project_id?: string;
     task_id?: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     type?: AgentRequestType;
     statuses?: AgentRequestStatus[];
     limit?: number;
@@ -1019,7 +1072,7 @@ export interface Persistence {
     id: string,
     patch: {
       status?: DelegationRequestEntity["status"];
-      target_agent_template_id?: string | null;
+      target_agent_profile_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
       input_prompt?: string | null;
@@ -1041,7 +1094,6 @@ export interface Persistence {
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
       task_agent_profile_id?: string;
-      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
       task_priority?: number;

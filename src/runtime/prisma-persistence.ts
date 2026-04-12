@@ -74,6 +74,7 @@ import type {
   McpAuthAuditEventEntity,
   McpKeyAclRuleEntity,
   McpKeyProfileBindingEntity,
+  McpKeyProfileConstraintEntity,
   McpKeyTemplateConstraintEntity,
   McpServerOriginType,
   McpServerRegistryEntity,
@@ -82,6 +83,7 @@ import type {
   Persistence,
   ProjectEntity,
   ProjectSecretEntity,
+  ProjectSecretProfileBindingEntity,
   ProjectSecretRoleBindingEntity,
   ProjectSecretTemplateBindingEntity,
   ProjectSummaryEntity,
@@ -138,7 +140,6 @@ function toTaskEntity(task: {
   priority: number;
   project_id: string;
   agent_profile_id: string;
-  agent_template_id: string;
   cancel_reason: string | null;
   cancelled_at: Date | null;
   created_at: Date;
@@ -152,7 +153,6 @@ function toTaskEntity(task: {
     priority: task.priority,
     project_id: task.project_id,
     agent_profile_id: task.agent_profile_id,
-    agent_template_id: task.agent_template_id,
     cancel_reason: task.cancel_reason,
     cancelled_at: task.cancelled_at,
     created_at: task.created_at,
@@ -229,14 +229,15 @@ function toProjectSecretEntity(entity: {
 function toProjectSecretTemplateBindingEntity(entity: {
   id: string;
   secret_id: string;
-  template_id: string;
+  template_id?: string;
+  profile_id?: string;
   created_by: string;
   created_at: Date;
 }): ProjectSecretTemplateBindingEntity {
   return {
     id: entity.id,
     secret_id: entity.secret_id,
-    template_id: entity.template_id,
+    template_id: entity.template_id ?? entity.profile_id ?? "",
     created_by: entity.created_by,
     created_at: entity.created_at
   };
@@ -405,7 +406,7 @@ function toDelegationRequestEntity(entity: {
   payload_json: Prisma.JsonValue;
   priority: number;
   status: "requested" | "accepted" | "running" | "completed" | "failed" | "cancelled";
-  target_agent_template_id: string | null;
+  target_agent_profile_id: string | null;
   target_worker_instance_id: string | null;
   result_summary: string | null;
   input_prompt: string | null;
@@ -427,7 +428,7 @@ function toDelegationRequestEntity(entity: {
     payload: entity.payload_json as Record<string, unknown>,
     priority: entity.priority,
     status: entity.status,
-    target_agent_template_id: entity.target_agent_template_id,
+    target_agent_profile_id: entity.target_agent_profile_id,
     target_worker_instance_id: entity.target_worker_instance_id,
     result_summary: entity.result_summary,
     input_prompt: entity.input_prompt,
@@ -477,7 +478,6 @@ function toAgentRequestEntity(entity: {
   task_id: string;
   agent_run_id: string | null;
   agent_profile_id: string | null;
-  agent_template_id: string | null;
   requested_by_agent_id: string | null;
   title: string;
   reason: string;
@@ -499,7 +499,6 @@ function toAgentRequestEntity(entity: {
     task_id: entity.task_id,
     agent_run_id: entity.agent_run_id,
     agent_profile_id: entity.agent_profile_id,
-    agent_template_id: entity.agent_template_id,
     requested_by_agent_id: entity.requested_by_agent_id,
     title: entity.title,
     reason: entity.reason,
@@ -545,6 +544,16 @@ function toAgentProfileEntity(entity: {
   name: string;
   role: string;
   description: string | null;
+  model: string;
+  auth_context_id: string | null;
+  pack_registry_entry_id: string | null;
+  system_prompt: string;
+  instructions_md: string | null;
+  sandbox_policy: string;
+  approval_policy: string;
+  cwd_policy: string | null;
+  input_schema: Prisma.JsonValue | null;
+  output_schema: Prisma.JsonValue | null;
   source_policy: PrismaAgentProfileSourcePolicy;
   is_enabled: boolean;
   created_at: Date;
@@ -555,6 +564,16 @@ function toAgentProfileEntity(entity: {
     name: entity.name,
     role: entity.role,
     description: entity.description,
+    model: entity.model,
+    auth_context_id: entity.auth_context_id,
+    pack_registry_entry_id: entity.pack_registry_entry_id,
+    system_prompt: entity.system_prompt,
+    instructions_md: entity.instructions_md,
+    sandbox_policy: entity.sandbox_policy,
+    approval_policy: entity.approval_policy,
+    cwd_policy: entity.cwd_policy,
+    input_schema: entity.input_schema as Record<string, unknown> | null,
+    output_schema: entity.output_schema as Record<string, unknown> | null,
     source_policy: entity.source_policy as AgentProfileSourcePolicy,
     is_enabled: entity.is_enabled,
     created_at: entity.created_at,
@@ -701,14 +720,15 @@ function toMcpKeyProfileBindingEntity(entity: {
 function toMcpKeyTemplateConstraintEntity(entity: {
   id: string;
   key_id: string;
-  agent_template_id: string;
+  agent_template_id?: string;
+  agent_profile_id?: string;
   created_by: string;
   created_at: Date;
 }): McpKeyTemplateConstraintEntity {
   return {
     id: entity.id,
     key_id: entity.key_id,
-    agent_template_id: entity.agent_template_id,
+    agent_template_id: entity.agent_template_id ?? entity.agent_profile_id ?? "",
     created_by: entity.created_by,
     created_at: entity.created_at
   };
@@ -742,7 +762,6 @@ function toScheduledRuleEntity(entity: {
   is_enabled: boolean;
   rule_ast: Prisma.JsonValue;
   task_agent_profile_id: string;
-  task_agent_template_id: string;
   task_title: string | null;
   task_description: string | null;
   task_priority: number;
@@ -760,7 +779,6 @@ function toScheduledRuleEntity(entity: {
     is_enabled: entity.is_enabled,
     rule_ast: entity.rule_ast as Record<string, unknown>,
     task_agent_profile_id: entity.task_agent_profile_id,
-    task_agent_template_id: entity.task_agent_template_id,
     task_title: entity.task_title,
     task_description: entity.task_description,
     task_priority: entity.task_priority,
@@ -1174,19 +1192,19 @@ export class PrismaPersistence implements Persistence {
     templateId: string,
     createdBy: string
   ): Promise<ProjectSecretTemplateBindingEntity | null> {
-    const [secret, template] = await Promise.all([
+    const [secret, profile] = await Promise.all([
       this.prisma.projectSecret.findUnique({ where: { id: secretId }, select: { id: true } }),
-      this.prisma.agentTemplate.findUnique({ where: { id: templateId }, select: { id: true } })
+      this.prisma.agentProfile.findUnique({ where: { id: templateId }, select: { id: true } })
     ]);
-    if (!secret || !template) {
+    if (!secret || !profile) {
       return null;
     }
 
-    const existing = await this.prisma.projectSecretTemplateBinding.findUnique({
+    const existing = await this.prisma.projectSecretProfileBinding.findUnique({
       where: {
-        secret_id_template_id: {
+        secret_id_profile_id: {
           secret_id: secretId,
-          template_id: templateId
+          profile_id: templateId
         }
       }
     });
@@ -1194,10 +1212,10 @@ export class PrismaPersistence implements Persistence {
       return toProjectSecretTemplateBindingEntity(existing);
     }
 
-    const created = await this.prisma.projectSecretTemplateBinding.create({
+    const created = await this.prisma.projectSecretProfileBinding.create({
       data: {
         secret_id: secretId,
-        template_id: templateId,
+        profile_id: templateId,
         created_by: createdBy
       }
     });
@@ -1206,10 +1224,10 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async unbindProjectSecretFromTemplate(secretId: string, templateId: string): Promise<boolean> {
-    const deleted = await this.prisma.projectSecretTemplateBinding.deleteMany({
+    const deleted = await this.prisma.projectSecretProfileBinding.deleteMany({
       where: {
         secret_id: secretId,
-        template_id: templateId
+        profile_id: templateId
       }
     });
 
@@ -1219,12 +1237,88 @@ export class PrismaPersistence implements Persistence {
   public async listProjectSecretTemplateBindings(
     secretId: string
   ): Promise<ProjectSecretTemplateBindingEntity[]> {
-    const items = await this.prisma.projectSecretTemplateBinding.findMany({
+    const items = await this.prisma.projectSecretProfileBinding.findMany({
       where: { secret_id: secretId },
       orderBy: { created_at: "desc" }
     });
 
     return items.map((item) => toProjectSecretTemplateBindingEntity(item));
+  }
+
+  public async bindProjectSecretToProfile(
+    secretId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<ProjectSecretProfileBindingEntity | null> {
+    const [secret, profile] = await Promise.all([
+      this.prisma.projectSecret.findUnique({ where: { id: secretId }, select: { id: true } }),
+      this.prisma.agentProfile.findUnique({ where: { id: profileId }, select: { id: true } })
+    ]);
+    if (!secret || !profile) {
+      return null;
+    }
+
+    const existing = await this.prisma.projectSecretProfileBinding.findUnique({
+      where: {
+        secret_id_profile_id: {
+          secret_id: secretId,
+          profile_id: profileId
+        }
+      }
+    });
+    if (existing) {
+      return {
+        id: existing.id,
+        secret_id: existing.secret_id,
+        profile_id: existing.profile_id,
+        created_by: existing.created_by,
+        created_at: existing.created_at
+      };
+    }
+
+    const created = await this.prisma.projectSecretProfileBinding.create({
+      data: {
+        secret_id: secretId,
+        profile_id: profileId,
+        created_by: createdBy
+      }
+    });
+
+    return {
+      id: created.id,
+      secret_id: created.secret_id,
+      profile_id: created.profile_id,
+      created_by: created.created_by,
+      created_at: created.created_at
+    };
+  }
+
+  public async unbindProjectSecretFromProfile(secretId: string, profileId: string): Promise<boolean> {
+    const deleted = await this.prisma.projectSecretProfileBinding.deleteMany({
+      where: {
+        secret_id: secretId,
+        profile_id: profileId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listProjectSecretProfileBindings(
+    secretId: string
+  ): Promise<ProjectSecretProfileBindingEntity[]> {
+    const items = await this.prisma.projectSecretProfileBinding.findMany({
+      where: { secret_id: secretId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => ({
+      id: item.id,
+      secret_id: item.secret_id,
+      profile_id: item.profile_id,
+      created_by: item.created_by,
+      created_at: item.created_at
+    }));
   }
 
   public async bindProjectSecretToRole(
@@ -1326,7 +1420,6 @@ export class PrismaPersistence implements Persistence {
         priority: input.priority,
         project_id: input.project_id,
         agent_profile_id: input.agent_profile_id,
-        agent_template_id: input.agent_template_id,
         cancel_reason: input.cancel_reason ?? null,
         cancelled_at: input.cancelled_at ?? null,
         source: input.source,
@@ -1423,19 +1516,24 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async createAgentTemplate(input: CreateAgentTemplateInput): Promise<AgentTemplateEntity> {
-    const created = await this.prisma.agentTemplate.create({
+    const created = await this.prisma.agentProfile.create({
       data: {
         name: input.name,
         role: input.role,
         description: input.description,
         model: input.model,
-        auth_context_id: input.auth_context_id,
+        auth_context_id: input.auth_context_id ?? null,
         pack_registry_entry_id: input.pack_registry_entry_id ?? null,
         system_prompt: input.system_prompt,
-        instructions_md: input.instructions_md,
+        instructions_md: input.instructions_md ?? null,
         sandbox_policy: input.sandbox_policy,
         approval_policy: input.approval_policy,
-        output_schema: input.output_schema as Prisma.InputJsonValue | undefined
+        output_schema:
+          input.output_schema === undefined
+            ? undefined
+            : ((input.output_schema ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput)
       }
     });
 
@@ -1443,7 +1541,7 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async listAgentTemplates(): Promise<AgentTemplateEntity[]> {
-    const templates = await this.prisma.agentTemplate.findMany({
+    const templates = await this.prisma.agentProfile.findMany({
       orderBy: { created_at: "desc" }
     });
 
@@ -1467,27 +1565,32 @@ export class PrismaPersistence implements Persistence {
       is_enabled?: boolean;
     }
   ): Promise<AgentTemplateEntity | null> {
-    const existing = await this.prisma.agentTemplate.findUnique({
+    const existing = await this.prisma.agentProfile.findUnique({
       where: { id }
     });
     if (!existing) {
       return null;
     }
 
-    const updated = await this.prisma.agentTemplate.update({
+    const updated = await this.prisma.agentProfile.update({
       where: { id },
       data: {
         name: patch.name,
         role: patch.role,
         description: patch.description,
         model: patch.model,
-        auth_context_id: patch.auth_context_id,
+        auth_context_id: patch.auth_context_id ?? undefined,
         pack_registry_entry_id: patch.pack_registry_entry_id,
         system_prompt: patch.system_prompt,
         instructions_md: patch.instructions_md,
         sandbox_policy: patch.sandbox_policy,
         approval_policy: patch.approval_policy,
-        output_schema: patch.output_schema as Prisma.InputJsonValue | undefined,
+        output_schema:
+          patch.output_schema === undefined
+            ? undefined
+            : ((patch.output_schema ?? null) as
+                | Prisma.InputJsonValue
+                | Prisma.NullableJsonNullValueInput),
         is_enabled: patch.is_enabled
       }
     });
@@ -1496,7 +1599,7 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async deleteAgentTemplate(id: string): Promise<boolean> {
-    const result = await this.prisma.agentTemplate.deleteMany({
+    const result = await this.prisma.agentProfile.deleteMany({
       where: { id }
     });
 
@@ -2172,19 +2275,19 @@ export class PrismaPersistence implements Persistence {
     templateId: string,
     createdBy: string
   ): Promise<McpKeyTemplateConstraintEntity | null> {
-    const [key, template] = await Promise.all([
+    const [key, profile] = await Promise.all([
       this.prisma.mcpApiKey.findUnique({ where: { id: keyId }, select: { id: true } }),
-      this.prisma.agentTemplate.findUnique({ where: { id: templateId }, select: { id: true } })
+      this.prisma.agentProfile.findUnique({ where: { id: templateId }, select: { id: true } })
     ]);
-    if (!key || !template) {
+    if (!key || !profile) {
       return null;
     }
 
-    const existing = await this.prisma.mcpKeyTemplateConstraint.findUnique({
+    const existing = await this.prisma.mcpKeyProfileConstraint.findUnique({
       where: {
-        key_id_agent_template_id: {
+        key_id_agent_profile_id: {
           key_id: keyId,
-          agent_template_id: templateId
+          agent_profile_id: templateId
         }
       }
     });
@@ -2192,10 +2295,10 @@ export class PrismaPersistence implements Persistence {
       return toMcpKeyTemplateConstraintEntity(existing);
     }
 
-    const created = await this.prisma.mcpKeyTemplateConstraint.create({
+    const created = await this.prisma.mcpKeyProfileConstraint.create({
       data: {
         key_id: keyId,
-        agent_template_id: templateId,
+        agent_profile_id: templateId,
         created_by: createdBy
       }
     });
@@ -2204,10 +2307,10 @@ export class PrismaPersistence implements Persistence {
   }
 
   public async unbindMcpKeyTemplateConstraint(keyId: string, templateId: string): Promise<boolean> {
-    const deleted = await this.prisma.mcpKeyTemplateConstraint.deleteMany({
+    const deleted = await this.prisma.mcpKeyProfileConstraint.deleteMany({
       where: {
         key_id: keyId,
-        agent_template_id: templateId
+        agent_profile_id: templateId
       }
     });
 
@@ -2217,12 +2320,88 @@ export class PrismaPersistence implements Persistence {
   public async listMcpKeyTemplateConstraints(
     keyId: string
   ): Promise<McpKeyTemplateConstraintEntity[]> {
-    const items = await this.prisma.mcpKeyTemplateConstraint.findMany({
+    const items = await this.prisma.mcpKeyProfileConstraint.findMany({
       where: { key_id: keyId },
       orderBy: { created_at: "desc" }
     });
 
     return items.map((item) => toMcpKeyTemplateConstraintEntity(item));
+  }
+
+  public async bindMcpKeyProfileConstraint(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileConstraintEntity | null> {
+    const [key, profile] = await Promise.all([
+      this.prisma.mcpApiKey.findUnique({ where: { id: keyId }, select: { id: true } }),
+      this.prisma.agentProfile.findUnique({ where: { id: profileId }, select: { id: true } })
+    ]);
+    if (!key || !profile) {
+      return null;
+    }
+
+    const existing = await this.prisma.mcpKeyProfileConstraint.findUnique({
+      where: {
+        key_id_agent_profile_id: {
+          key_id: keyId,
+          agent_profile_id: profileId
+        }
+      }
+    });
+    if (existing) {
+      return {
+        id: existing.id,
+        key_id: existing.key_id,
+        agent_profile_id: existing.agent_profile_id,
+        created_by: existing.created_by,
+        created_at: existing.created_at
+      };
+    }
+
+    const created = await this.prisma.mcpKeyProfileConstraint.create({
+      data: {
+        key_id: keyId,
+        agent_profile_id: profileId,
+        created_by: createdBy
+      }
+    });
+
+    return {
+      id: created.id,
+      key_id: created.key_id,
+      agent_profile_id: created.agent_profile_id,
+      created_by: created.created_by,
+      created_at: created.created_at
+    };
+  }
+
+  public async unbindMcpKeyProfileConstraint(keyId: string, profileId: string): Promise<boolean> {
+    const deleted = await this.prisma.mcpKeyProfileConstraint.deleteMany({
+      where: {
+        key_id: keyId,
+        agent_profile_id: profileId
+      }
+    });
+
+    return deleted.count > 0;
+  }
+
+  public async listMcpKeyProfileConstraints(
+    keyId: string
+  ): Promise<McpKeyProfileConstraintEntity[]> {
+    const items = await this.prisma.mcpKeyProfileConstraint.findMany({
+      where: { key_id: keyId },
+      orderBy: { created_at: "desc" }
+    });
+
+    return items.map((item) => ({
+      id: item.id,
+      key_id: item.key_id,
+      agent_profile_id: item.agent_profile_id,
+      created_by: item.created_by,
+      created_at: item.created_at
+    }));
   }
 
   public async createMcpAuthAuditEvent(
@@ -2305,7 +2484,6 @@ export class PrismaPersistence implements Persistence {
         task_id: input.task_id,
         agent_run_id: input.agent_run_id ?? null,
         agent_profile_id: input.agent_profile_id ?? null,
-        agent_template_id: input.agent_template_id ?? null,
         requested_by_agent_id: input.requested_by_agent_id ?? null,
         title: input.title,
         reason: input.reason,
@@ -2326,7 +2504,6 @@ export class PrismaPersistence implements Persistence {
     project_id?: string;
     task_id?: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     type?: AgentRequestType;
     statuses?: AgentRequestStatus[];
     limit?: number;
@@ -2340,9 +2517,6 @@ export class PrismaPersistence implements Persistence {
     }
     if (options?.agent_profile_id) {
       where.agent_profile_id = options.agent_profile_id;
-    }
-    if (options?.agent_template_id) {
-      where.agent_template_id = options.agent_template_id;
     }
     if (options?.type) {
       where.type = options.type as PrismaAgentRequestType;
@@ -2488,7 +2662,7 @@ export class PrismaPersistence implements Persistence {
     id: string,
     patch: {
       status?: DelegationRequestEntity["status"];
-      target_agent_template_id?: string | null;
+      target_agent_profile_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
       input_prompt?: string | null;
@@ -2511,7 +2685,7 @@ export class PrismaPersistence implements Persistence {
       where: { id },
       data: {
         status: patch.status,
-        target_agent_template_id: patch.target_agent_template_id,
+        target_agent_profile_id: patch.target_agent_profile_id,
         target_worker_instance_id: patch.target_worker_instance_id,
         result_summary: patch.result_summary,
         input_prompt: patch.input_prompt,
@@ -2541,7 +2715,6 @@ export class PrismaPersistence implements Persistence {
         is_enabled: true,
         rule_ast: input.rule_ast as Prisma.InputJsonValue,
         task_agent_profile_id: input.task_agent_profile_id,
-        task_agent_template_id: input.task_agent_template_id,
         task_title: input.task_title ?? null,
         task_description: input.task_description ?? null,
         task_priority: input.task_priority ?? 100,
@@ -2580,7 +2753,6 @@ export class PrismaPersistence implements Persistence {
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
       task_agent_profile_id?: string;
-      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
       task_priority?: number;
@@ -2602,7 +2774,6 @@ export class PrismaPersistence implements Persistence {
         is_enabled: patch.is_enabled,
         rule_ast: patch.rule_ast as Prisma.InputJsonValue | undefined,
         task_agent_profile_id: patch.task_agent_profile_id,
-        task_agent_template_id: patch.task_agent_template_id,
         task_title: patch.task_title,
         task_description: patch.task_description,
         task_priority: patch.task_priority,

@@ -50,6 +50,7 @@ import type {
   McpApiKeyStatus,
   McpKeyAclRuleEntity,
   McpKeyProfileBindingEntity,
+  McpKeyProfileConstraintEntity,
   McpKeyTemplateConstraintEntity,
   McpServerRegistryEntity,
   ModuleExecutionEntity,
@@ -57,6 +58,7 @@ import type {
   Persistence,
   ProjectEntity,
   ProjectSecretEntity,
+  ProjectSecretProfileBindingEntity,
   ProjectSecretRoleBindingEntity,
   ProjectSecretTemplateBindingEntity,
   ProjectSummaryEntity,
@@ -114,9 +116,11 @@ class FakePersistence implements Persistence {
   public readonly mcpApiKeys: McpApiKeyEntity[] = [];
   public readonly mcpKeyAclRules: McpKeyAclRuleEntity[] = [];
   public readonly mcpKeyProfileBindings: McpKeyProfileBindingEntity[] = [];
+  public readonly mcpKeyProfileConstraints: McpKeyProfileConstraintEntity[] = [];
   public readonly mcpKeyTemplateConstraints: McpKeyTemplateConstraintEntity[] = [];
   public readonly mcpAuthAuditEvents: McpAuthAuditEventEntity[] = [];
   public readonly projectSecrets: ProjectSecretEntity[] = [];
+  public readonly projectSecretProfileBindings: ProjectSecretProfileBindingEntity[] = [];
   public readonly projectSecretTemplateBindings: ProjectSecretTemplateBindingEntity[] = [];
   public readonly projectSecretRoleBindings: ProjectSecretRoleBindingEntity[] = [];
   public readonly secretAuditEvents: SecretAuditEventEntity[] = [];
@@ -145,9 +149,11 @@ class FakePersistence implements Persistence {
   private mcpApiKeyCounter = 1;
   private mcpKeyAclRuleCounter = 1;
   private mcpKeyProfileBindingCounter = 1;
+  private mcpKeyProfileConstraintCounter = 1;
   private mcpKeyTemplateConstraintCounter = 1;
   private mcpAuthAuditEventCounter = 1;
   private projectSecretCounter = 1;
+  private projectSecretProfileBindingCounter = 1;
   private projectSecretTemplateBindingCounter = 1;
   private projectSecretRoleBindingCounter = 1;
   private secretAuditEventCounter = 1;
@@ -483,6 +489,55 @@ class FakePersistence implements Persistence {
       .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
   }
 
+  public async bindProjectSecretToProfile(
+    secretId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<ProjectSecretProfileBindingEntity | null> {
+    const secret = this.projectSecrets.find((item) => item.id === secretId);
+    const profile = this.agentProfiles.find((item) => item.id === profileId);
+    if (!secret || !profile) {
+      return null;
+    }
+
+    const existing = this.projectSecretProfileBindings.find(
+      (item) => item.secret_id === secretId && item.profile_id === profileId
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const binding: ProjectSecretProfileBindingEntity = {
+      id: `project-secret-profile-binding-${this.projectSecretProfileBindingCounter++}`,
+      secret_id: secretId,
+      profile_id: profileId,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.projectSecretProfileBindings.push(binding);
+    return binding;
+  }
+
+  public async unbindProjectSecretFromProfile(secretId: string, profileId: string): Promise<boolean> {
+    const index = this.projectSecretProfileBindings.findIndex(
+      (item) => item.secret_id === secretId && item.profile_id === profileId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.projectSecretProfileBindings.splice(index, 1);
+    return true;
+  }
+
+  public async listProjectSecretProfileBindings(
+    secretId: string
+  ): Promise<ProjectSecretProfileBindingEntity[]> {
+    return this.projectSecretProfileBindings
+      .filter((item) => item.secret_id === secretId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
   public async bindProjectSecretToRole(
     secretId: string,
     role: string,
@@ -561,7 +616,6 @@ class FakePersistence implements Persistence {
     description: string;
     project_id: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     repo_id?: string;
     branch?: string | null;
     priority: number;
@@ -580,8 +634,6 @@ class FakePersistence implements Persistence {
       priority: input.priority,
       project_id: input.project_id,
       agent_profile_id: input.agent_profile_id ?? this.agentProfiles[0]?.id ?? "agent-profile-default",
-      agent_template_id:
-        input.agent_template_id ?? this.agentTemplates[0]?.id ?? "agent-template-default",
       cancel_reason: input.cancel_reason ?? null,
       cancelled_at: input.cancelled_at ?? null,
       created_at: now,
@@ -703,6 +755,30 @@ class FakePersistence implements Persistence {
     };
 
     this.agentTemplates.push(template);
+    const now = new Date();
+    const mirroredProfileTimestamp = new Date(now.getTime() - 1);
+    if (!this.agentProfiles.some((item) => item.id === template.id)) {
+      this.agentProfiles.push({
+        id: template.id,
+        name: template.name,
+        role: template.role,
+        description: null,
+        model: template.model,
+        auth_context_id: template.auth_context_id,
+        pack_registry_entry_id: template.pack_registry_entry_id,
+        system_prompt: "",
+        instructions_md: null,
+        sandbox_policy: template.sandbox_policy,
+        approval_policy: template.approval_policy,
+        cwd_policy: null,
+        input_schema: null,
+        output_schema: null,
+        source_policy: "catalog_only",
+        is_enabled: template.is_enabled,
+        created_at: mirroredProfileTimestamp,
+        updated_at: mirroredProfileTimestamp
+      });
+    }
     return template;
   }
 
@@ -762,6 +838,19 @@ class FakePersistence implements Persistence {
       template.is_enabled = patch.is_enabled;
     }
 
+    const linkedProfile = this.agentProfiles.find((item) => item.id === template.id);
+    if (linkedProfile) {
+      linkedProfile.name = template.name;
+      linkedProfile.role = template.role;
+      linkedProfile.model = template.model;
+      linkedProfile.auth_context_id = template.auth_context_id;
+      linkedProfile.pack_registry_entry_id = template.pack_registry_entry_id;
+      linkedProfile.sandbox_policy = template.sandbox_policy;
+      linkedProfile.approval_policy = template.approval_policy;
+      linkedProfile.is_enabled = template.is_enabled;
+      linkedProfile.updated_at = new Date();
+    }
+
     return template;
   }
 
@@ -772,6 +861,10 @@ class FakePersistence implements Persistence {
     }
 
     this.agentTemplates.splice(index, 1);
+    const profileIndex = this.agentProfiles.findIndex((item) => item.id === id);
+    if (profileIndex >= 0) {
+      this.agentProfiles.splice(profileIndex, 1);
+    }
     return true;
   }
 
@@ -867,7 +960,7 @@ class FakePersistence implements Persistence {
       payload: input.payload,
       priority: input.priority ?? 100,
       status: "requested",
-      target_agent_template_id: null,
+      target_agent_profile_id: null,
       target_worker_instance_id: null,
       result_summary: null,
       input_prompt: input.input_prompt ?? null,
@@ -948,6 +1041,16 @@ class FakePersistence implements Persistence {
       name: input.name,
       role: input.role,
       description: input.description ?? null,
+      model: input.model ?? "gpt-5.4-mini",
+      auth_context_id: input.auth_context_id ?? null,
+      pack_registry_entry_id: input.pack_registry_entry_id ?? null,
+      system_prompt: input.system_prompt ?? "",
+      instructions_md: input.instructions_md ?? null,
+      sandbox_policy: input.sandbox_policy ?? "danger-full-access",
+      approval_policy: input.approval_policy ?? "never",
+      cwd_policy: input.cwd_policy ?? null,
+      input_schema: input.input_schema ?? null,
+      output_schema: input.output_schema ?? null,
       source_policy: input.source_policy ?? "catalog_only",
       is_enabled: input.is_enabled ?? true,
       created_at: now,
@@ -981,6 +1084,16 @@ class FakePersistence implements Persistence {
       name?: string;
       role?: string;
       description?: string | null;
+      model?: string;
+      auth_context_id?: string | null;
+      pack_registry_entry_id?: string | null;
+      system_prompt?: string;
+      instructions_md?: string | null;
+      sandbox_policy?: string;
+      approval_policy?: string;
+      cwd_policy?: string | null;
+      input_schema?: Record<string, unknown> | null;
+      output_schema?: Record<string, unknown> | null;
       source_policy?: AgentProfileSourcePolicy;
       is_enabled?: boolean;
     }
@@ -998,6 +1111,36 @@ class FakePersistence implements Persistence {
     }
     if (patch.description !== undefined) {
       profile.description = patch.description;
+    }
+    if (patch.model !== undefined) {
+      profile.model = patch.model;
+    }
+    if (patch.auth_context_id !== undefined) {
+      profile.auth_context_id = patch.auth_context_id;
+    }
+    if (patch.pack_registry_entry_id !== undefined) {
+      profile.pack_registry_entry_id = patch.pack_registry_entry_id;
+    }
+    if (patch.system_prompt !== undefined) {
+      profile.system_prompt = patch.system_prompt;
+    }
+    if (patch.instructions_md !== undefined) {
+      profile.instructions_md = patch.instructions_md;
+    }
+    if (patch.sandbox_policy !== undefined) {
+      profile.sandbox_policy = patch.sandbox_policy;
+    }
+    if (patch.approval_policy !== undefined) {
+      profile.approval_policy = patch.approval_policy;
+    }
+    if (patch.cwd_policy !== undefined) {
+      profile.cwd_policy = patch.cwd_policy;
+    }
+    if (patch.input_schema !== undefined) {
+      profile.input_schema = patch.input_schema;
+    }
+    if (patch.output_schema !== undefined) {
+      profile.output_schema = patch.output_schema;
     }
     if (patch.source_policy !== undefined) {
       profile.source_policy = patch.source_policy;
@@ -1429,6 +1572,55 @@ class FakePersistence implements Persistence {
       .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
   }
 
+  public async bindMcpKeyProfileConstraint(
+    keyId: string,
+    profileId: string,
+    createdBy: string
+  ): Promise<McpKeyProfileConstraintEntity | null> {
+    const key = this.mcpApiKeys.find((item) => item.id === keyId);
+    const profile = this.agentProfiles.find((item) => item.id === profileId);
+    if (!key || !profile) {
+      return null;
+    }
+
+    const existing = this.mcpKeyProfileConstraints.find(
+      (item) => item.key_id === keyId && item.agent_profile_id === profileId
+    );
+    if (existing) {
+      return existing;
+    }
+
+    const constraint: McpKeyProfileConstraintEntity = {
+      id: `mcp-key-profile-constraint-${this.mcpKeyProfileConstraintCounter++}`,
+      key_id: keyId,
+      agent_profile_id: profileId,
+      created_by: createdBy,
+      created_at: new Date()
+    };
+    this.mcpKeyProfileConstraints.push(constraint);
+    return constraint;
+  }
+
+  public async unbindMcpKeyProfileConstraint(keyId: string, profileId: string): Promise<boolean> {
+    const index = this.mcpKeyProfileConstraints.findIndex(
+      (item) => item.key_id === keyId && item.agent_profile_id === profileId
+    );
+    if (index < 0) {
+      return false;
+    }
+
+    this.mcpKeyProfileConstraints.splice(index, 1);
+    return true;
+  }
+
+  public async listMcpKeyProfileConstraints(
+    keyId: string
+  ): Promise<McpKeyProfileConstraintEntity[]> {
+    return this.mcpKeyProfileConstraints
+      .filter((item) => item.key_id === keyId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }
+
   public async createMcpAuthAuditEvent(
     input: CreateMcpAuthAuditEventInput
   ): Promise<McpAuthAuditEventEntity> {
@@ -1501,7 +1693,6 @@ class FakePersistence implements Persistence {
       task_id: input.task_id,
       agent_run_id: input.agent_run_id ?? null,
       agent_profile_id: input.agent_profile_id ?? null,
-      agent_template_id: input.agent_template_id ?? null,
       requested_by_agent_id: input.requested_by_agent_id ?? null,
       title: input.title,
       reason: input.reason,
@@ -1522,7 +1713,6 @@ class FakePersistence implements Persistence {
     project_id?: string;
     task_id?: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     type?: AgentRequestEntity["type"];
     statuses?: AgentRequestEntity["status"][];
     limit?: number;
@@ -1533,9 +1723,6 @@ class FakePersistence implements Persistence {
       .filter((item) => (options?.task_id ? item.task_id === options.task_id : true))
       .filter((item) =>
         options?.agent_profile_id ? item.agent_profile_id === options.agent_profile_id : true
-      )
-      .filter((item) =>
-        options?.agent_template_id ? item.agent_template_id === options.agent_template_id : true
       )
       .filter((item) => (options?.type ? item.type === options.type : true))
       .filter((item) => (options?.statuses?.length ? options.statuses.includes(item.status) : true))
@@ -1643,7 +1830,7 @@ class FakePersistence implements Persistence {
     id: string,
     patch: {
       status?: DelegationRequestEntity["status"];
-      target_agent_template_id?: string | null;
+      target_agent_profile_id?: string | null;
       target_worker_instance_id?: string | null;
       result_summary?: string | null;
       input_prompt?: string | null;
@@ -1663,8 +1850,8 @@ class FakePersistence implements Persistence {
     if (patch.status) {
       delegation.status = patch.status;
     }
-    if (patch.target_agent_template_id !== undefined) {
-      delegation.target_agent_template_id = patch.target_agent_template_id;
+    if (patch.target_agent_profile_id !== undefined) {
+      delegation.target_agent_profile_id = patch.target_agent_profile_id;
     }
     if (patch.target_worker_instance_id !== undefined) {
       delegation.target_worker_instance_id = patch.target_worker_instance_id;
@@ -1698,9 +1885,8 @@ class FakePersistence implements Persistence {
   }
 
   public async createScheduledRule(
-    input: Omit<CreateScheduledRuleInput, "task_agent_profile_id" | "task_agent_template_id"> & {
+    input: Omit<CreateScheduledRuleInput, "task_agent_profile_id"> & {
       task_agent_profile_id?: string;
-      task_agent_template_id?: string;
     }
   ): Promise<ScheduledRuleEntity> {
     const now = new Date();
@@ -1712,8 +1898,6 @@ class FakePersistence implements Persistence {
       is_enabled: true,
       rule_ast: input.rule_ast,
       task_agent_profile_id: input.task_agent_profile_id ?? this.agentProfiles[0]?.id ?? "agent-profile-default",
-      task_agent_template_id:
-        input.task_agent_template_id ?? this.agentTemplates[0]?.id ?? "agent-template-default",
       task_title: input.task_title ?? null,
       task_description: input.task_description ?? null,
       task_priority: input.task_priority ?? 100,
@@ -1746,7 +1930,6 @@ class FakePersistence implements Persistence {
       is_enabled?: boolean;
       rule_ast?: Record<string, unknown>;
       task_agent_profile_id?: string;
-      task_agent_template_id?: string;
       task_title?: string | null;
       task_description?: string | null;
       task_priority?: number;
@@ -1770,9 +1953,6 @@ class FakePersistence implements Persistence {
     }
     if (patch.task_agent_profile_id !== undefined) {
       rule.task_agent_profile_id = patch.task_agent_profile_id;
-    }
-    if (patch.task_agent_template_id !== undefined) {
-      rule.task_agent_template_id = patch.task_agent_template_id;
     }
     if (patch.task_title !== undefined) {
       rule.task_title = patch.task_title;
@@ -4479,7 +4659,7 @@ describe("smoke-core API", () => {
     expect(dispatchResponse.statusCode).toBe(202);
     expect(dispatchResponse.json().status).toBe("completed");
     expect(dispatchResponse.json().trace_id).toBe("trace-delegation-1");
-    expect(dispatchResponse.json().target_agent_template_id).toBe("agent-template-1");
+    expect(dispatchResponse.json().target_agent_profile_id).toBe("agent-template-1");
     const delegationId = dispatchResponse.json().id as string;
 
     const getResponse = await app.inject({
@@ -4501,7 +4681,7 @@ describe("smoke-core API", () => {
     expect(resultResponse.json()).toEqual({
       id: delegationId,
       status: "completed",
-      result_summary: "Delegation completed by template agent-template-1",
+      result_summary: "Delegation completed by profile agent-template-1",
       artifacts: []
     });
     expect(
@@ -4546,7 +4726,7 @@ describe("smoke-core API", () => {
     });
     await persistence.updateDelegationRequest(preparing.id, {
       status: "accepted",
-      target_agent_template_id: template.id,
+      target_agent_profile_id: template.id,
       selected_auth_profile_id: profile.id,
       started_at: new Date("2026-04-08T10:00:00.000Z")
     });
@@ -4563,7 +4743,7 @@ describe("smoke-core API", () => {
     });
     await persistence.updateDelegationRequest(running.id, {
       status: "running",
-      target_agent_template_id: template.id,
+      target_agent_profile_id: template.id,
       selected_auth_profile_id: profile.id,
       started_at: new Date("2026-04-08T10:01:00.000Z"),
       execution_log: "running-log"
@@ -4581,7 +4761,7 @@ describe("smoke-core API", () => {
     });
     await persistence.updateDelegationRequest(recent.id, {
       status: "completed",
-      target_agent_template_id: template.id,
+      target_agent_profile_id: template.id,
       selected_auth_profile_id: profile.id,
       execution_mode: "codex_exec",
       execution_log: "completed-log",
@@ -5427,11 +5607,11 @@ describe("smoke-core API", () => {
       payload: {
         api_key: secret,
         tool_name: "orchestrator.list_tasks",
-        agent_template_id: "another-template"
+        agent_profile_id: "another-template"
       }
     });
     expect(forbiddenTemplateResponse.statusCode).toBe(403);
-    expect(forbiddenTemplateResponse.json().code).toBe("MCP_TEMPLATE_FORBIDDEN");
+    expect(forbiddenTemplateResponse.json().code).toBe("MCP_PROFILE_FORBIDDEN");
 
     const allowedTemplateResponse = await app.inject({
       method: "POST",
@@ -5440,7 +5620,7 @@ describe("smoke-core API", () => {
       payload: {
         api_key: secret,
         tool_name: "orchestrator.list_tasks",
-        agent_template_id: templateId
+        agent_profile_id: templateId
       }
     });
     expect(allowedTemplateResponse.statusCode).toBe(200);
@@ -6289,7 +6469,7 @@ describe("smoke-core API", () => {
 
     expect(dispatchResponse.statusCode).toBe(202);
     expect(dispatchResponse.json().status).toBe("failed");
-    expect(dispatchResponse.json().result_summary).toContain("No enabled template found");
+    expect(dispatchResponse.json().result_summary).toContain("No enabled agent profile found");
 
     const failedEvent = publisher.events.find(
       (event) =>
@@ -6316,7 +6496,6 @@ describe("smoke-core API", () => {
         task_title: "nightly-task",
         task_description: "run nightly task",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6479,7 +6658,6 @@ describe("smoke-core API", () => {
         task_title: "legacy-task",
         task_description: "legacy",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart",
@@ -6518,7 +6696,6 @@ describe("smoke-core API", () => {
         task_title: "limit-task",
         task_description: "limit task desc",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6578,7 +6755,6 @@ describe("smoke-core API", () => {
         task_title: "utc-task",
         task_description: "utc task desc",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6631,7 +6807,6 @@ describe("smoke-core API", () => {
         task_title: "legacy-task",
         task_description: "legacy task desc",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6673,7 +6848,6 @@ describe("smoke-core API", () => {
         task_title: "idem-task",
         task_description: "idem task desc",
         task_agent_profile_id: executor.profileId,
-        task_agent_template_id: executor.templateId,
         task_priority: 100,
         overlap_policy: "one_active_skip",
         misfire_policy: "recompute_due_on_restart"
@@ -6724,7 +6898,6 @@ describe("smoke-core API", () => {
         value: "system.restart"
       },
       task_agent_profile_id: executor.profileId,
-      task_agent_template_id: executor.templateId,
       overlap_policy: "one_active_skip",
       misfire_policy: "recompute_due_on_restart",
       created_by: "admin"
@@ -6772,7 +6945,6 @@ describe("smoke-core API", () => {
         value: "system.restart"
       },
       task_agent_profile_id: executor.profileId,
-      task_agent_template_id: executor.templateId,
       overlap_policy: "one_active_skip",
       misfire_policy: "recompute_due_on_restart",
       created_by: "admin"

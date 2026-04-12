@@ -20,7 +20,6 @@ export interface CreateOrchestratorMcpServerOptions {
   authz?: {
     mcp_api_key?: string;
     agent_profile_id?: string;
-    agent_template_id?: string;
     actor?: string;
   };
 }
@@ -803,7 +802,6 @@ function normalizeCreateTaskInput(input: {
   description: string;
   project_id: string;
   agent_profile_id: string;
-  agent_template_id: string;
   priority?: number;
 }): CreateTaskRequest {
   return {
@@ -811,7 +809,6 @@ function normalizeCreateTaskInput(input: {
     description: input.description.trim(),
     project_id: input.project_id.trim().toLowerCase(),
     agent_profile_id: input.agent_profile_id.trim(),
-    agent_template_id: input.agent_template_id.trim(),
     priority: input.priority
   };
 }
@@ -823,7 +820,6 @@ function normalizeAgentRequestCreateInput(input: {
   task_id: string;
   agent_run_id?: string | null;
   agent_profile_id?: string | null;
-  agent_template_id?: string | null;
   requested_by_agent_id?: string | null;
   title: string;
   reason: string;
@@ -836,7 +832,6 @@ function normalizeAgentRequestCreateInput(input: {
     task_id: input.task_id.trim(),
     agent_run_id: input.agent_run_id?.trim() ?? null,
     agent_profile_id: input.agent_profile_id?.trim() ?? null,
-    agent_template_id: input.agent_template_id?.trim() ?? null,
     requested_by_agent_id: input.requested_by_agent_id?.trim() ?? null,
     title: input.title.trim(),
     reason: input.reason.trim(),
@@ -870,7 +865,6 @@ export function createOrchestratorMcpServer(
   });
   const authzApiKey = asStringValue(options.authz?.mcp_api_key);
   const authzAgentProfileId = asStringValue(options.authz?.agent_profile_id);
-  const authzAgentTemplateId = asStringValue(options.authz?.agent_template_id);
   const authzActor = asStringValue(options.authz?.actor) ?? "mcp_bridge";
 
   const authorizeToolCall = async (
@@ -890,7 +884,6 @@ export function createOrchestratorMcpServer(
           api_key: authzApiKey,
           tool_name: toolName,
           agent_profile_id: authzAgentProfileId ?? undefined,
-          agent_template_id: authzAgentTemplateId ?? undefined,
           actor: authzActor
         },
         traceId
@@ -905,7 +898,7 @@ export function createOrchestratorMcpServer(
     "orchestrator.list_agents",
     {
       description:
-        "Получить доступные agent templates и capability map оркестратора через текущий REST API."
+        "Получить доступные agent profiles и capability map оркестратора через текущий REST API."
     },
     async (): Promise<CallToolResult> => {
       try {
@@ -913,22 +906,22 @@ export function createOrchestratorMcpServer(
         if (authError) {
           return authError;
         }
-        const [templatesResponse, capabilitiesResponse] = await Promise.all([
-          options.apiClient.listAgentTemplates(),
+        const [profilesResponse, capabilitiesResponse] = await Promise.all([
+          options.apiClient.listAgentProfiles({ include_disabled: false, limit: 500 }),
           options.apiClient.listDelegationCapabilities()
         ]);
 
         const structuredContent = {
-          templates: templatesResponse.items,
+          profiles: profilesResponse.items,
           capabilities: capabilitiesResponse.items,
           totals: {
-            templates: templatesResponse.items.length,
+            profiles: profilesResponse.items.length,
             capabilities: capabilitiesResponse.items.length
           }
         };
 
         return toToolSuccess(
-          `Loaded ${templatesResponse.items.length} templates and ${capabilitiesResponse.items.length} capabilities`,
+          `Loaded ${profilesResponse.items.length} profiles and ${capabilitiesResponse.items.length} capabilities`,
           structuredContent
         );
       } catch (error) {
@@ -1021,13 +1014,12 @@ export function createOrchestratorMcpServer(
     "orchestrator.create_task",
     {
       description:
-        "Создать задачу task-first с явным исполнителем (agent_profile_id + agent_template_id).",
+        "Создать задачу task-first с явным исполнителем (agent_profile_id).",
       inputSchema: {
         title: z.string().min(1),
         description: z.string().min(1),
         project_id: z.string().min(1),
         agent_profile_id: z.string().min(1),
-        agent_template_id: z.string().min(1),
         priority: z.number().int().min(0).max(1_000).optional(),
         trace_id: z.string().min(1).optional(),
         idempotency_key: z.string().min(1).optional()
@@ -1100,7 +1092,6 @@ export function createOrchestratorMcpServer(
         task_id: z.string().min(1),
         agent_run_id: z.string().min(1).optional(),
         agent_profile_id: z.string().min(1).optional(),
-        agent_template_id: z.string().min(1).optional(),
         requested_by_agent_id: z.string().min(1).optional(),
         title: z.string().min(1),
         reason: z.string().min(1),
@@ -1139,7 +1130,6 @@ export function createOrchestratorMcpServer(
         project_id: z.string().min(1).optional(),
         task_id: z.string().min(1).optional(),
         agent_profile_id: z.string().min(1).optional(),
-        agent_template_id: z.string().min(1).optional(),
         type: z.enum(AGENT_REQUEST_TYPE_VALUES).optional(),
         include_in_progress: z.boolean().optional(),
         limit: z.number().int().min(1).max(500).optional()
@@ -1155,7 +1145,6 @@ export function createOrchestratorMcpServer(
           project_id: projectId,
           task_id: taskId,
           agent_profile_id: agentProfileId,
-          agent_template_id: agentTemplateId,
           type,
           include_in_progress: includeInProgress,
           limit
@@ -1164,7 +1153,6 @@ export function createOrchestratorMcpServer(
           project_id: projectId?.trim().toLowerCase(),
           task_id: taskId?.trim(),
           agent_profile_id: agentProfileId?.trim(),
-          agent_template_id: agentTemplateId?.trim(),
           type,
           include_in_progress: includeInProgress,
           limit
@@ -1235,7 +1223,6 @@ export function createOrchestratorMcpServer(
         project_id: z.string().min(1).optional(),
         task_id: z.string().min(1).optional(),
         agent_profile_id: z.string().min(1).optional(),
-        agent_template_id: z.string().min(1).optional(),
         type: z.enum(AGENT_REQUEST_TYPE_VALUES).optional(),
         include_in_progress: z.boolean().optional(),
         retry_blocked: z.boolean().optional(),
@@ -1265,7 +1252,6 @@ export function createOrchestratorMcpServer(
           project_id: input.project_id?.trim().toLowerCase(),
           task_id: input.task_id?.trim(),
           agent_profile_id: input.agent_profile_id?.trim(),
-          agent_template_id: input.agent_template_id?.trim(),
           type: input.type,
           include_in_progress: includeInProgress,
           limit: input.limit

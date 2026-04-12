@@ -6,6 +6,64 @@
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
 
+## Итерация 2026-04-12: Profile-only cleanup (dispatch/requests/authz)
+
+### Реализовано
+- [x] Убран `agent_template_id` из рабочих profile-first контуров:
+  - `AgentRequest` create/list/response в API теперь опирается только на `agent_profile_id`;
+  - MCP bridge (`api-client` + `server`) очищен от `agent_template_id` в authz и request-plane tool input.
+- [x] Делегационный runtime-контур в API стал profile-only:
+  - `GET /api/delegation/capabilities` строится по `AgentProfile` и возвращает `agent_profile_ids`;
+  - `POST /api/delegation/dispatch` больше не использует template fallback;
+  - lifecycle payload/response переведены на `target_agent_profile_id`.
+- [x] Обновлены runtime-контракты и prisma persistence:
+  - убраны template-поля из `TaskEntity`, `DelegationRequestEntity`, `AgentRequestEntity`, `ScheduledRuleEntity`;
+  - update/list методы persistence очищены от template-параметров в этих контурах.
+- [x] Тестовый контур синхронизирован (FakePersistence + API/MCP тесты) под profile-first исполнение.
+- [x] Проверки зелёные:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run contracts:check`
+
+### В работе
+- [~] Финальный hard-breaking вынос legacy template API (`/api/agents/templates`, template constraints/bindings в docs/openapi/UI).
+
+### Остается
+- [~] Добить полное удаление template-терминологии и endpoints в OpenAPI/документации и в UI-слоях секретов/ACL.
+- [~] После этого — полный manual smoke на Windows runtime + docker-инфра с обновленными сценариями.
+
+## Итерация 2026-04-12: Profile-first execution (phase 2, стабилизация)
+
+### Реализовано
+- [x] Доведён profile-first контур создания задач/расписаний:
+  - в `POST /api/tasks` используется только `agent_profile_id` (без обязательного `agent_template_id`);
+  - в `POST/PATCH /api/schedules` используется только `task_agent_profile_id`;
+  - UI формы `#/tasks` и `#/schedules` очищены от обязательного выбора шаблона.
+- [x] MCP bridge частично синхронизирован с profile-first:
+  - `orchestrator.create_task` теперь принимает только `agent_profile_id`;
+  - `orchestrator.list_agents` возвращает profiles + capabilities (без template-only формулировок).
+- [x] `dispatch` и карточки делегаций переведены на profile-first runtime-resolve с переходным compat-fallback:
+  - при наличии профиля используется `AgentProfile` как primary исполнитель;
+  - если профиль явно не задан и профильный пул пуст, временно используется legacy fallback через template, чтобы не ломать текущие потоки и тесты;
+  - runtime secret resolve переключён на profile/role bindings (`listProjectSecretProfileBindings` + role fallback).
+- [x] Обновлены и стабилизированы тесты под текущий этап перехода.
+- [x] Проверки зелёные:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run contracts:check`
+
+### В работе
+- [~] Полное удаление template-хвостов из backend/MCP/UI и contracts (сейчас ещё есть переходные compat-ветки и legacy поля в части API/документации).
+
+### Остается
+- [~] Завершить hard-breaking merge `AgentProfile-only`:
+  - убрать публичные template endpoints;
+  - убрать template constraints/bindings из операторского контура;
+  - синхронизировать OpenAPI/manual scenarios/roadmap под итоговый контракт без `agent_template_id`.
+- [~] После полной дочистки выполнить `smoke:local` на живом Windows run-контуре и зафиксировать обновлённый manual acceptance.
+
 ## Итерация 2026-04-12: UX-фикс executor связки (Tasks/Schedules)
 
 ### Реализовано

@@ -191,7 +191,6 @@ interface TaskCreateRequest {
   description?: unknown;
   project_id?: unknown;
   agent_profile_id?: unknown;
-  agent_template_id?: unknown;
   priority?: unknown;
 }
 
@@ -333,7 +332,6 @@ interface AgentRequestCreateRequest {
   task_id?: unknown;
   agent_run_id?: unknown;
   agent_profile_id?: unknown;
-  agent_template_id?: unknown;
   requested_by_agent_id?: unknown;
   title?: unknown;
   reason?: unknown;
@@ -403,7 +401,6 @@ interface McpAuthzEvaluateRequest {
   api_key?: unknown;
   tool_name?: unknown;
   agent_profile_id?: unknown;
-  agent_template_id?: unknown;
   actor?: unknown;
 }
 
@@ -551,7 +548,8 @@ interface ScheduleEvaluationContext {
 function createDefaultDelegationExecutor(): DelegationExecutor {
   return {
     async execute(input) {
-      const summary = `Delegation completed by template ${input.target_template.id}`;
+      const targetId = input.target_template?.id ?? "unknown-profile";
+      const summary = `Delegation completed by profile ${targetId}`;
       return {
         execution_mode: "mock",
         result_summary: summary,
@@ -830,7 +828,6 @@ function buildTaskAutoDispatchPrompt(task: TaskEntity): string {
     `task_id: ${task.id}`,
     `project_id: ${task.project_id}`,
     `agent_profile_id: ${task.agent_profile_id}`,
-    `agent_template_id: ${task.agent_template_id}`,
     `priority: ${task.priority}`,
     "",
     `Title: ${task.title}`,
@@ -1018,7 +1015,7 @@ async function resolveRuntimeSecretEnvironment(options: {
   persistence: Persistence;
   projectId: string;
   agentRole: string;
-  agentTemplateId: string;
+  agentProfileId: string;
   secretsMasterKey: string;
 }): Promise<{
   env: Record<string, string>;
@@ -1033,19 +1030,17 @@ async function resolveRuntimeSecretEnvironment(options: {
   const resolvedKeys: string[] = [];
 
   for (const secret of projectSecrets) {
-    const [templateBindings, roleBindings] = await Promise.all([
-      options.persistence.listProjectSecretTemplateBindings(secret.id),
+    const [profileBindings, roleBindings] = await Promise.all([
+      options.persistence.listProjectSecretProfileBindings(secret.id),
       options.persistence.listProjectSecretRoleBindings(secret.id)
     ]);
 
-    const hasBindings = templateBindings.length > 0 || roleBindings.length > 0;
-    const templateMatched = templateBindings.some(
-      (binding) => binding.template_id === options.agentTemplateId
-    );
+    const hasBindings = profileBindings.length > 0 || roleBindings.length > 0;
+    const profileMatched = profileBindings.some((binding) => binding.profile_id === options.agentProfileId);
     const roleMatched = roleBindings.some(
       (binding) => normalizeAgentRole(binding.role) === options.agentRole
     );
-    if (hasBindings && !templateMatched && !roleMatched) {
+    if (hasBindings && !profileMatched && !roleMatched) {
       continue;
     }
 
@@ -1993,7 +1988,6 @@ function taskToResponse(task: TaskEntity): Record<string, unknown> {
     priority: task.priority,
     project_id: task.project_id,
     agent_profile_id: task.agent_profile_id,
-    agent_template_id: task.agent_template_id,
     cancel_reason: task.cancel_reason,
     cancelled_at: task.cancelled_at,
     created_at: task.created_at,
@@ -2071,7 +2065,7 @@ function delegationToResponse(delegation: DelegationRequestEntity): Record<strin
     payload: delegation.payload,
     priority: delegation.priority,
     status: delegation.status,
-    target_agent_template_id: delegation.target_agent_template_id,
+    target_agent_profile_id: delegation.target_agent_profile_id,
     target_worker_instance_id: delegation.target_worker_instance_id,
     result_summary: delegation.result_summary,
     input_prompt: delegation.input_prompt,
@@ -2096,7 +2090,6 @@ function agentRequestToResponse(agentRequest: AgentRequestEntity): Record<string
     task_id: agentRequest.task_id,
     agent_run_id: agentRequest.agent_run_id,
     agent_profile_id: agentRequest.agent_profile_id,
-    agent_template_id: agentRequest.agent_template_id,
     requested_by_agent_id: agentRequest.requested_by_agent_id,
     title: agentRequest.title,
     reason: agentRequest.reason,
@@ -2284,13 +2277,13 @@ async function buildDelegationCardsResponse(options: {
   running: Record<string, unknown>[];
   recent: Record<string, unknown>[];
 }> {
-  const [delegations, templates, fallbackActiveProfile] = await Promise.all([
+  const [delegations, agentProfiles, fallbackActiveProfile] = await Promise.all([
     options.persistence.listDelegationRequests({ limit: options.limit }),
-    options.persistence.listAgentTemplates(),
+    options.persistence.listAgentProfiles({ include_disabled: true, limit: 500 }),
     options.persistence.getActiveAuthProfile()
   ]);
 
-  const templateMap = new Map(templates.map((template) => [template.id, template]));
+  const agentProfileMap = new Map(agentProfiles.map((profile) => [profile.id, profile]));
 
   const profileIds = new Set<string>();
   for (const delegation of delegations) {
@@ -2314,8 +2307,8 @@ async function buildDelegationCardsResponse(options: {
   );
 
   const toCard = (delegation: DelegationRequestEntity): Record<string, unknown> => {
-    const targetTemplate = delegation.target_agent_template_id
-      ? templateMap.get(delegation.target_agent_template_id) ?? null
+    const targetProfile = delegation.target_agent_profile_id
+      ? agentProfileMap.get(delegation.target_agent_profile_id) ?? null
       : null;
 
     const selectedProfileId = delegation.selected_auth_profile_id;
@@ -2343,12 +2336,20 @@ async function buildDelegationCardsResponse(options: {
       created_at: delegation.created_at,
       started_at: delegation.started_at,
       ended_at: delegation.ended_at,
-      target_template: targetTemplate
+      target_profile: targetProfile
         ? {
-            id: targetTemplate.id,
-            name: targetTemplate.name,
-            role: targetTemplate.role,
-            model: targetTemplate.model
+            id: targetProfile.id,
+            name: targetProfile.name,
+            role: targetProfile.role,
+            model: targetProfile.model
+          }
+        : null,
+      target_template: targetProfile
+        ? {
+            id: targetProfile.id,
+            name: targetProfile.name,
+            role: targetProfile.role,
+            model: targetProfile.model
           }
         : null,
       account: account
@@ -2390,7 +2391,6 @@ function scheduledRuleToResponse(rule: ScheduledRuleEntity): Record<string, unkn
     is_enabled: rule.is_enabled,
     rule_ast: rule.rule_ast,
     task_agent_profile_id: rule.task_agent_profile_id,
-    task_agent_template_id: rule.task_agent_template_id,
     task_title: rule.task_title,
     task_description: rule.task_description,
     task_priority: rule.task_priority,
@@ -2738,33 +2738,20 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return;
       }
 
-      const [agentProfile, allTemplates] = await Promise.all([
-        persistence.getAgentProfileById(currentTask.agent_profile_id),
-        persistence.listAgentTemplates()
-      ]);
-      const targetTemplate =
-        allTemplates.find((template) => template.id === currentTask.agent_template_id) ?? null;
-      if (!agentProfile || !targetTemplate) {
+      const agentProfile = await persistence.getAgentProfileById(currentTask.agent_profile_id);
+      if (!agentProfile) {
         await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
         app.log.warn(
           { task_id: currentTask.id },
-          "Task moved to BLOCKED because assigned agent selector was not found"
+          "Task moved to BLOCKED because assigned agent profile was not found"
         );
         return;
       }
-      if (!agentProfile.is_enabled || !targetTemplate.is_enabled) {
+      if (!agentProfile.is_enabled) {
         await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
         app.log.warn(
           { task_id: currentTask.id },
-          "Task moved to BLOCKED because assigned agent profile/template is disabled"
-        );
-        return;
-      }
-      if (normalizeAgentRole(agentProfile.role) !== normalizeAgentRole(targetTemplate.role)) {
-        await persistence.updateTaskStatus(currentTask.id, "BLOCKED");
-        app.log.warn(
-          { task_id: currentTask.id },
-          "Task moved to BLOCKED because assigned agent profile/template role mismatch"
+          "Task moved to BLOCKED because assigned agent profile is disabled"
         );
         return;
       }
@@ -2784,10 +2771,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         },
         payload: {
           requester_task_id: assignedTask.id,
-          capability: targetTemplate.role,
+          capability: agentProfile.role,
           target_selector: {
-            agent_profile_id: assignedTask.agent_profile_id,
-            agent_template_id: targetTemplate.id
+            agent_profile_id: assignedTask.agent_profile_id
           },
           payload: {
             source: TASK_AUTODISPATCH_SOURCE,
@@ -3527,8 +3513,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       if (
         !options.rule.task_title ||
         !options.rule.task_description ||
-        !options.rule.task_agent_profile_id ||
-        !options.rule.task_agent_template_id
+        !options.rule.task_agent_profile_id
       ) {
         const failedRun =
           (await persistence.updateScheduledRun(startedRun.id, {
@@ -3610,13 +3595,8 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         return failedRun;
       }
 
-      const [profile, template] = await Promise.all([
-        persistence.getAgentProfileById(options.rule.task_agent_profile_id),
-        persistence.listAgentTemplates().then((items) =>
-          items.find((item) => item.id === options.rule.task_agent_template_id) ?? null
-        )
-      ]);
-      if (!profile || !template) {
+      const profile = await persistence.getAgentProfileById(options.rule.task_agent_profile_id);
+      if (!profile) {
         const failedRun =
           (await persistence.updateScheduledRun(startedRun.id, {
             status: "failed",
@@ -3642,7 +3622,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         });
         return failedRun;
       }
-      if (!profile.is_enabled || !template.is_enabled) {
+      if (!profile.is_enabled) {
         const failedRun =
           (await persistence.updateScheduledRun(startedRun.id, {
             status: "failed",
@@ -3668,39 +3648,12 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         });
         return failedRun;
       }
-      if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
-        const failedRun =
-          (await persistence.updateScheduledRun(startedRun.id, {
-            status: "failed",
-            ended_at: new Date(),
-            skip_reason: "agent_selector_role_mismatch",
-            result_json: {
-              matched: true,
-              reasons,
-              trigger_source: options.triggerSource
-            }
-          })) ?? startedRun;
-        await publisher.publish({
-          eventType: "schedule.run.failed",
-          traceId: options.traceId,
-          idempotencyKey: `${failedRun.id}:agent_selector_role_mismatch:${options.traceId}`,
-          payload: {
-            rule_id: options.rule.id,
-            run_id: failedRun.id,
-            scope: options.rule.scope,
-            status: failedRun.status,
-            reason: "agent_selector_role_mismatch"
-          }
-        });
-        return failedRun;
-      }
 
       const createdTask = await persistence.createTask({
         title: options.rule.task_title,
         description: options.rule.task_description,
         project_id: options.rule.project_id,
         agent_profile_id: options.rule.task_agent_profile_id,
-        agent_template_id: options.rule.task_agent_template_id,
         priority: options.rule.task_priority,
         status: "NEW",
         source: "schedule",
@@ -4613,21 +4566,19 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const description = asNonEmptyString(body?.description);
     const projectId = asNonEmptyString(body?.project_id);
     const agentProfileId = asNonEmptyString(body?.agent_profile_id);
-    const agentTemplateId = asNonEmptyString(body?.agent_template_id);
 
-    if (!title || !description || !projectId || !agentProfileId || !agentTemplateId) {
+    if (!title || !description || !projectId || !agentProfileId) {
       return sendError(
         reply,
         400,
-        "title, description, project_id, agent_profile_id and agent_template_id are required",
+        "title, description, project_id and agent_profile_id are required",
         "VALIDATION_ERROR"
       );
     }
 
-    const [project, profile, templates] = await Promise.all([
+    const [project, profile] = await Promise.all([
       persistence.getProjectByKey(projectId),
-      persistence.getAgentProfileById(agentProfileId),
-      persistence.listAgentTemplates()
+      persistence.getAgentProfileById(agentProfileId)
     ]);
     if (!project) {
       return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
@@ -4641,21 +4592,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     if (!profile.is_enabled) {
       return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
     }
-    const template = templates.find((item) => item.id === agentTemplateId) ?? null;
-    if (!template) {
-      return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
-    }
-    if (!template.is_enabled) {
-      return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
-    }
-    if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
-      return sendError(
-        reply,
-        409,
-        "Agent profile role does not match agent template role",
-        "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
-      );
-    }
 
     const priority = typeof body.priority === "number" ? body.priority : 100;
 
@@ -4664,7 +4600,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       description,
       project_id: projectId,
       agent_profile_id: agentProfileId,
-      agent_template_id: agentTemplateId,
       priority,
       status: "NEW",
       source: "api",
@@ -6373,12 +6308,10 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
 
     let agentRunId: string | null | undefined;
     let agentProfileId: string | null | undefined;
-    let agentTemplateId: string | null | undefined;
     let requestedByAgentId: string | null | undefined;
     try {
       agentRunId = parseOptionalField(body.agent_run_id, "agent_run_id");
       agentProfileId = parseOptionalField(body.agent_profile_id, "agent_profile_id");
-      agentTemplateId = parseOptionalField(body.agent_template_id, "agent_template_id");
       requestedByAgentId = parseOptionalField(body.requested_by_agent_id, "requested_by_agent_id");
     } catch (error) {
       return sendError(reply, 400, getErrorMessage(error), "REQUEST_VALIDATION_FAILED");
@@ -6428,7 +6361,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       task_id: taskId,
       agent_run_id: agentRunId,
       agent_profile_id: agentProfileId,
-      agent_template_id: agentTemplateId,
       requested_by_agent_id: requestedByAgentId,
       title,
       reason,
@@ -6460,7 +6392,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       project_id?: unknown;
       task_id?: unknown;
       agent_profile_id?: unknown;
-      agent_template_id?: unknown;
       type?: unknown;
       status?: unknown;
       limit?: unknown;
@@ -6471,7 +6402,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const projectId = asProjectKey(query.project_id) ?? undefined;
     const taskId = asNonEmptyString(query.task_id) ?? undefined;
     const agentProfileId = asNonEmptyString(query.agent_profile_id) ?? undefined;
-    const agentTemplateId = asNonEmptyString(query.agent_template_id) ?? undefined;
 
     const typeCandidate = asNonEmptyString(query.type);
     let type: AgentRequestType | undefined;
@@ -6542,7 +6472,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       project_id: projectId,
       task_id: taskId,
       agent_profile_id: agentProfileId,
-      agent_template_id: agentTemplateId,
       type,
       statuses,
       limit
@@ -7610,7 +7539,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const toolName = asNonEmptyString(body.tool_name);
     const actor = asNonEmptyString(body.actor) ?? "mcp_bridge";
     const agentProfileId = asNonEmptyString(body.agent_profile_id);
-    const agentTemplateId = asNonEmptyString(body.agent_template_id);
 
     if (!apiKeySecret) {
       await writeMcpAuthAuditEventBestEffort(
@@ -7622,8 +7550,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           request_meta_json: {
             code: "MCP_KEY_REQUIRED",
             tool_name: toolName ?? null,
-            agent_profile_id: agentProfileId ?? null,
-            agent_template_id: agentTemplateId ?? null
+            agent_profile_id: agentProfileId ?? null
           }
         },
         request.log
@@ -7647,8 +7574,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           request_meta_json: {
             code: "MCP_KEY_INVALID",
             tool_name: toolName,
-            agent_profile_id: agentProfileId ?? null,
-            agent_template_id: agentTemplateId ?? null
+            agent_profile_id: agentProfileId ?? null
           }
         },
         request.log
@@ -7668,8 +7594,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             code,
             tool_name: toolName,
             key_status: key.status,
-            agent_profile_id: agentProfileId ?? null,
-            agent_template_id: agentTemplateId ?? null
+            agent_profile_id: agentProfileId ?? null
           }
         },
         request.log
@@ -7717,24 +7642,24 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       }
     }
 
-    const templateConstraints = await persistence.listMcpKeyTemplateConstraints(key.id);
-    if (templateConstraints.length > 0) {
-      if (!agentTemplateId) {
+    const profileConstraints = await persistence.listMcpKeyTemplateConstraints(key.id);
+    if (profileConstraints.length > 0) {
+      if (!agentProfileId) {
         return denyWithAudit(
           403,
-          "MCP key is restricted to specific agent templates",
-          "MCP_TEMPLATE_FORBIDDEN"
+          "MCP key is restricted to specific agent profiles",
+          "MCP_PROFILE_FORBIDDEN"
         );
       }
 
-      const isTemplateAllowed = templateConstraints.some(
-        (constraint) => constraint.agent_template_id === agentTemplateId
+      const isProfileAllowedByConstraint = profileConstraints.some(
+        (constraint) => constraint.agent_template_id === agentProfileId
       );
-      if (!isTemplateAllowed) {
+      if (!isProfileAllowedByConstraint) {
         return denyWithAudit(
           403,
-          "MCP key is forbidden for this agent template",
-          "MCP_TEMPLATE_FORBIDDEN"
+          "MCP key is forbidden for this agent profile",
+          "MCP_PROFILE_FORBIDDEN"
         );
       }
     }
@@ -7749,8 +7674,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         trace_id: traceId,
         request_meta_json: {
           tool_name: toolName,
-          agent_profile_id: agentProfileId ?? null,
-          agent_template_id: agentTemplateId ?? null
+          agent_profile_id: agentProfileId ?? null
         }
       },
       request.log
@@ -7760,37 +7684,36 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       allowed: true,
       key_id: key.id,
       tool_name: toolName,
-      agent_profile_id: agentProfileId ?? null,
-      agent_template_id: agentTemplateId ?? null
+      agent_profile_id: agentProfileId ?? null
     });
   });
 
   app.get("/api/delegation/capabilities", async (_request, reply) => {
-    const templates = await persistence.listAgentTemplates();
+    const profiles = await persistence.listAgentProfiles({ include_disabled: false, limit: 500 });
     const capabilityMap = new Map<
       string,
-      { roles: Set<string>; agent_template_ids: string[] }
+      { roles: Set<string>; agent_profile_ids: string[] }
     >();
 
-    for (const template of templates) {
-      const capability = template.role;
+    for (const profile of profiles) {
+      const capability = profile.role;
       const existing = capabilityMap.get(capability);
       if (!existing) {
         capabilityMap.set(capability, {
-          roles: new Set([template.role]),
-          agent_template_ids: [template.id]
+          roles: new Set([profile.role]),
+          agent_profile_ids: [profile.id]
         });
         continue;
       }
 
-      existing.roles.add(template.role);
-      existing.agent_template_ids.push(template.id);
+      existing.roles.add(profile.role);
+      existing.agent_profile_ids.push(profile.id);
     }
 
     const items = Array.from(capabilityMap.entries()).map(([capability, value]) => ({
       capability,
       roles: Array.from(value.roles),
-      agent_template_ids: value.agent_template_ids
+      agent_profile_ids: value.agent_profile_ids
     }));
 
     return reply.send({ items });
@@ -7874,28 +7797,43 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         requester_task_id: delegation.requester_task_id,
         capability: delegation.capability,
         status: delegation.status,
-        target_agent_template_id: delegation.target_agent_template_id,
+        target_agent_profile_id: delegation.target_agent_profile_id,
         target_worker_instance_id: delegation.target_worker_instance_id,
         reason: null
       }
     });
 
-    const selectorTemplateId = asNonEmptyString(targetSelector["agent_template_id"]);
-    const templates = await persistence.listAgentTemplates();
-    const eligibleTemplates = templates.filter(
-      (template) => template.is_enabled && template.role === capability
-    );
+    const selectorAgentProfileId = asNonEmptyString(targetSelector["agent_profile_id"]);
+    let selectedAgentProfile: AgentProfileEntity | null = null;
 
-    let targetTemplate =
-      selectorTemplateId == null
-        ? null
-        : eligibleTemplates.find((template) => template.id === selectorTemplateId) ?? null;
-    if (!targetTemplate) {
-      targetTemplate = eligibleTemplates[0] ?? null;
+    if (selectorAgentProfileId) {
+      const selectedBySelector = await persistence.getAgentProfileById(selectorAgentProfileId);
+      if (!selectedBySelector) {
+        return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
+      }
+      if (!selectedBySelector.is_enabled) {
+        return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
+      }
+      if (normalizeAgentRole(selectedBySelector.role) !== capability) {
+        return sendError(
+          reply,
+          409,
+          "Agent profile role does not match capability",
+          "AGENT_PROFILE_ROLE_MISMATCH"
+        );
+      }
+      selectedAgentProfile = selectedBySelector;
+    } else {
+      const candidates = await persistence.listAgentProfiles({
+        include_disabled: false,
+        role: capability,
+        limit: 50
+      });
+      selectedAgentProfile = candidates[0] ?? null;
     }
 
-    if (!targetTemplate) {
-      const failedSummary = "No enabled template found for capability";
+    if (!selectedAgentProfile) {
+      const failedSummary = "No enabled agent profile found for capability";
       const failedDelegation = await persistence.updateDelegationRequest(delegation.id, {
         status: "failed",
         result_summary: failedSummary,
@@ -7917,7 +7855,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           requester_task_id: failedDelegation.requester_task_id,
           capability: failedDelegation.capability,
           status: failedDelegation.status,
-          target_agent_template_id: failedDelegation.target_agent_template_id,
+          target_agent_profile_id: failedDelegation.target_agent_profile_id,
           target_worker_instance_id: failedDelegation.target_worker_instance_id,
           reason: "no_capability_target"
         }
@@ -7939,35 +7877,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       : projectWorkspacePath
         ? "project_workspace_path"
         : "process_cwd";
-    const memoryAgentRole = normalizeAgentRole(targetTemplate.role);
-    const selectorAgentProfileId = asNonEmptyString(targetSelector["agent_profile_id"]);
-
-    let selectedAgentProfile: AgentProfileEntity | null = null;
-    if (selectorAgentProfileId) {
-      const selectedBySelector = await persistence.getAgentProfileById(selectorAgentProfileId);
-      if (!selectedBySelector) {
-        return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
-      }
-      if (!selectedBySelector.is_enabled) {
-        return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
-      }
-      if (normalizeAgentRole(selectedBySelector.role) !== memoryAgentRole) {
-        return sendError(
-          reply,
-          409,
-          "Agent profile role does not match capability",
-          "AGENT_PROFILE_ROLE_MISMATCH"
-        );
-      }
-      selectedAgentProfile = selectedBySelector;
-    } else {
-      const candidates = await persistence.listAgentProfiles({
-        include_disabled: false,
-        role: memoryAgentRole,
-        limit: 50
-      });
-      selectedAgentProfile = candidates[0] ?? null;
-    }
+    const memoryAgentRole = normalizeAgentRole(selectedAgentProfile.role);
 
     const runtimeScriptOs = runtimeScriptOsFromPlatform();
     let selectedAgentProfileRuntimeScript: AgentProfileScriptSetEntity | null = null;
@@ -8029,14 +7939,14 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           persistence,
           projectId: memoryProjectId,
           agentRole: memoryAgentRole,
-          agentTemplateId: targetTemplate.id,
+          agentProfileId: selectedAgentProfile.id,
           secretsMasterKey: config.secretsMasterKey
         });
         runtimeSecretEnv = resolved.env;
         runtimeSecretKeys = resolved.keys;
       } catch (error) {
         request.log.error(
-          { err: error, project_id: memoryProjectId, template_id: targetTemplate.id },
+          { err: error, project_id: memoryProjectId, agent_profile_id: selectedAgentProfile.id },
           "Failed to resolve runtime project secrets"
         );
         return sendError(reply, 500, "Failed to resolve project secrets", "SECRET_RESOLVE_FAILED");
@@ -8142,7 +8052,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const acceptedAt = new Date();
     const acceptedDelegation = await persistence.updateDelegationRequest(delegation.id, {
       status: "accepted",
-      target_agent_template_id: targetTemplate.id,
+      target_agent_profile_id: selectedAgentProfile.id,
       selected_auth_profile_id: selectedAuthProfile?.id ?? null,
       started_at: acceptedAt,
       ended_at: null
@@ -8160,7 +8070,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         requester_task_id: acceptedDelegation.requester_task_id,
         capability: acceptedDelegation.capability,
         status: acceptedDelegation.status,
-        target_agent_template_id: acceptedDelegation.target_agent_template_id,
+        target_agent_profile_id: acceptedDelegation.target_agent_profile_id,
         target_worker_instance_id: acceptedDelegation.target_worker_instance_id,
         agent_profile_id: selectedAgentProfile?.id ?? null,
         reason: null
@@ -8200,11 +8110,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             capability,
             payload: executionPayload,
             target_template: {
-              id: targetTemplate.id,
-              role: targetTemplate.role,
-              model: targetTemplate.model,
-              sandbox_policy: payloadSandboxPolicy ?? targetTemplate.sandbox_policy,
-              approval_policy: payloadApprovalPolicy ?? targetTemplate.approval_policy
+              id: selectedAgentProfile.id,
+              role: selectedAgentProfile.role,
+              model: selectedAgentProfile.model,
+              sandbox_policy: payloadSandboxPolicy ?? selectedAgentProfile.sandbox_policy,
+              approval_policy: payloadApprovalPolicy ?? selectedAgentProfile.approval_policy
             }
           });
         } catch (error) {
@@ -8234,7 +8144,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
             requester_task_id: runningDelegation.requester_task_id,
             capability: runningDelegation.capability,
             status: isTerminalAttempt ? "failed" : "running",
-            target_agent_template_id: runningDelegation.target_agent_template_id,
+            target_agent_profile_id: runningDelegation.target_agent_profile_id,
             target_worker_instance_id: runningDelegation.target_worker_instance_id,
             agent_profile_id: selectedAgentProfile?.id ?? null,
             reason: failureReason,
@@ -8340,7 +8250,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
           requester_task_id: completedDelegation.requester_task_id,
           capability: completedDelegation.capability,
           status: completedDelegation.status,
-          target_agent_template_id: completedDelegation.target_agent_template_id,
+          target_agent_profile_id: completedDelegation.target_agent_profile_id,
           target_worker_instance_id: completedDelegation.target_worker_instance_id,
           agent_profile_id: selectedAgentProfile?.id ?? null,
           reason: null,
@@ -8398,6 +8308,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const legacyScheduleFields = detectLegacyFields(body, [
       "task_repo_id",
       "task_branch",
+      "task_agent_template_id",
       "target_agent_template_id",
       "fallback_role"
     ]);
@@ -8416,7 +8327,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const misfirePolicyValue = asNonEmptyString(body.misfire_policy);
     const projectId = asNonEmptyString(body.project_id);
     const taskAgentProfileId = asNonEmptyString(body.task_agent_profile_id);
-    const taskAgentTemplateId = asNonEmptyString(body.task_agent_template_id);
     const taskTitle = asNonEmptyString(body.task_title);
     const taskDescription = asNonEmptyString(body.task_description);
     const parsedTaskPriority = asNonNegativeInteger(body.task_priority);
@@ -8453,11 +8363,11 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "project_id is required when scope=project", "VALIDATION_ERROR");
     }
 
-    if (!taskTitle || !taskDescription || !taskAgentProfileId || !taskAgentTemplateId) {
+    if (!taskTitle || !taskDescription || !taskAgentProfileId) {
       return sendError(
         reply,
         400,
-        "task_title, task_description, task_agent_profile_id and task_agent_template_id are required",
+        "task_title, task_description and task_agent_profile_id are required",
         "VALIDATION_ERROR"
       );
     }
@@ -8466,10 +8376,9 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       return sendError(reply, 400, "task_priority must be a positive integer", "VALIDATION_ERROR");
     }
 
-    const [project, profile, templates] = await Promise.all([
+    const [project, profile] = await Promise.all([
       persistence.getProjectByKey(projectId),
-      persistence.getAgentProfileById(taskAgentProfileId),
-      persistence.listAgentTemplates()
+      persistence.getAgentProfileById(taskAgentProfileId)
     ]);
     if (!project) {
       return sendError(reply, 404, "Project not found", "PROJECT_NOT_FOUND");
@@ -8483,21 +8392,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     if (!profile.is_enabled) {
       return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
     }
-    const template = templates.find((item) => item.id === taskAgentTemplateId) ?? null;
-    if (!template) {
-      return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
-    }
-    if (!template.is_enabled) {
-      return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
-    }
-    if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
-      return sendError(
-        reply,
-        409,
-        "Agent profile role does not match agent template role",
-        "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
-      );
-    }
 
     const created = await persistence.createScheduledRule({
       name,
@@ -8505,7 +8399,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       project_id: projectId,
       rule_ast: body.rule_ast,
       task_agent_profile_id: taskAgentProfileId,
-      task_agent_template_id: taskAgentTemplateId,
       task_title: taskTitle,
       task_description: taskDescription,
       task_priority: taskPriority,
@@ -8551,6 +8444,7 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
     const legacyScheduleFields = detectLegacyFields(body, [
       "task_repo_id",
       "task_branch",
+      "task_agent_template_id",
       "target_agent_template_id",
       "fallback_role"
     ]);
@@ -8598,19 +8492,6 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
         );
       }
       patch.task_agent_profile_id = value;
-    }
-
-    if (body.task_agent_template_id !== undefined) {
-      const value = asNonEmptyString(body.task_agent_template_id);
-      if (!value) {
-        return sendError(
-          reply,
-          400,
-          "task_agent_template_id must be a non-empty string",
-          "VALIDATION_ERROR"
-        );
-      }
-      patch.task_agent_template_id = value;
     }
 
     if (body.task_title !== undefined) {
@@ -8666,37 +8547,18 @@ export async function createApp(deps: AppDependencies): Promise<FastifyInstance>
       patch.misfire_policy = value;
     }
 
-    if (patch.task_agent_profile_id || patch.task_agent_template_id) {
+    if (patch.task_agent_profile_id) {
       const current = await persistence.getScheduledRuleById(id);
       if (!current) {
         return sendError(reply, 404, "Schedule rule not found", "NOT_FOUND");
       }
       const effectiveProfileId = patch.task_agent_profile_id ?? current.task_agent_profile_id;
-      const effectiveTemplateId = patch.task_agent_template_id ?? current.task_agent_template_id;
-      const [profile, templates] = await Promise.all([
-        persistence.getAgentProfileById(effectiveProfileId),
-        persistence.listAgentTemplates()
-      ]);
+      const profile = await persistence.getAgentProfileById(effectiveProfileId);
       if (!profile) {
         return sendError(reply, 404, "Agent profile not found", "AGENT_PROFILE_NOT_FOUND");
       }
       if (!profile.is_enabled) {
         return sendError(reply, 409, "Agent profile is disabled", "AGENT_PROFILE_DISABLED");
-      }
-      const template = templates.find((item) => item.id === effectiveTemplateId) ?? null;
-      if (!template) {
-        return sendError(reply, 404, "Agent template not found", "AGENT_TEMPLATE_NOT_FOUND");
-      }
-      if (!template.is_enabled) {
-        return sendError(reply, 409, "Agent template is disabled", "AGENT_TEMPLATE_DISABLED");
-      }
-      if (normalizeAgentRole(profile.role) !== normalizeAgentRole(template.role)) {
-        return sendError(
-          reply,
-          409,
-          "Agent profile role does not match agent template role",
-          "AGENT_PROFILE_TEMPLATE_ROLE_MISMATCH"
-        );
       }
     }
 

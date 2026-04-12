@@ -130,12 +130,12 @@ describe("MCP Bridge Server", () => {
     );
   });
 
-  it("возвращает templates и capabilities через orchestrator.list_agents", async () => {
-    apiClientMock.listAgentTemplates.mockResolvedValue({
-      items: [{ id: "tpl-1", role: "reviewer" }]
+  it("возвращает profiles и capabilities через orchestrator.list_agents", async () => {
+    apiClientMock.listAgentProfiles.mockResolvedValue({
+      items: [{ id: "profile-1", role: "reviewer", is_enabled: true }]
     });
     apiClientMock.listDelegationCapabilities.mockResolvedValue({
-      items: [{ capability: "reviewer", agent_template_ids: ["tpl-1"] }]
+      items: [{ capability: "reviewer", agent_profile_ids: ["profile-1"] }]
     });
 
     const result = await client.callTool({
@@ -143,12 +143,12 @@ describe("MCP Bridge Server", () => {
     });
 
     expect(result.isError).toBeFalsy();
-    expect(apiClientMock.listAgentTemplates).toHaveBeenCalledTimes(1);
+    expect(apiClientMock.listAgentProfiles).toHaveBeenCalledTimes(1);
     expect(apiClientMock.listDelegationCapabilities).toHaveBeenCalledTimes(1);
 
     const content = readStructuredContent(result);
     expect(content["totals"]).toEqual({
-      templates: 1,
+      profiles: 1,
       capabilities: 1
     });
   });
@@ -228,7 +228,6 @@ describe("MCP Bridge Server", () => {
         description: "Run smoke",
         project_id: "web-ui",
         agent_profile_id: "profile-1",
-        agent_template_id: "template-1",
         priority: 100,
         idempotency_key: "same-input"
       }
@@ -252,7 +251,7 @@ describe("MCP Bridge Server", () => {
         title: "Smoke task",
         description: "Run smoke",
         project_id: "web-ui",
-        agent_template_id: "template-1"
+        priority: 100
       }
     });
 
@@ -838,8 +837,7 @@ describe("MCP Bridge Server", () => {
       serverVersion: "1.0.0",
       authz: {
         mcp_api_key: "mcpk_secret",
-        agent_profile_id: "profile-1",
-        agent_template_id: "template-1"
+        agent_profile_id: "profile-1"
       }
     });
 
@@ -867,8 +865,7 @@ describe("MCP Bridge Server", () => {
     expect(apiClientMock.evaluateMcpToolAccess.mock.calls[0]?.[0]).toMatchObject({
       api_key: "mcpk_secret",
       tool_name: "orchestrator.list_tasks",
-      agent_profile_id: "profile-1",
-      agent_template_id: "template-1"
+      agent_profile_id: "profile-1"
     });
     expect(apiClientMock.listTasks).toHaveBeenCalledTimes(1);
   });
