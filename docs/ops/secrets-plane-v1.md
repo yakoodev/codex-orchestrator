@@ -1,4 +1,4 @@
-# Secrets Plane v1 (Design + Rollout Plan)
+﻿# Secrets Plane v1 (Design + Rollout Plan)
 
 Обновлено: 2026-04-10  
 Статус: `in_progress` (Phase 1+2 backend/runtime + Phase 3 UI реализованы)
@@ -7,13 +7,13 @@
 
 Добавить безопасный контур управления секретами для проектов и агентов, где:
 - значения секретов не утекут в UI/логи/API-ответы;
-- доступ управляется по `project + role/template binding`;
+- доступ управляется по `project + role/profile binding`;
 - runtime получает секреты только на время выполнения через env injection.
 
 ## 2. Зафиксированные решения
 
 1. Backend хранение: секреты в БД в шифрованном виде (envelope encryption).
-2. Scope доступа: `project` + bind на `role` и/или `agent template`.
+2. Scope доступа: `project` + bind на `role` и/или `agent profile`.
 3. UI: после сохранения raw value не читается обратно; доступны только rotate/replace/revoke.
 4. Runtime: секреты подставляются в окружение запуска и очищаются после завершения run.
 5. Операционное отображение: в UI только метаданные и masked preview.
@@ -28,8 +28,8 @@
   - `created_at`, `updated_at`, `rotated_at`, `revoked_at`
   - `created_by`, `updated_by`
 
-- `ProjectSecretTemplateBinding`
-  - `secret_id`, `template_id`, `created_at`, `created_by`
+- `ProjectSecretProfileBinding`
+  - `secret_id`, `profile_id`, `created_at`, `created_by`
 
 - `ProjectSecretRoleBinding`
   - `secret_id`, `role`, `created_at`, `created_by`
@@ -56,8 +56,8 @@
 
 ### 4.2 Bindings
 
-- `POST /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
-- `DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
+- `POST /api/projects/{key}/secrets/{id}/bindings/profiles/{profile_id}`
+- `DELETE /api/projects/{key}/secrets/{id}/bindings/profiles/{profile_id}`
 - `POST /api/projects/{key}/secrets/{id}/bindings/roles/{role}`
 - `DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`
 
@@ -75,7 +75,7 @@
 
 ## 6. Runtime правила выдачи
 
-1. Во время подготовки запуска резолвится набор секретов по `project_id` и `role/template`.
+1. Во время подготовки запуска резолвится набор секретов по `project_id` и `role/profile`.
 2. В executor-env добавляются только разрешенные переменные.
 3. Любые stdout/stderr трассы проходят redaction-фильтр.
 4. После завершения запуска секреты удаляются из runtime-контекста.
@@ -105,22 +105,22 @@
 ## 10. Текущий прогресс реализации
 
 - Реализовано (Phase 1+2 backend/runtime + Phase 3 UI):
-  - Prisma: `ProjectSecret`, `ProjectSecretTemplateBinding`, `ProjectSecretRoleBinding`, `SecretAuditEvent` (+ миграция `0012_secrets_plane_v1`);
+  - Prisma: `ProjectSecret`, `ProjectSecretProfileBinding`, `ProjectSecretRoleBinding`, `SecretAuditEvent` (+ миграция `0012_secrets_plane_v1`);
   - API:
     - `POST/GET /api/projects/{key}/secrets`
     - `PATCH /api/projects/{key}/secrets/{id}`
     - `POST /api/projects/{key}/secrets/{id}/rotate`
     - `POST /api/projects/{key}/secrets/{id}/revoke`
-    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/templates/{template_id}`
+    - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/profiles/{profile_id}`
     - `POST/DELETE /api/projects/{key}/secrets/{id}/bindings/roles/{role}`;
   - включено envelope encryption (AES-256-GCM, DEK+master-key), masked preview и lifecycle audit events;
   - raw value не возвращается после create/rotate;
-  - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/template` с передачей в `payload.runtime_env` для executor;
+  - в `POST /api/delegation/dispatch` добавлен runtime-resolve секретов по `project + role/profile` с передачей в `payload.runtime_env` для executor;
   - в completion/failure paths делегации добавлен redaction секретов для `result_summary`, `execution_log`, `execution_meta_json`;
   - добавлен UI-экран `/ui/console.html#/secrets`:
     - создание секрета;
     - просмотр и фильтрация списка;
     - rotate/revoke/activate/deactivate;
-    - bind/unbind по role/template.
+    - bind/unbind по role/profile.
 - Остается:
   - KMS/master-key rotation strategy и операционные rollout guardrails.

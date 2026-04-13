@@ -4,6 +4,14 @@
 
 Этот документ даёт точные ручные сценарии, которые можно прогонять после каждого `git pull`.
 
+Важно (profile-first): template-layer удален из операторского контура.
+- не использовать `/api/agents/templates`;
+- не использовать `agent_template_id` / `task_agent_template_id`;
+- для задач/расписаний использовать только `agent_profile_id` / `task_agent_profile_id`;
+- для secrets/mcp constraints использовать только profile endpoints:
+  - `/bindings/profiles/{profile_id}`
+  - `/constraints/profiles/{profile_id}`.
+
 ## 1. Подготовка окружения
 
 ```powershell
@@ -31,11 +39,6 @@ $TASK_AGENT_PROFILE_ID = (
   Invoke-RestMethod -Uri "$BASE/api/agent-profiles?include_disabled=false&limit=1" `
     -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
 ).items[0].id
-
-$TASK_AGENT_TEMPLATE_ID = (
-  Invoke-RestMethod -Uri "$BASE/api/agents/templates?include_disabled=false&limit=1" `
-    -Method GET -Headers @{ "X-Admin-Token" = $ADMIN_TOKEN }
-).items[0].id
 ```
 
 Проверка:
@@ -43,7 +46,7 @@ $TASK_AGENT_TEMPLATE_ID = (
 ```powershell
 if (-not $ADMIN_TOKEN) { throw "ADMIN_TOKEN not found in .env" }
 if (-not $TASK_AGENT_PROFILE_ID) { throw "No enabled agent profile found" }
-if (-not $TASK_AGENT_TEMPLATE_ID) { throw "No enabled agent template found" }
+
 ```
 
 ## 3. Сценарий A: UI доступен и локализация работает
@@ -93,12 +96,12 @@ API-проверка:
 3. Запусти любую делегацию (например из сценария F), затем снова обнови блок.
 4. Проверь, что в каждой колонке есть счетчик карточек.
 5. Кликни по карточке агента и проверь Inspector справа:
-   - `id/status/capability/template/account`;
+   - `id/status/capability/profile/account`;
    - `trace/execution_mode/created-started-ended`;
    - `cwd/cwd_source` и `memory_context`;
    - `prompt` и `log` в полном виде (не только preview).
 6. Проверь, что карточка агента показывает в компактном виде:
-   - `status`, `capability`, `template/model`;
+   - `status`, `capability`, `profile/model`;
    - `account` (label + status);
    - короткий preview без длинных полотен.
 7. Убедись, что у карточек агентов включен только вертикальный скролл внутри колонок (как в `Tasks`), горизонтального скролла нет.
@@ -254,7 +257,7 @@ Invoke-RestMethod -Uri "$BASE/api/custom-modules/switch_chatgpt_auth_on_limit" `
    - `project_id`: существующий активный проект;
    - `cron`: `*/5 * * * *`;
    - `task_title/task_description/task_priority`;
-   - `task_agent_profile_id` и `task_agent_template_id` (обязательные).
+   - `task_agent_profile_id` (обязательное).
 7. Нажми `Запустить` у правила.
 8. Проверь, что в `История запусков` появился новый run.
 9. Перейди на `#/tasks` и проверь, что появилась новая задача от расписания.
@@ -288,7 +291,7 @@ npm run mcp:serve
 
 3. Подключи любой MCP-клиент к stdio-процессу `npm run mcp:serve`.
 4. Вызови MCP tool `orchestrator.list_agents`:
-   - ожидаемо: возвращаются `templates`, `capabilities`, `totals`.
+   - ожидаемо: возвращаются `profiles`, `capabilities`, `totals`.
 5. Вызови MCP tool `orchestrator.list_tasks` с аргументами:
 
 ```json
@@ -305,7 +308,6 @@ npm run mcp:serve
   "description": "mcp create task smoke",
   "project_id": "project",
   "agent_profile_id": "<PROFILE_ID>",
-  "agent_template_id": "<TEMPLATE_ID>",
   "priority": 90,
   "idempotency_key": "mcp-smoke-task-1"
 }
@@ -313,12 +315,11 @@ npm run mcp:serve
 
 Ожидаемо:
 - возвращается `trace_id` (детерминированный от `idempotency_key`, если `trace_id` явно не задан);
-- в `result` есть созданная задача с `agent_profile_id` и `agent_template_id`.
+- в `result` есть созданная задача с `agent_profile_id`.
 
-6.1. Вызови MCP tool `orchestrator.list_agent_profiles` (например `{ "role": "reviewer", "include_disabled": false }`) и выбери `PROFILE_ID` из ответа.  
-6.1.1. Выбери `TEMPLATE_ID` через `orchestrator.list_agents` (из `templates` с нужной `role`).
+6.1. Вызови MCP tool `orchestrator.list_agent_profiles` (например `{ "role": "reviewer", "include_disabled": false }`) и выбери `PROFILE_ID` из ответа.
 
-6.2. Негативный кейс: вызови `orchestrator.create_task` без `agent_profile_id` или `agent_template_id`.
+6.2. Негативный кейс: вызови `orchestrator.create_task` без `agent_profile_id`.
 
 Ожидаемо:
 - MCP возвращает `REQUEST_VALIDATION_FAILED`;
@@ -411,15 +412,15 @@ Invoke-RestMethod -Uri "$BASE/api/mcp/keys?include_revoked=true" -Method GET -He
 - после revoke ключ отсутствует в default list;
 - с `include_revoked=true` ключ снова виден.
 
-7. Проверь template constraint:
+7. Проверь profile constraint:
 
 ```powershell
-Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/constraints/templates/<TEMPLATE_ID>" `
+Invoke-RestMethod -Uri "$BASE/api/mcp/keys/$($created.id)/constraints/profiles/<PROFILE_ID>" `
   -Method POST -Headers $HEADERS | ConvertTo-Json -Depth 8
 ```
 
 Ожидаемо:
-- возвращается constraint с `key_id` и `agent_template_id`.
+- возвращается constraint с `key_id` и `agent_profile_id`.
 
 8. Проверь authz evaluate endpoint:
 
@@ -428,7 +429,7 @@ $eval = @{
   api_key = $created.secret
   tool_name = "orchestrator.list_tasks"
   agent_profile_id = "<PROFILE_ID>"
-  agent_template_id = "<TEMPLATE_ID>"
+  agent_profile_id = "<PROFILE_ID>"
   actor = "manual-test"
 } | ConvertTo-Json
 
@@ -439,7 +440,7 @@ Invoke-RestMethod -Uri "$BASE/api/mcp/authz/evaluate" `
 Ожидаемо:
 - `allowed = true` для разрешенных комбинаций;
 - `401` для `invalid/revoked/expired` ключа;
-- `403` для запрета по tool/profile/template.
+- `403` для запрета по tool/profile.
 
 9. Проверь runtime authz в MCP bridge:
 
@@ -448,7 +449,6 @@ $env:MCP_API_BASE_URL = $BASE
 $env:MCP_ADMIN_TOKEN = $ADMIN_TOKEN
 $env:MCP_API_KEY = $created.secret
 $env:MCP_AGENT_PROFILE_ID = "<PROFILE_ID>"
-$env:MCP_AGENT_TEMPLATE_ID = "<TEMPLATE_ID>"
 npm run mcp:serve
 ```
 
@@ -476,7 +476,7 @@ $secret | ConvertTo-Json -Depth 8
 ```
 
 Ожидаемо:
-- есть `id/key/masked_preview/template_bindings/role_bindings`;
+- есть `id/key/masked_preview/profile_bindings/role_bindings`;
 - raw `value` в ответе отсутствует.
 
 2. Проверь list:
@@ -533,7 +533,7 @@ Invoke-RestMethod -Uri "$BASE/api/projects/project/secrets/$($secret.id)/revoke"
 7. Проверь runtime-resolve и redaction в делегации:
 
 ```powershell
-$templateBody = @{
+$profileBody = @{
   name = "secret-runtime-reviewer"
   role = "reviewer"
   model = "gpt-5.4-mini"
@@ -542,14 +542,13 @@ $templateBody = @{
   approval_policy = "never"
 } | ConvertTo-Json
 
-$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+$profile = Invoke-RestMethod -Uri "$BASE/api/agent-profiles" -Method POST -Headers $HEADERS -Body $profileBody
 
 $taskBody = @{
   title = "secret-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime secret resolve check"
   project_id = "project"
   agent_profile_id = $TASK_AGENT_PROFILE_ID
-  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -560,7 +559,7 @@ $dispatchBody = @{
   capability = "reviewer"
   target_selector = @{
     role = "reviewer"
-    agent_template_id = $template.id
+    agent_profile_id = $profile.id
   }
   payload = @{
     execution_mode = "mock"
@@ -812,7 +811,7 @@ Invoke-RestMethod -Uri "$BASE/api/agent-profiles/$($profile.id)/scripts" `
 13. Проверь runtime-resolve профиля в dispatch:
 
 ```powershell
-$templateBody = @{
+$profileBody = @{
   name = "profile-runtime-reviewer"
   role = "reviewer"
   model = "gpt-5.4-mini"
@@ -821,14 +820,13 @@ $templateBody = @{
   approval_policy = "never"
 } | ConvertTo-Json
 
-$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+$profile = Invoke-RestMethod -Uri "$BASE/api/agent-profiles" -Method POST -Headers $HEADERS -Body $profileBody
 
 $taskBody = @{
   title = "profile-runtime-task-$(Get-Date -Format HHmmss)"
   description = "runtime profile resolve check"
   project_id = "project"
   agent_profile_id = $TASK_AGENT_PROFILE_ID
-  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -867,7 +865,6 @@ $taskBody = @{
   description = "e2e check: agent dispatches child via MCP"
   project_id = "project"
   agent_profile_id = $TASK_AGENT_PROFILE_ID
-  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 95
 } | ConvertTo-Json
 
@@ -880,7 +877,7 @@ $prompt = @"
 - description: child task created via MCP
 - project_id: project
 - agent_profile_id: $($profile.id)
-- agent_template_id: $($TASK_AGENT_TEMPLATE_ID)
+- agent_profile_id: $($TASK_AGENT_PROFILE_ID)
 - priority: 70
 После вызова верни TASK_RESULT:SUCCESS.
 "@
@@ -938,7 +935,6 @@ $taskBody = @{
   description = "created in manual scenario"
   project_id = "manual-project"
   agent_profile_id = $TASK_AGENT_PROFILE_ID
-  agent_template_id = $TASK_AGENT_TEMPLATE_ID
   priority = 90
 } | ConvertTo-Json
 
@@ -1085,7 +1081,7 @@ curl.exe -s -X POST "$BASE/api/auth-profiles/chatgpt/$runtimeProfileId/activate"
   -H "X-Admin-Token: $ADMIN_TOKEN"
 ```
 
-Создай task + template и отправь delegation с `payload.prompt`:
+Создай task + профиль и отправь delegation с `payload.prompt`:
 
 ```powershell
 $projectBody = @{
@@ -1101,11 +1097,10 @@ $taskBody = @{
   description = "runtime delegation test"
   project_id = "manual-runtime"
   agent_profile_id = $TASK_AGENT_PROFILE_ID
-  agent_template_id = $TASK_AGENT_TEMPLATE_ID
 } | ConvertTo-Json
 $task = Invoke-RestMethod -Uri "$BASE/api/tasks" -Method POST -Headers $HEADERS -Body $taskBody
 
-$templateBody = @{
+$profileBody = @{
   name = "manual-runtime-reviewer"
   role = "reviewer"
   model = "gpt-5.4-mini"
@@ -1113,7 +1108,7 @@ $templateBody = @{
   sandbox_policy = "workspace-write"
   approval_policy = "never"
 } | ConvertTo-Json
-$template = Invoke-RestMethod -Uri "$BASE/api/agents/templates" -Method POST -Headers $HEADERS -Body $templateBody
+$profile = Invoke-RestMethod -Uri "$BASE/api/agent-profiles" -Method POST -Headers $HEADERS -Body $profileBody
 
 $dispatchBody = @{
   requester_task_id = $task.id
@@ -1121,7 +1116,7 @@ $dispatchBody = @{
   capability = "reviewer"
   target_selector = @{
     role = "reviewer"
-    agent_template_id = $template.id
+    agent_profile_id = $profile.id
   }
   payload = @{
     execution_mode = "codex_exec"
@@ -1140,7 +1135,7 @@ $dispatch | ConvertTo-Json -Depth 8
 
 Ожидаемо:
 - `status = completed`;
-- `result_summary` содержит ответ модели (например `READY`), а не mock-строку вида `Delegation completed by template ...`.
+- `result_summary` содержит ответ модели (например `READY`), а не mock-строку вида `Delegation completed by profile ...`.
 - делегация берёт рабочую директорию из `Project.workspace_path` (`/app`), даже если `payload.cwd` не передан явно.
 
 ## 9. Сценарий G: Telegram long polling команды
@@ -1198,3 +1193,6 @@ docker compose logs --tail=80 bus
 Remove-Item -LiteralPath "$PWD\auth.json" -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath "$PWD\manual-runtime-auth.json" -ErrorAction SilentlyContinue
 ```
+
+
+

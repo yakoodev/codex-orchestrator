@@ -1,4 +1,4 @@
-# Agent Request Plane v2 (Design + Rollout Plan)
+﻿# Agent Request Plane v2 (Design + Rollout Plan)
 
 Обновлено: 2026-04-09  
 Статус: `in_progress` (backend + MCP governor policy v1 + audit trail)
@@ -16,7 +16,7 @@
 
 ## 2. Зафиксированные решения
 
-1. Заявка создается в контексте `project + task + agent_profile + agent_template + agent_run`.
+1. Заявка создается в контексте `project + task + agent_profile + agent_run`.
 2. Единая типизация заявок:
   - `mcp_server_attach`
   - `mcp_tool_acl`
@@ -39,7 +39,7 @@
 - `AgentRequest`
   - `id`, `type`, `status`, `priority`
   - `project_id`, `task_id`, `agent_run_id`
-  - `agent_profile_id`, `agent_template_id`, `requested_by_agent_id`
+  - `agent_profile_id`, `requested_by_agent_id`
   - `title`, `reason`, `request_payload_json`, `resolution_payload_json`
   - `claimed_by_governor_id`, `resolved_by`, `resolved_at`
   - `created_at`, `updated_at`
@@ -80,7 +80,7 @@
 - `POST /api/agent-requests/{id}/resolve`
 
 Базовые фильтры:
-- `project_id`, `task_id`, `agent_profile_id`, `agent_template_id`, `status`, `type`.
+- `project_id`, `task_id`, `agent_profile_id`, `status`, `type`.
 
 ## 6. Governor loop
 

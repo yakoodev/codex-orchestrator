@@ -1,10 +1,79 @@
 # PR1 Progress Tracker (API-only Bootstrap)
 
-Обновлено: 2026-04-12  
+Обновлено: 2026-04-13  
 Ветка: `codex/pr1-bootstrap-api-only`
 
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
+
+## Итерация 2026-04-13: Cleanup continuation (http split + docs profile-first sync)
+
+### Реализовано
+- [x] Продолжен decomposition-pass HTTP слоя без изменения контрактов:
+  - `src/http/schedule-evaluator.ts` превращён в легковесный barrel;
+  - логика AST/evaluate вынесена в `src/http/schedule-core.ts`;
+  - startup recovery вынесен в `src/http/schedule-recovery.ts`;
+  - `src/http/response-serializers.ts` уменьшен за счёт выноса карточек делегаций в `src/http/delegation-cards-response.ts`.
+- [x] Закрыты хвосты profile-first документации после массовой миграции терминов:
+  - `docs/ops/mcp-authz-acl-v2.md` синхронизирован на profile constraints (`McpKeyProfileConstraint`, profile-only 403 semantics);
+  - `docs/ops/secrets-plane-v1.md` синхронизирован на `role/profile` bindings;
+  - `docs/ops/agent-request-plane-v2.md` убраны дубли и template-упоминания в контексте заявки;
+  - `docs/ops/manual-test-scenarios.md` убраны артефакты template-слоя и дубли profile-полей в payload-примерах.
+- [x] Локальные line-count результаты по новым модулям:
+  - `src/http/schedule-core.ts` — 436;
+  - `src/http/schedule-recovery.ts` — 97;
+  - `src/http/response-serializers.ts` — 433;
+  - `src/http/delegation-cards-response.ts` — 117.
+
+### В работе
+- [~] Продолжение decomposition `>500` на крупных файлах:
+  - `src/app.ts`
+  - `src/runtime/prisma-persistence.ts`
+  - `public/app.js`
+  - `test/app.test.ts`.
+
+### Остается
+- [~] Добить cleanup-pass до устойчивой модульной структуры (backend + frontend + tests) и затем добавить CI-guard’ы:
+  - line-limit guard (`<=500`) на `src/public/test`;
+  - legacy-token guard для финального hard-remove template-слоя.
+
+## Итерация 2026-04-12: Refactor cleanup v1 (decompose + legacy purge sync)
+
+### Реализовано
+- [x] Декомпозирован runtime contracts слой:
+  - `src/runtime/contracts.ts` превращён в barrel;
+  - типы вынесены в `src/runtime/contracts/entities.ts`, `inputs.ts`, `execution.ts`, `persistence.ts`.
+- [x] Убран монолит `src/mcp/server.ts` (`1415 -> 835` строк):
+  - governor-policy вынесен в `src/mcp/governor-policy.ts`;
+  - основной MCP server оставлен как registry/handlers слой.
+- [x] Убран монолит `src/telegram/telegram-bot.ts` (`1054 -> 844` строк):
+  - общие parser/state/notification helpers вынесены в `src/telegram/telegram-bot-helpers.ts`.
+- [x] Начата декомпозиция frontend:
+  - вынесен словарь локализации в `public/ui-i18n.js`;
+  - `public/app.js` очищен от inline i18n-блока и использует глобальный контейнер `window.__CODEX_ORCH_I18N__`;
+  - `public/index.html` и `public/console.html` подключают `ui-i18n.js` перед `app.js`.
+- [x] Тесты синхронизированы под profile-first hard-remove:
+  - secrets bindings переведены на `profile_bindings`;
+  - template endpoints проверяются как удалённые (`404`);
+  - MCP constraints тесты переведены на `/constraints/profiles/{profile_id}`.
+- [x] Проверки зелёные:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run contracts:check`
+
+### В работе
+- [~] Декомпозиция оставшихся монолитов `>1000`:
+  - `src/app.ts`
+  - `src/runtime/prisma-persistence.ts`
+  - `public/app.js`
+  - `public/styles.css`
+  - `test/app.test.ts`.
+
+### Остается
+- [~] Довести decomposition-pass до целевых модульных срезов (route registrars / persistence repositories / screen modules).
+- [~] Добавить quality-guards на max-lines и legacy-token ban в `ci:checks`.
+- [~] Прогнать `npm run smoke:local` на поднятом локальном сервисе (`127.0.0.1:8080`) и обновить runbook/manual сценарии.
 
 ## Итерация 2026-04-12: Profile-only cleanup (dispatch/requests/authz)
 
