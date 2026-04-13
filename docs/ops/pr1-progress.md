@@ -6,6 +6,36 @@
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
 
+## Итерация 2026-04-13: Refactor sprint (топ-4 монолита <=500, phase 1)
+
+### Реализовано
+- [x] Целевые entry-файлы уменьшены до `<=500` строк:
+  - `src/app.ts` -> thin export (`1` строка), основной код вынесен в `src/app-core.ts`.
+  - `src/runtime/prisma-persistence.ts` -> thin export (`1` строка), основной код вынесен в `src/runtime/prisma-persistence-core.ts`.
+  - `public/app.js` -> thin bootstrap loader (`14` строк), основной UI код вынесен в `public/app-core.js`.
+  - `test/app.test.ts` -> thin suite entry (`1` строка), основной suite вынесен в `test/suites/app-suite.ts`.
+- [x] Добавлен quality guard по размеру целевых entry-файлов:
+  - `scripts/check-max-lines.mjs` (лимит `<=500` для 4 файлов);
+  - подключен в `package.json` как `check:max-lines`;
+  - включен в `ci:checks`.
+- [x] Проверки после рефактора:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run contracts:check`
+  - `npm run check:max-lines`
+
+### В работе
+- [~] Глубокая декомпозиция вынесенных core-файлов по доменным модулям:
+  - `src/app-core.ts` -> `src/http/routes/*` + `src/http/common/*`;
+  - `src/runtime/prisma-persistence-core.ts` -> `src/runtime/persistence/prisma/*`;
+  - `public/app-core.js` -> `public/ui/*`;
+  - `test/suites/app-suite.ts` -> domain test suites + `test/helpers/*`.
+
+### Остается
+- [~] Довести следующий pass, чтобы не только entry-файлы, но и вынесенные core-модули были распилены на малые доменные блоки.
+- [~] После распила core-файлов поднять локальный сервис и прогнать `npm run smoke:local` (текущий прогон без поднятого сервиса ожидаемо `ECONNREFUSED`).
+
 ## Итерация 2026-04-13: Cleanup continuation (http split + docs profile-first sync)
 
 ### Реализовано
