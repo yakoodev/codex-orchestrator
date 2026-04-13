@@ -6,6 +6,31 @@
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
 
+## Итерация 2026-04-13: Разгрузка 4 монолитов (entry split)
+
+### Реализовано
+- [x] Целевые файлы, которые были запрошены для распила, сокращены до thin-entry уровня:
+  - `src/app-core.ts` -> `2` строки (`export * from "./app-core-main"`).
+  - `src/runtime/prisma-persistence-core.ts` -> `2` строки (`export * from "./prisma-persistence-main"`).
+  - `public/app-core.js` -> `14` строк (loader на `/ui/app-core-main.js`).
+  - `test/suites/app-suite.ts` -> `2` строки (import aggregator на `./app-suite-main`).
+- [x] Основная реализация вынесена в отдельные файлы `*-main` без изменения поведения:
+  - `src/app-core-main.ts`
+  - `src/runtime/prisma-persistence-main.ts`
+  - `public/app-core-main.js`
+  - `test/suites/app-suite-main.ts`
+- [x] Проверки после переноса:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run contracts:check`
+
+### В работе
+- [~] Дальнейший доменный распил `*-main` файлов на меньшие модули (`routes/repositories/screens/specs`), чтобы уменьшить общий объём монолитов, а не только entry-точки.
+
+### Остается
+- [~] Следующий проход: разнести `app-core-main`, `prisma-persistence-main`, `app-core-main.js`, `app-suite-main` по нескольким тематическим файлам (без изменения API/поведения).
+
 ## Итерация 2026-04-13: Refactor sprint v2 (без CI-guard, распил монолитов)
 
 ### Реализовано
