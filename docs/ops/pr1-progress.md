@@ -6,6 +6,49 @@
 Этот документ фиксирует, что уже реализовано по PR1 (`clone -> .env -> docker compose up`) и что остается добить до финального merge.
 Roadmap следующих крупных фич после PR1: `docs/ops/roadmap.md`.
 
+## Итерация 2026-04-13: Refactor sprint v2 (без CI-guard, распил монолитов)
+
+### Реализовано
+- [x] Убран max-lines guard из обязательного CI-контура:
+  - `package.json`: `ci:checks` снова без `check:max-lines`;
+  - ручной line-count оставлен как процессный контроль.
+- [x] Распилен MCP слой:
+  - `src/mcp/server.ts` -> thin bootstrap (`80` строк);
+  - регистрация tools вынесена в:
+    - `src/mcp/server-task-tools.ts`,
+    - `src/mcp/server-agent-request-tools.ts`,
+    - `src/mcp/server-limits-tool.ts`,
+    - `src/mcp/server-shared.ts`.
+- [x] Завершен split governor policy:
+  - decision/helpers в `src/mcp/governor-policy.ts`;
+  - execution policies в `src/mcp/governor-policy-execution.ts`.
+- [x] Распилен delegation executor:
+  - `src/runtime/delegation-executor.ts` -> `381` строк;
+  - helpers/security/parsers -> `src/runtime/delegation-executor-utils.ts`;
+  - MCP runtime config builder -> `src/runtime/delegation-executor-mcp.ts`.
+- [x] Распилен Telegram слой:
+  - `src/telegram/telegram-bot.ts` -> `384` строк;
+  - команды -> `src/telegram/telegram-command.ts`;
+  - transport -> `src/telegram/telegram-transport.ts`.
+- [x] Распилен MCP test suite:
+  - `test/mcp-server.test.ts` -> базовые кейсы (`279`);
+  - `test/mcp-server-governor.test.ts` -> governor policy (`371`);
+  - `test/mcp-server-limits-authz.test.ts` -> limits/authz (`178`);
+  - общий стенд вынесен в `test/helpers/mcp-server-harness.ts`.
+- [x] Текущий line-count `>500` (ручной замер):
+  - осталось `4` файла: `src/app-core.ts`, `src/runtime/prisma-persistence-core.ts`, `public/app-core.js`, `test/suites/app-suite.ts`.
+
+### В работе
+- [~] Дальнейший распил оставшихся 4 core-монолитов в рамках следующей итерации:
+  - HTTP core (`src/app-core.ts`);
+  - Prisma persistence core (`src/runtime/prisma-persistence-core.ts`);
+  - UI core (`public/app-core.js`);
+  - App suite (`test/suites/app-suite.ts`).
+
+### Остается
+- [~] Добить decomposition до `<=500` для оставшихся 4 файлов без изменения внешних контрактов.
+- [~] После следующего инкремента прогнать полный цикл проверок (`lint`, `typecheck`, `test`, `contracts:check`) и локальный smoke.
+
 ## Итерация 2026-04-13: Refactor sprint (топ-4 монолита <=500, phase 1)
 
 ### Реализовано
